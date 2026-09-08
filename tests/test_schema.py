@@ -39,9 +39,12 @@ class TestSchema(unittest.TestCase):
         settings = dict(cursor.fetchall())
         
         self.assertEqual(settings.get("gateway_enabled"), "true")
+        self.assertEqual(settings.get("writes_enabled"), "false")
         self.assertEqual(settings.get("default_timeout"), "30")
         self.assertEqual(settings.get("max_output_bytes"), "262144")
         self.assertEqual(settings.get("max_file_read_bytes"), "1048576")
+        self.assertEqual(settings.get("max_write_bytes"), "262144")
+        self.assertEqual(settings.get("max_diff_bytes"), "65536")
         self.assertEqual(settings.get("activity_retention"), "5000")
         
         conn.close()

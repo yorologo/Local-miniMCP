@@ -1,5 +1,6 @@
 """SSH transport wrapper for remote execution across configured targets."""
 
+import json
 import os
 import shlex
 import subprocess
@@ -74,6 +75,7 @@ class SSHTransport:
         remote_cmd: str,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        input_data: Optional[bytes] = None,
     ) -> SSHTransportResult:
         """Execute a remote shell command string safely constructed by the gateway."""
         effective_timeout = timeout or self.default_timeout
@@ -90,12 +92,14 @@ class SSHTransport:
         try:
             proc = subprocess.run(
                 ssh_args,
+                input=input_data,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=effective_timeout,
                 check=False,
             )
             duration_ms = int((time.monotonic() - start_time) * 1000)
+
         except subprocess.TimeoutExpired as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
             raise SSHError(
@@ -184,3 +188,184 @@ class SSHTransport:
             )
 
         return res.stdout
+
+    def probe_remote_path(
+        self, target: Dict[str, Any], candidate_path: str, timeout: int = 10
+    ) -> Dict[str, Any]:
+        """Probe remote path for existence, type, symlink status, canonical path, and sha256."""
+        py_code = (
+            "import os, sys, json, hashlib\n"
+            "p = sys.argv[1]\n"
+            "lexists = os.path.lexists(p)\n"
+            "is_link = os.path.islink(p)\n"
+            "is_file = os.path.isfile(p) and not is_link\n"
+            "is_dir = os.path.isdir(p) and not is_link\n"
+            "canon = os.path.realpath(p) if lexists else ''\n"
+            "parent = os.path.dirname(p) or '.'\n"
+            "parent_exists = os.path.exists(parent)\n"
+            "parent_is_link = os.path.islink(parent)\n"
+            "parent_canon = os.path.realpath(parent) if parent_exists else ''\n"
+            "sha = ''\n"
+            "size = 0\n"
+            "content = ''\n"
+            "if is_file:\n"
+            "    try:\n"
+            "        with open(p, 'rb') as f:\n"
+            "            data = f.read()\n"
+            "        sha = hashlib.sha256(data).hexdigest()\n"
+            "        size = len(data)\n"
+            "        content = data.decode('utf-8', errors='replace')\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "print(json.dumps({\n"
+            "    'exists': lexists,\n"
+            "    'is_symlink': is_link,\n"
+            "    'is_file': is_file,\n"
+            "    'is_dir': is_dir,\n"
+            "    'canonical_path': canon,\n"
+            "    'parent_exists': parent_exists,\n"
+            "    'parent_is_symlink': parent_is_link,\n"
+            "    'parent_canonical_path': parent_canon,\n"
+            "    'sha256': sha,\n"
+            "    'size': size,\n"
+            "    'content': content,\n"
+            "}))\n"
+        )
+        cmd = f"python3 -c {shlex.quote(py_code)} {shlex.quote(candidate_path)}"
+        res = self.run_command(target, cmd, timeout=timeout)
+        if not res.ok or not res.stdout.strip():
+            raise SSHError(f"Probe failed: {res.stderr.strip()}", code="SSH_FAILED", exit_code=res.exit_code)
+        try:
+            return json.loads(res.stdout.strip().splitlines()[-1])
+        except Exception as e:
+            raise SSHError(f"Invalid probe JSON response: {e}", code="SSH_FAILED")
+
+    def write_remote_file_atomic(
+        self,
+        target: Dict[str, Any],
+        dest_path: str,
+        content_bytes: bytes,
+        create: bool,
+        expected_sha256: Optional[str] = None,
+        backup_dir: Optional[str] = None,
+        max_write_bytes: int = 262144,
+        timeout: int = 20,
+    ) -> Dict[str, Any]:
+        """Atomically write content to a remote file with precondition, backup, and symlink checks."""
+        py_code = (
+            "import sys, os, tempfile, hashlib, json, time\n"
+            "dest = sys.argv[1]\n"
+            "create = sys.argv[2] == '1'\n"
+            "expected_sha = sys.argv[3].strip()\n"
+            "backup_dir = sys.argv[4].strip()\n"
+            "max_bytes = int(sys.argv[5])\n"
+            "content_bytes = sys.stdin.buffer.read()\n"
+            "if len(content_bytes) > max_bytes:\n"
+            "    print(json.dumps({'ok': False, 'code': 'FILE_TOO_LARGE', 'message': f'Content size ({len(content_bytes)}) exceeds allowed limit of {max_bytes} bytes'}))\n"
+            "    sys.exit(10)\n"
+            "if b'\\x00' in content_bytes:\n"
+            "    print(json.dumps({'ok': False, 'code': 'INVALID_ENCODING', 'message': 'Content contains NUL byte'}))\n"
+            "    sys.exit(11)\n"
+            "try:\n"
+            "    content_bytes.decode('utf-8')\n"
+            "except UnicodeDecodeError as e:\n"
+            "    print(json.dumps({'ok': False, 'code': 'INVALID_ENCODING', 'message': f'Content is not valid UTF-8: {e}'}))\n"
+            "    sys.exit(12)\n"
+            "parent_dir = os.path.dirname(dest) or '.'\n"
+            "if not os.path.exists(parent_dir):\n"
+            "    print(json.dumps({'ok': False, 'code': 'NOT_FOUND', 'message': f'Parent directory does not exist: {parent_dir}'}))\n"
+            "    sys.exit(13)\n"
+            "if not os.path.isdir(parent_dir):\n"
+            "    print(json.dumps({'ok': False, 'code': 'INVALID_PATH', 'message': f'Parent path is not a directory: {parent_dir}'}))\n"
+            "    sys.exit(14)\n"
+            "if os.path.islink(parent_dir):\n"
+            "    print(json.dumps({'ok': False, 'code': 'SYMLINK_WRITE_DENIED', 'message': f'Parent directory is a symlink: {parent_dir}'}))\n"
+            "    sys.exit(15)\n"
+            "dest_exists = os.path.lexists(dest)\n"
+            "if dest_exists and os.path.islink(dest):\n"
+            "    print(json.dumps({'ok': False, 'code': 'SYMLINK_WRITE_DENIED', 'message': f'Target file is a symlink: {dest}'}))\n"
+            "    sys.exit(16)\n"
+            "old_sha256 = None\n"
+            "old_mode = None\n"
+            "if create:\n"
+            "    if dest_exists:\n"
+            "        print(json.dumps({'ok': False, 'code': 'FILE_ALREADY_EXISTS', 'message': f'File already exists: {dest}'}))\n"
+            "        sys.exit(17)\n"
+            "else:\n"
+            "    if not dest_exists:\n"
+            "        print(json.dumps({'ok': False, 'code': 'NOT_FOUND', 'message': f'File not found: {dest}'}))\n"
+            "        sys.exit(18)\n"
+            "    if os.path.isdir(dest):\n"
+            "        print(json.dumps({'ok': False, 'code': 'INVALID_PATH', 'message': f'Destination is a directory: {dest}'}))\n"
+            "        sys.exit(19)\n"
+            "    with open(dest, 'rb') as f:\n"
+            "        current_data = f.read()\n"
+            "    old_sha256 = hashlib.sha256(current_data).hexdigest()\n"
+            "    old_mode = os.stat(dest).st_mode\n"
+            "    if not expected_sha:\n"
+            "        print(json.dumps({'ok': False, 'code': 'WRITE_CONFLICT', 'message': 'expected_sha256 is required for overwriting existing file'}))\n"
+            "        sys.exit(20)\n"
+            "    if old_sha256.lower() != expected_sha.lower():\n"
+            "        print(json.dumps({'ok': False, 'code': 'WRITE_CONFLICT', 'message': f'Hash mismatch: expected {expected_sha}, found {old_sha256}', 'current_sha256': old_sha256}))\n"
+            "        sys.exit(21)\n"
+            "    if backup_dir:\n"
+            "        try:\n"
+            "            os.makedirs(backup_dir, exist_ok=True)\n"
+            "            ts = time.strftime('%Y%m%d_%H%M%S')\n"
+            "            backup_file = os.path.join(backup_dir, f'{ts}_{old_sha256[:12]}.bak')\n"
+            "            with open(backup_file, 'wb') as bf:\n"
+            "                bf.write(current_data)\n"
+            "            backups = sorted([os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith('.bak')])\n"
+            "            if len(backups) > 5:\n"
+            "                for old_b in backups[:-5]:\n"
+            "                    try: os.unlink(old_b)\n"
+            "                    except OSError: pass\n"
+            "        except Exception:\n"
+            "            pass\n"
+            "new_sha256 = hashlib.sha256(content_bytes).hexdigest()\n"
+            "temp_fd, temp_path = tempfile.mkstemp(dir=parent_dir, prefix='.mcp_tmp_')\n"
+            "try:\n"
+            "    with os.fdopen(temp_fd, 'wb') as tf:\n"
+            "        tf.write(content_bytes)\n"
+            "        tf.flush()\n"
+            "        os.fsync(tf.fileno())\n"
+            "    if old_mode is not None:\n"
+            "        os.chmod(temp_path, old_mode)\n"
+            "    os.replace(temp_path, dest)\n"
+            "    try:\n"
+            "        dir_fd = os.open(parent_dir, os.O_RDONLY)\n"
+            "        try: os.fsync(dir_fd)\n"
+            "        finally: os.close(dir_fd)\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "    print(json.dumps({'ok': True, 'created': create, 'old_sha256': old_sha256, 'new_sha256': new_sha256, 'bytes_written': len(content_bytes), 'atomic': True}))\n"
+            "    sys.exit(0)\n"
+            "except Exception as e:\n"
+            "    if os.path.exists(temp_path):\n"
+            "        try: os.unlink(temp_path)\n"
+            "        except OSError: pass\n"
+            "    print(json.dumps({'ok': False, 'code': 'WRITE_FAILED', 'message': str(e)}))\n"
+            "    sys.exit(30)\n"
+        )
+        c_flag = "1" if create else "0"
+        e_sha = expected_sha256 or ""
+        b_dir = backup_dir or ""
+        remote_cmd = f"python3 -c {shlex.quote(py_code)} {shlex.quote(dest_path)} {c_flag} {shlex.quote(e_sha)} {shlex.quote(b_dir)} {max_write_bytes}"
+        res = self.run_command(target, remote_cmd, timeout=timeout, input_data=content_bytes)
+
+        out_str = res.stdout.strip()
+        if out_str:
+            try:
+                lines = out_str.splitlines()
+                data = json.loads(lines[-1])
+                if not data.get("ok"):
+                    raise SSHError(data.get("message", "Write failed"), code=data.get("code", "WRITE_FAILED"))
+                return data
+            except json.JSONDecodeError:
+                pass
+
+        if not res.ok:
+            raise SSHError(f"Write execution failed: {res.stderr.strip()}", code="SSH_FAILED", exit_code=res.exit_code)
+
+        raise SSHError("Invalid response from remote write helper", code="WRITE_FAILED")
+

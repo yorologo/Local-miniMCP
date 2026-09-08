@@ -40,14 +40,25 @@ tar -C "${PROJECT_ROOT}" -czf - src config tests scripts docs | \
         sudo chmod -R u+rwX,go+rX '${REMOTE_TARGET_DIR}'
     "
 
-# Transfer Go MCP adapter binary if present
+# Transfer Go MCP adapter binary if present and changed
 if [ -f "${PROJECT_ROOT}/mcp-adapter/mcp-gateway-adapter" ]; then
-    echo "2a. Transferring Go MCP adapter binary..."
-    cat "${PROJECT_ROOT}/mcp-adapter/mcp-gateway-adapter" | \
+    LOCAL_BIN_SHA=$(sha256sum "${PROJECT_ROOT}/mcp-adapter/mcp-gateway-adapter" | awk '{print $1}')
+    REMOTE_BIN_SHA=$(SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${PI_USER}@${PI_HOST}" "sha256sum '${REMOTE_TARGET_DIR}/bin/mcp-gateway-adapter' 2>/dev/null | awk '{print \$1}'" || true)
+
+    if [ "${LOCAL_BIN_SHA}" != "${REMOTE_BIN_SHA}" ]; then
+        echo "2a. Transferring Go MCP adapter binary (checksum mismatch)..."
         SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${PI_USER}@${PI_HOST}" "
-            sudo -u mcp-gateway tee '${REMOTE_TARGET_DIR}/bin/mcp-gateway-adapter' > /dev/null
+            sudo systemctl stop mcp-gateway-mcp 2>/dev/null || true
+        "
+        SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e scp -O -o StrictHostKeyChecking=accept-new "${PROJECT_ROOT}/mcp-adapter/mcp-gateway-adapter" "${PI_USER}@${PI_HOST}:/tmp/mcp-gateway-adapter.tmp"
+        SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${PI_USER}@${PI_HOST}" "
+            sudo mv -f /tmp/mcp-gateway-adapter.tmp '${REMOTE_TARGET_DIR}/bin/mcp-gateway-adapter'
+            sudo chown mcp-gateway:mcp-gateway '${REMOTE_TARGET_DIR}/bin/mcp-gateway-adapter'
             sudo chmod 755 '${REMOTE_TARGET_DIR}/bin/mcp-gateway-adapter'
         "
+    else
+        echo "2a. Go MCP adapter binary is up to date (${LOCAL_BIN_SHA:0:8})."
+    fi
 fi
 
 # Configure systemd services

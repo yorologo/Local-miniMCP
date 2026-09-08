@@ -1,6 +1,6 @@
 # MCP Raspberry Pi Gateway
 
-Gateway MCP (Model Context Protocol) ligero, seguro y autónomo basado en una Raspberry Pi Model A+, diseñado para actuar como frontera de control, auditoría y orquestación entre ChatGPT y la estación de trabajo principal (PC).
+Gateway MCP (Model Context Protocol) ligero, seguro y autónomo basado en una Raspberry Pi Model A+, diseñado para actuar como frontera de control, auditoría y orquestación entre ChatGPT y el entorno de trabajo remoto (Target Worker).
 
 ---
 
@@ -10,7 +10,7 @@ El propósito de este proyecto es desacoplar el acceso de asistentes LLM (como C
 
 La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 - **Raspberry Pi**: Valida, autoriza, audita y canaliza peticiones. No corre LLMs ni compilaciones pesadas.
-- **PC Principal**: Almacena repositorios y ejecuta procesos pesados bajo demanda auditada vía SSH/SFTP.
+- **Target Worker**: Almacena repositorios y ejecuta procesos pesados bajo demanda auditada vía SSH/SFTP.
 
 ---
 
@@ -25,7 +25,7 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
      |                       - Valida y audita políticas
      |                       - Aislamiento de red
      v SSH / SFTP seguro
-[ PC Principal ]             (Cómputo pesado / Storage)
+[ Target Worker ]            (Cómputo pesado / Storage)
 ```
 
 ---
@@ -51,8 +51,8 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 | **Fase 4A: Gateway Core** | Núcleo modular multi-target en Python stdlib, políticas deny-by-default y 8 herramientas operativas | **COMPLETADA** |
 | **Fase 4B: Consola Admin & Registro** | Consola Web en `127.0.0.1:8080` (Flask + Jinja2 + Tailwind), Registro SQLite persistente y Emergency Kill Switch | **COMPLETADA** |
 | **Fase 4C: Adaptador MCP Oficial** | Adaptador de protocolo MCP con Go SDK oficial v1.7.0, stdio y Streamable HTTP (`127.0.0.1:8090`), 8 herramientas | **COMPLETADA** |
-| **Fase 5: Escritura Controlada** | Mutaciones controladas, escrituras acotadas a workspaces autorizados y políticas de cambio | *Siguiente* |
-| **Fase 6: Clientes AI Externos & ChatGPT** | Integración con ChatGPT, Claude Desktop, túneles seguros y perfiles de autenticación cliente | *Planificada* |
+| **Fase 5: Escritura Controlada** | Mutaciones controladas atómicas (`write_file`), verificación precondicional SHA-256, backups locales rotativos en Gateway, dry-run y panic button | **COMPLETADA** |
+| **Fase 6: Clientes AI Externos & ChatGPT** | Integración con ChatGPT, Claude Desktop, túneles seguros y perfiles de autenticación cliente | *Siguiente* |
 | **Fase 7: Operación Estable & Resiliencia** | Hardening de red, rotación de claves, monitoreo continuo y recuperación ante desastres | *Futura* |
 
 ---
@@ -84,6 +84,9 @@ La documentación detallada se encuentra en:
 - [AGENTS.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/AGENTS.md): Reglas, directivas de seguridad e identidades operacionales.
 - [docs/architecture.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/architecture.md): Diagramas de red, capas del gateway y roles de seguridad.
 - [docs/project-state.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/project-state.md): Matriz de verificación y estado en tiempo real.
+- [docs/controlled-write.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/controlled-write.md): Especificación técnica del modelo de escritura controlada, seguridad y políticas.
+- [docs/runbooks/controlled-write-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/controlled-write-smoke-test.md): Manual de pruebas de humo y verificación de escrituras atómicas.
+- [docs/runbooks/write-recovery.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/write-recovery.md): Manual de recuperación y restauración desde backups del Gateway.
 - [docs/mcp-adapter.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/mcp-adapter.md): Especificación técnica del Adaptador Go MCP, schemas, transportes y puente.
 - [docs/runbooks/mcp-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/mcp-smoke-test.md): Manual de pruebas de humo y verificación E2E del protocolo MCP.
 - [docs/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/admin-console.md): Especificación técnica de la Consola Web de Administración y Registro Persistente.
@@ -91,5 +94,5 @@ La documentación detallada se encuentra en:
 - [docs/runbooks/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/admin-console.md): Manual operativo de la consola web, túnel SSH y gestión de usuarios.
 - [docs/runbooks/registry-backup-restore.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/registry-backup-restore.md): Manual de respaldo, restauración y rollback a JSON.
 - [docs/runbooks/gateway-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/gateway-smoke-test.md): Manual de despliegue y pruebas del Gateway en MCP-Pi.
-- [docs/runbooks/pi-to-pc-ssh.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/pi-to-pc-ssh.md): Manual operativo del canal SSH Pi → PC y procedimiento de revocación.
+- [docs/runbooks/pi-to-pc-ssh.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/pi-to-pc-ssh.md): Manual operativo del canal SSH Pi → Target Worker y procedimiento de revocación.
 

@@ -41,6 +41,50 @@
     </div>
   </div>
 
+  <!-- Controlled Writes Card (Phase 5) -->
+  <div class="bg-slate-950 border {% if settings.writes_enabled %}border-amber-900/60 bg-amber-950/10{% else %}border-slate-800 bg-slate-900/20{% endif %} rounded-xl p-6 shadow-sm space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg">✍️</span>
+          <h2 class="text-base font-bold text-white">Controlled Writes (Phase 5)</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-1 max-w-lg">
+          Enable or disable write mutations globally (<code class="text-indigo-400">write_file</code>, <code class="text-indigo-400">apply_patch</code>). When enabled, a project must also have <code class="text-amber-400">project.write = true</code> for mutations to succeed.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <form method="POST" action="{{ url_for('admin.toggle_writes_switch') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if settings.writes_enabled %}
+            <button type="submit" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg text-xs transition border border-slate-700 flex items-center gap-1.5">
+              <span>🔒</span> Turn Off Writes
+            </button>
+          {% else %}
+            <button type="submit" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition shadow-lg flex items-center gap-1.5" onclick="return confirm('⚠️ ENABLE CONTROLLED WRITES?\n\nAI clients will be allowed to modify files in projects that have write capability enabled.')">
+              <span>✍️</span> Enable Controlled Writes
+            </button>
+          {% endif %}
+        </form>
+
+        {% if settings.writes_enabled %}
+        <form method="POST" action="{{ url_for('admin.disable_writes') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="px-3 py-2 bg-rose-900/80 hover:bg-rose-800 text-rose-200 font-bold rounded-lg text-xs transition border border-rose-700" title="Emergency panic button: disable writes without affecting reads">
+            Panic: Stop Writes
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="text-[11px] font-mono {% if settings.writes_enabled %}text-amber-400 font-bold{% else %}text-slate-400{% endif %} pt-2 border-t border-slate-800/60 flex items-center justify-between">
+      <span>Status: {% if settings.writes_enabled %}⚠️ WRITES ACTIVE &bull; Mutations permitted on write-enabled projects{% else %}LOCKED &bull; Writes globally blocked with WRITES_DISABLED (Default){% endif %}</span>
+      <span class="text-slate-500 text-[10px]">Reads remain active regardless</span>
+    </div>
+  </div>
+
   <!-- Configuration Limits Form -->
   <form method="POST" action="{{ url_for('admin.settings_view') }}" class="bg-slate-950 border border-slate-800 p-6 rounded-xl space-y-5 shadow-sm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -60,7 +104,7 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div>
         <label class="block text-xs font-medium text-slate-300 mb-1">Max Output Bytes</label>
         <input type="number" name="max_output_bytes" value="{{ settings.max_output_bytes }}" min="1024" max="10485760" required class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
@@ -71,6 +115,12 @@
         <label class="block text-xs font-medium text-slate-300 mb-1">Max File Read Bytes</label>
         <input type="number" name="max_file_read_bytes" value="{{ settings.max_file_read_bytes }}" min="1024" max="10485760" required class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
         <p class="text-[11px] text-slate-500 mt-1">Default 1048576 (1 MB)</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-300 mb-1">Max Write Bytes</label>
+        <input type="number" name="max_write_bytes" value="{{ settings.max_write_bytes }}" min="1024" max="10485760" required class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        <p class="text-[11px] text-slate-500 mt-1">Default 262144 (256 KB)</p>
       </div>
     </div>
 

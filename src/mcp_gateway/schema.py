@@ -122,18 +122,23 @@ def migrate_db(conn: sqlite3.Connection):
     if current_version == 0:
         cursor = conn.cursor()
         cursor.executescript(SCHEMA_V1)
-        
-        # Insert default settings
-        defaults = [
-            ("gateway_enabled", "true"),
-            ("default_timeout", "30"),
-            ("max_output_bytes", "262144"),
-            ("max_file_read_bytes", "1048576"),
-            ("activity_retention", "5000"),
-        ]
-        
-        cursor.executemany(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
-            defaults
-        )
-        conn.commit()
+
+    # Insert default settings if missing
+    defaults = [
+        ("gateway_enabled", "true"),
+        ("writes_enabled", "false"),
+        ("default_timeout", "30"),
+        ("max_output_bytes", "262144"),
+        ("max_file_read_bytes", "1048576"),
+        ("max_write_bytes", "262144"),
+        ("max_diff_bytes", "65536"),
+        ("activity_retention", "5000"),
+    ]
+
+    cursor = conn.cursor()
+    cursor.executemany(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        defaults
+    )
+    conn.commit()
+

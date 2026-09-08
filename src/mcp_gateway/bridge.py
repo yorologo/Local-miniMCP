@@ -21,6 +21,7 @@ ALLOWED_TOOLS = {
     "read_file",
     "git_status",
     "run_task",
+    "write_file",
 }
 
 
@@ -151,6 +152,35 @@ def invoke_tool(tool_name: str, args: Dict[str, Any], registry: Optional[Any] = 
                     },
                 }
             return gateway.run_task(target, project, task)
+
+        elif tool_name == "write_file":
+            target = args.get("target")
+            project = args.get("project")
+            rel_path = args.get("relative_path") or args.get("path")
+            content = args.get("content")
+            expected_sha = args.get("expected_sha256")
+            dry_run = bool(args.get("dry_run", False))
+            create = bool(args.get("create", False))
+
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not rel_path or not isinstance(rel_path, str) or content is None or not isinstance(content, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', 'relative_path', and 'content' are required",
+                    },
+                }
+
+            return gateway.write_file(
+                target=target,
+                project=project,
+                relative_path=rel_path,
+                content=content,
+                expected_sha256=expected_sha,
+                dry_run=dry_run,
+                create=create,
+            )
 
         return {
             "ok": False,

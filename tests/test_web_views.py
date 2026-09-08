@@ -162,7 +162,7 @@ class TestWebViews(unittest.TestCase):
         p2 = self.registry.get_project("t1", "p2")
         self.assertEqual(p2["root"], "/srv/p2")
 
-        # 3. Toggle project
+        # 3. Toggle project enabled -> disabled
         res_toggle = self.client.post(
             "/projects/t1/p2/toggle",
             data={"csrf_token": "valid-token"},
@@ -170,6 +170,33 @@ class TestWebViews(unittest.TestCase):
         )
         self.assertEqual(res_toggle.status_code, 200)
         self.assertIn(b"disabled", res_toggle.data)
+
+        # Re-enable p2
+        self.client.post(
+            "/projects/t1/p2/toggle",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=True,
+        )
+
+        # 4. Toggle project write capability
+        self.assertFalse(self.registry.get_project("t1", "p2").get("write", False))
+        res_toggle_write = self.client.post(
+            "/projects/t1/p2/toggle-write",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=True,
+        )
+        self.assertEqual(res_toggle_write.status_code, 200)
+        self.assertTrue(self.registry.get_project("t1", "p2").get("write", False))
+        self.assertIn(b"WRITE \xe2\x9c\x93", res_toggle_write.data)  # WRITE ✓
+
+        # 5. Revoke write capability
+        res_revoke = self.client.post(
+            "/projects/t1/p2/toggle-write",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=True,
+        )
+        self.assertEqual(res_revoke.status_code, 200)
+        self.assertFalse(self.registry.get_project("t1", "p2").get("write", False))
 
     def test_clients_crud(self):
         self._login()
@@ -250,6 +277,26 @@ class TestWebViews(unittest.TestCase):
         )
         self.assertEqual(res_invalid.status_code, 200)
         self.assertIn(b"Timeout must be between", res_invalid.data)
+
+        # Toggle writes switch (enable)
+        self.assertEqual(self.registry.get_setting("writes_enabled"), "false")
+        res_toggle_writes = self.client.post(
+            "/settings/toggle-writes",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=True,
+        )
+        self.assertEqual(res_toggle_writes.status_code, 200)
+        self.assertEqual(self.registry.get_setting("writes_enabled"), "true")
+
+        # Disable writes panic button
+        res_panic = self.client.post(
+            "/settings/disable-writes",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=True,
+        )
+        self.assertEqual(res_panic.status_code, 200)
+        self.assertEqual(self.registry.get_setting("writes_enabled"), "false")
+        self.assertIn(b"Controlled writes have been immediately DISABLED", res_panic.data)
 
 
 if __name__ == "__main__":

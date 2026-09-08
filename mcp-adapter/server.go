@@ -281,6 +281,46 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 		},
 	}, handlerFor("run_task"))
 
+	// 9. write_file
+	server.AddTool(&mcp.Tool{
+		Name:        "write_file",
+		Description: "Safely write or mutate a text file in an authorized project with atomic replacement and hash verification",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"target": map[string]any{
+					"type":        "string",
+					"description": "Target ID",
+				},
+				"project": map[string]any{
+					"type":        "string",
+					"description": "Project ID",
+				},
+				"relative_path": map[string]any{
+					"type":        "string",
+					"description": "Relative path to file within project root",
+				},
+				"content": map[string]any{
+					"type":        "string",
+					"description": "UTF-8 text content to write",
+				},
+				"expected_sha256": map[string]any{
+					"type":        "string",
+					"description": "Expected SHA256 of existing file before overwrite (required for overwrite unless create=true)",
+				},
+				"dry_run": map[string]any{
+					"type":        "boolean",
+					"description": "If true, returns diff and sha256 without mutating the target file",
+				},
+				"create": map[string]any{
+					"type":        "boolean",
+					"description": "If true, creates a new file (fails if file already exists)",
+				},
+			},
+			"required": []string{"target", "project", "relative_path", "content"},
+		},
+	}, handlerFor("write_file"))
+
 	return server
 }
 
@@ -312,6 +352,16 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string) error {
 		WriteTimeout: 60 * time.Second,
 	}
 
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
 	log.Printf("Starting MCP Streamable HTTP server on http://%s/mcp (stateless)", bindAddr)
-	return srv.ListenAndServe()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }

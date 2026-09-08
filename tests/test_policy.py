@@ -81,6 +81,36 @@ class TestPolicy(unittest.TestCase):
             check_capability(proj_no, "read")
         self.assertEqual(ctx.exception.code, "TOOL_NOT_ALLOWED")
 
+    def test_check_capability_write(self):
+        proj_ok = {"read": True, "write": True}
+        proj_no = {"read": True, "write": False}
+        check_capability(proj_ok, "write")
+        with self.assertRaises(PolicyError) as ctx:
+            check_capability(proj_no, "write")
+        self.assertEqual(ctx.exception.code, "WRITE_NOT_ALLOWED")
+
+    def test_validate_write_relative_path(self):
+        from mcp_gateway.policy import validate_write_relative_path
+        self.assertEqual(validate_write_relative_path("foo.txt"), "foo.txt")
+        self.assertEqual(validate_write_relative_path("dir/foo.txt"), "dir/foo.txt")
+        with self.assertRaises(PolicyError) as ctx:
+            validate_write_relative_path(".")
+        self.assertEqual(ctx.exception.code, "INVALID_PATH")
+
+    def test_validate_content_utf8(self):
+        from mcp_gateway.policy import validate_content_utf8
+        self.assertEqual(validate_content_utf8("hello world"), b"hello world")
+        with self.assertRaises(PolicyError) as ctx:
+            validate_content_utf8("bad\0nul")
+        self.assertEqual(ctx.exception.code, "INVALID_ENCODING")
+
+    def test_validate_write_size(self):
+        from mcp_gateway.policy import validate_write_size
+        validate_write_size(b"small", 100)
+        with self.assertRaises(PolicyError) as ctx:
+            validate_write_size(b"toolargecontent", 5)
+        self.assertEqual(ctx.exception.code, "FILE_TOO_LARGE")
+
     def test_validate_task_allowlisted(self):
         proj = {
             "tasks": {
@@ -104,3 +134,4 @@ class TestPolicy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

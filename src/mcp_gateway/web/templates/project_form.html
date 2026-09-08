@@ -48,6 +48,11 @@
       </div>
 
       <div class="flex items-center gap-2">
+        <input type="checkbox" id="write" name="write" class="rounded bg-slate-900 border-slate-800 text-amber-600 focus:ring-amber-500" {% if project and project.write %}checked{% endif %}>
+        <label for="write" class="text-xs text-amber-300">Allow Write Operations (write_file) &mdash; Controlled Writes</label>
+      </div>
+
+      <div class="flex items-center gap-2">
         <input type="checkbox" id="enabled" name="enabled" class="rounded bg-slate-900 border-slate-800 text-indigo-600 focus:ring-indigo-500" {% if not project or project.enabled %}checked{% endif %}>
         <label for="enabled" class="text-xs text-slate-300">Project is Enabled</label>
       </div>

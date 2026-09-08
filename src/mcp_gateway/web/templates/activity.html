@@ -26,13 +26,31 @@
         <tr class="hover:bg-slate-900/40">
           <td class="py-3 px-4 font-mono text-slate-400 whitespace-nowrap">{{ a.timestamp }}</td>
           <td class="py-3 px-4 font-medium text-slate-200">{{ a.actor }}</td>
-          <td class="py-3 px-4 font-mono text-indigo-300">{{ a.action }}</td>
+          <td class="py-3 px-4 font-mono">
+            {% if 'write' in a.action or 'create' in a.action %}
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-950 text-amber-300 border border-amber-800">{{ a.action }}</span>
+            {% elif 'patch' in a.action %}
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800">{{ a.action }}</span>
+            {% elif 'read' in a.action or 'stat' in a.action or 'list' in a.action %}
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800">{{ a.action }}</span>
+            {% else %}
+              <span class="text-indigo-300">{{ a.action }}</span>
+            {% endif %}
+          </td>
           <td class="py-3 px-4 text-slate-400">
             {% if a.target_id %}{{ a.target_id }}{% if a.project_id %} / {{ a.project_id }}{% endif %}{% else %}&mdash;{% endif %}
           </td>
           <td class="py-3 px-4">
             {% if a.success %}
-              <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">PASS</span>
+              {% if 'write' in a.action or 'create' in a.action %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-950 text-amber-300 border border-amber-800">WRITE</span>
+              {% elif 'patch' in a.action %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800">PATCH</span>
+              {% elif 'read' in a.action or 'stat' in a.action or 'list' in a.action %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">READ</span>
+              {% else %}
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">PASS</span>
+              {% endif %}
             {% else %}
               <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-800">DENY</span>
               {% if a.error_code %}

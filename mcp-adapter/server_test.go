@@ -58,6 +58,7 @@ func TestServerToolDiscovery(t *testing.T) {
 		"read_file":      false,
 		"git_status":     false,
 		"run_task":       false,
+		"write_file":     false,
 	}
 
 	if len(toolsList.Tools) != len(expectedTools) {

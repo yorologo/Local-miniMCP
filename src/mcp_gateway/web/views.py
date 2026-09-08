@@ -140,6 +140,9 @@ def dashboard():
     gw_enabled_str = str(registry.get_setting("gateway_enabled", "true")).lower()
     gateway_enabled = gw_enabled_str in ("true", "1", "yes", "on")
 
+    writes_enabled_str = str(registry.get_setting("writes_enabled", "false")).lower()
+    writes_enabled = writes_enabled_str in ("true", "1", "yes", "on")
+
     targets = registry.list_targets()
     total_targets = len(targets)
     online_targets = sum(1 for t in targets if t.get("enabled", True))
@@ -175,6 +178,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         gateway_enabled=gateway_enabled,
+        writes_enabled=writes_enabled,
         gateway_version=__version__,
         total_targets=total_targets,
         online_targets=online_targets,
@@ -334,7 +338,7 @@ def project_add():
         "display_name": request.form.get("display_name", "").strip(),
         "root": request.form.get("root", "").strip(),
         "read": request.form.get("read") == "on",
-        "write": False,  # Deny-by-default write permission
+        "write": request.form.get("write") == "on",
         "enabled": request.form.get("enabled") == "on",
         "tasks": {},
     }
@@ -377,7 +381,7 @@ def project_edit(target_id: str, project_id: str):
         "display_name": request.form.get("display_name", "").strip(),
         "root": request.form.get("root", "").strip(),
         "read": request.form.get("read") == "on",
-        "write": False,  # Keep write disabled
+        "write": request.form.get("write") == "on",
         "enabled": request.form.get("enabled") == "on",
     }
     try:
@@ -407,6 +411,25 @@ def project_toggle(target_id: str, project_id: str):
         status_txt = "enabled" if new_state else "disabled"
         flash(f"Project '{project_id}' is now {status_txt}.", "info")
     return redirect(url_for("admin.projects_list"))
+
+
+@bp.route("/projects/<target_id>/<project_id>/toggle-write", methods=["POST"])
+@login_required
+def project_toggle_write(target_id: str, project_id: str):
+    registry = get_registry()
+    with registry._get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT write_enabled FROM projects WHERE target_id = ? AND id = ?", (target_id, project_id))
+        row = cursor.fetchone()
+        if not row:
+            abort(404, description="Project not found")
+        new_state = not bool(row["write_enabled"])
+        registry.update_project(target_id, project_id, {"write": new_state})
+        record_audit("toggle_project_write", target_id=target_id, project_id=project_id, success=True, detail=f"Set project '{project_id}' write={new_state}")
+        status_txt = "ENABLED" if new_state else "DISABLED"
+        flash(f"Project '{project_id}' write capability is now {status_txt}.", "warning" if new_state else "info")
+    return redirect(url_for("admin.projects_list"))
+
 
 
 # ==========================================
@@ -611,9 +634,12 @@ def settings_view():
     if request.method == "GET":
         settings = {
             "gateway_enabled": str(registry.get_setting("gateway_enabled", "true")).lower() in ("true", "1", "yes", "on"),
+            "writes_enabled": str(registry.get_setting("writes_enabled", "false")).lower() in ("true", "1", "yes", "on"),
             "default_timeout": int(registry.get_setting("default_timeout", 30)),
             "max_output_bytes": int(registry.get_setting("max_output_bytes", 262144)),
             "max_file_read_bytes": int(registry.get_setting("max_file_read_bytes", 1048576)),
+            "max_write_bytes": int(registry.get_setting("max_write_bytes", 262144)),
+            "max_diff_bytes": int(registry.get_setting("max_diff_bytes", 65536)),
             "activity_retention": int(registry.get_setting("activity_retention", 5000)),
         }
         return render_template("settings.html", settings=settings)
@@ -623,6 +649,7 @@ def settings_view():
         timeout = int(request.form.get("default_timeout", 30))
         max_output = int(request.form.get("max_output_bytes", 262144))
         max_read = int(request.form.get("max_file_read_bytes", 1048576))
+        max_write = int(request.form.get("max_write_bytes", 262144))
         retention = int(request.form.get("activity_retention", 5000))
 
         if not (5 <= timeout <= 300):
@@ -634,6 +661,9 @@ def settings_view():
         if not (1024 <= max_read <= 10485760):
             flash("Max file read bytes must be between 1KB and 10MB.", "danger")
             return redirect(url_for("admin.settings_view"))
+        if not (1024 <= max_write <= 10485760):
+            flash("Max write bytes must be between 1KB and 10MB.", "danger")
+            return redirect(url_for("admin.settings_view"))
         if not (100 <= retention <= 50000):
             flash("Activity retention must be between 100 and 50000 rows.", "danger")
             return redirect(url_for("admin.settings_view"))
@@ -641,6 +671,7 @@ def settings_view():
         registry.set_setting("default_timeout", timeout)
         registry.set_setting("max_output_bytes", max_output)
         registry.set_setting("max_file_read_bytes", max_read)
+        registry.set_setting("max_write_bytes", max_write)
         registry.set_setting("activity_retention", retention)
 
         record_audit("update_settings", success=True, detail="Updated configuration settings")
@@ -667,3 +698,37 @@ def toggle_kill_switch():
     cat = "success" if new_state else "danger"
     flash(msg, cat)
     return redirect(url_for("admin.settings_view"))
+
+
+@bp.route("/settings/toggle-writes", methods=["POST"])
+@login_required
+def toggle_writes_switch():
+    registry = get_registry()
+    curr = str(registry.get_setting("writes_enabled", "false")).lower() in ("true", "1", "yes", "on")
+    new_state = not curr
+    registry.set_setting("writes_enabled", "true" if new_state else "false")
+    record_audit(
+        "toggle_writes_switch",
+        success=True,
+        detail=f"Admin toggled writes_enabled to {new_state}"
+    )
+    msg = "Controlled writes ENABLED. AI clients may modify authorized projects." if new_state else "Controlled writes DISABLED globally."
+    cat = "warning" if new_state else "info"
+    flash(msg, cat)
+    return redirect(url_for("admin.settings_view"))
+
+
+@bp.route("/settings/disable-writes", methods=["POST"])
+@login_required
+def disable_writes():
+    """Emergency Panic Switch for writes: immediately disables all write mutations without affecting read tools."""
+    registry = get_registry()
+    registry.set_setting("writes_enabled", "false")
+    record_audit(
+        "disable_writes_panic",
+        success=True,
+        detail="Admin activated emergency disable for controlled writes"
+    )
+    flash("PANIC: Controlled writes have been immediately DISABLED. All read operations remain fully functional.", "warning")
+    return redirect(url_for("admin.settings_view"))
+

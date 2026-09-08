@@ -10,6 +10,7 @@ WorkingDirectory=/home/mcp-gateway/mcp-gateway
 ExecStart=/home/mcp-gateway/mcp-gateway/bin/mcp-gateway-adapter -transport http -bind 127.0.0.1:8090 -python /usr/bin/python3 -pythonpath /home/mcp-gateway/mcp-gateway/src
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10
 NoNewPrivileges=true
 PrivateTmp=true
 

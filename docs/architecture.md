@@ -2,7 +2,7 @@
 
 ## 1. Visión Conceptual
 
-El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry Pi Model A+ que actúe como perímetro de seguridad, intermediario y orquestador entre ChatGPT y la estación de trabajo principal (PC).
+El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry Pi Model A+ que actúe como perímetro de seguridad, intermediario y orquestador entre ChatGPT y el entorno de trabajo remoto (Target Worker).
 
 ```text
 +-------------------+
@@ -19,7 +19,7 @@ El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry 
           | SSH / SFTP (Controlado y restringido vía clave exclusiva Ed25519)
           v
 +-------------------+
-|   PC Principal    |  --> [Nodo de cómputo y almacenamiento pesado]
+|   Target Worker   |  --> [Nodo de cómputo y almacenamiento pesado]
 |                   |      Almacena, busca, compila, ejecuta, procesa
 +-------------------+
 ```
@@ -35,7 +35,7 @@ El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry 
 - **Deny-by-default**: Todas las operaciones no explícitamente permitidas están denegadas.
 - **Zero-External-Dependencies**: El núcleo opera al 100% sobre la librería estándar de Python 3, evitando sobrecarga en ARMv6 y protegiendo el sistema operativo Raspbian 11 de dependencias pesadas.
 
-### PC Principal (Worker / Storage)
+### Target Worker (Worker / Storage)
 - **Cómputo pesado**: Ejecución de compilaciones, indexación de archivos grandes, ejecución de pruebas pesadas o contenedores.
 - **Almacenamiento**: Persistencia principal de repositorios y proyectos.
 - **Acceso controlado**: Recibe únicamente comandos u operaciones canalizadas a través del canal SSH auditado desde el Gateway.
@@ -115,7 +115,7 @@ El Gateway Core reside en `/home/mcp-gateway/mcp-gateway` en la Raspberry Pi y e
 ## 5. Implementación del Canal Seguro Pi → Target
 
 ```text
-[ MCP-Pi Gateway ]                               [ PC Principal / Worker ]
+[ MCP-Pi Gateway ]                               [ Target Worker ]
 (192.168.68.85)                                  (192.168.68.84)
 Usuario: mcp-gateway (UID 1001, sin sudo)        Usuario: u0_a435 (App Android / Termux, sin root)
 Clave: ~/.ssh/mcp_gateway_ed25519                Puerto: 8022
@@ -288,5 +288,90 @@ python3 -m mcp_gateway.bridge invoke <tool_name> '<json_arguments>'
 - **Usuario de ejecución**: `User=mcp-gateway`, `Group=mcp-gateway` (sin privilegios de root ni sudo).
 - **Consumo de memoria**: ~10 MiB RSS en la Raspberry Pi Model A+.
 - **Monitoreo en Consola Admin**: La consola web de administración (`127.0.0.1:8080`) verifica en tiempo real la conectividad contra el socket del adaptador en `127.0.0.1:8090` y muestra el estado en el Dashboard.
+
+---
+
+## 8. Modelo de Escritura Controlada (Fase 5)
+
+La Fase 5 introduce la capacidad de mutación controlada en targets remotos mediante la herramienta `write_file`, manteniendo inquebrantable el principio deny-by-default y protegiendo el sistema contra desbordamientos, colisiones concurrentes (TOCTOU) y escrituras destructivas.
+
+```text
+┌────────────────────────────────────────────────────────┐
+│                   Cliente MCP (LLM)                    │
+└───────────────────────────┬────────────────────────────┘
+                            │ write_file(target_id, project_id, path,
+                            │            content, expected_sha256, create, dry_run)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│ MCP-Pi (127.0.0.1:8090)                                │
+│                                                        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   Adaptador MCP en Go (mcp-gateway-adapter)      │  │
+│  │   - Valida esquema de parámetros de write_file   │  │
+│  │   - Pasa stdin/stdout al puente Python           │  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │ CLI Bridge: python3 -m mcp_gateway.bridge
+│                             ▼
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   Gateway Core & Policy Engine (Python)          │  │
+│  │                                                  │  │
+│  │   1. Kill Switch Check (gateway_enabled == true) │  │
+│  │   2. Dual-Key Check (writes_enabled && project)  │  │
+│  │   3. Path Confinement (relativo, sin traversal)  │  │
+│  │   4. Content Encoding (UTF-8 estricto, sin NUL)  │  │
+│  │   5. Probe Remoto (SSH: realpath, existe, tipo)  │  │
+│  │   6. Symlink Check (bloquea enlaces simbólicos)  │  │
+│  │   7. Hash Lock Check (expected_sha256 / create)  │  │
+│  │   8. Dry-Run Check (retorna diff si dry_run=true)│  │
+│  │   9. Local Rolling Backup (Gateway ~/.local/...) │  │
+│  │  10. Atomic Write (temp file -> fsync -> os.rep) │  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │ Safe stdin piping (shlex.quote)
+│                             ▼
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   SSHTransport (OpenSSH subprocess)              │  │
+│  └──────────────────────────┬───────────────────────┘  │
+└─────────────────────────────┼──────────────────────────┘
+                              │ SSH Ed25519 (mcp-gateway)
+                              ▼
+                       [ Target Worker ]
+                       - Escritura en `.tmp_write_*`
+                       - `os.replace` atómico en directorio padre
+```
+
+### 8.1 Garantías de Seguridad y Control
+
+1. **Autorización con Doble Llave (Dual-Key Authorization)**:
+   - **Llave Global**: `writes_enabled = true` en la tabla `settings` del Gateway (`SQLiteRegistry`). Por defecto está desactivada (`false`).
+   - **Llave por Proyecto**: `project.write = true` en la configuración del proyecto específico. Si un proyecto solo tiene `read = true`, cualquier intento de escritura es denegado con `WRITE_NOT_ALLOWED`.
+
+2. **Bloqueo Precondicional de Hash (Optimistic Concurrency / TOCTOU Protection)**:
+   - Toda sobreescritura de un archivo existente **requiere** el parámetro `expected_sha256`. Si el contenido remoto ha cambiado o no coincide, la operación se aborta de inmediato con código `WRITE_CONFLICT`.
+   - Para creación de archivos nuevos (`create = true`), el motor falla explícitamente con `FILE_ALREADY_EXISTS` si el destino ya existe.
+
+3. **Confinamiento de Rutas y Rechazo de Enlaces Simbólicos**:
+   - Se rechazan rutas que apunten a un enlace simbólico (`SYMLINK_WRITE_DENIED`), ya sea el archivo destino o cualquier directorio ancestro dentro del proyecto.
+   - La ruta canónica debe residir estrictamente dentro de la raíz permitida del proyecto.
+
+4. **Atomicidad de Escritura y Consistencia en Disco**:
+   - El contenido se escribe en un archivo temporal con prefijo `.tmp_write_` en el mismo directorio padre.
+   - Se asegura la sincronización a disco (`fsync`), se preservan los permisos POSIX del archivo original y se ejecuta una sustitución atómica mediante `os.replace`.
+   - Se realiza `fsync` sobre el directorio contenedor para persistir la entrada de directorio.
+
+5. **Backups Locales Rotativos en el Gateway**:
+   - Antes de modificar cualquier archivo remoto existente, el Gateway almacena una copia íntegra en `~/.local/share/mcp-gateway/backups/<target>/<project>/<timestamp>_<path>`.
+   - Se conservan hasta 5 versiones históricas por archivo. Al estar en la Raspberry Pi, el historial de backups no puede ser alterado o borrado desde el Target Worker.
+
+6. **Modo Dry-Run**:
+   - Si `dry_run = true`, el Gateway realiza todas las validaciones (autorización, hash precondicional, límites) y genera un `unified diff` entre el contenido existente y el nuevo, devolviéndolo sin aplicar ninguna modificación en el target.
+
+7. **Botón de Pánico (Writes Panic Button)**:
+   - La consola web de administración incluye un control de emergencia en `/settings/disable-writes` que apaga instantáneamente todas las mutaciones en el sistema sin interrumpir las consultas ni las lecturas de herramientas de diagnóstico.
+
+### 8.2 Decisión Arquitectónica sobre `apply_patch`
+
+El diseño original contemplaba una herramienta `apply_patch` para aplicar diffs unificados. Tras evaluación técnica, se determinó:
+- **`APPLY_PATCH: DEFERRED_FOR_SAFE_IMPLEMENTATION`**: Aplicar parches multi-hunk de manera remota introduce vulnerabilidades de parsing difuso (fuzzy matching), ambigüedad de codificación de finales de línea (CRLF vs LF) y riesgo de estado inconsistente entre plataformas.
+- La combinación de `read_file` (que expone el `sha256` actual) junto con `write_file(expected_sha256=...)` proporciona a los modelos LLM un flujo de edición determinista, atómico y libre de condiciones de carrera sin añadir complejidad frágil al gateway.
 
 

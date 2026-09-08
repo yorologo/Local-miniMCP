@@ -64,6 +64,11 @@ class TestBridge(unittest.TestCase):
         self.assertFalse(output["ok"])
         self.assertEqual(output["error"]["code"], "INVALID_ARGUMENTS")
 
+    def test_write_file_argument_validation(self):
+        res = invoke_tool("write_file", {"target": "t1"}, registry=self.mock_registry)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"]["code"], "INVALID_ARGUMENTS")
+
 
 if __name__ == "__main__":
     unittest.main()

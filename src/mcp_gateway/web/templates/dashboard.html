@@ -20,6 +20,16 @@
           Kill Switch Active (Disabled)
         </span>
       {% endif %}
+      {% if writes_enabled %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-950 border border-amber-800 text-amber-300">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          Writes Enabled
+        </span>
+      {% else %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400">
+          Writes Disabled
+        </span>
+      {% endif %}
     </div>
   </div>
 
@@ -112,8 +122,16 @@
           <span class="font-mono text-emerald-400">Preserved (Untouched)</span>
         </div>
         <div class="flex justify-between py-2 border-b border-slate-900">
-          <span class="text-slate-400">Write Policy</span>
-          <span class="font-mono text-amber-400">read-only (Phase 4B/4C)</span>
+          <span class="text-slate-400">Controlled Writes</span>
+          {% if writes_enabled %}
+            <span class="font-mono text-amber-400 font-semibold flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> ENABLED
+            </span>
+          {% else %}
+            <span class="font-mono text-slate-400 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> DISABLED
+            </span>
+          {% endif %}
         </div>
         <div class="pt-2 border-t border-slate-800/80">
           <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">MCP Protocol Adapter</div>

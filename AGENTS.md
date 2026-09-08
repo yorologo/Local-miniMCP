@@ -23,7 +23,7 @@ Construir un **Gateway MCP personal** utilizando una **Raspberry Pi Model A+**.
           | SSH / SFTP auditado
           v
 +-------------------+
-|   PC Principal    |  --> Cómputo y almacenamiento pesado
+|   Target Worker   |  --> Cómputo y almacenamiento pesado
 +-------------------+
 ```
 
@@ -35,7 +35,7 @@ Construir un **Gateway MCP personal** utilizando una **Raspberry Pi Model A+**.
   - `orquesta`
   - `audita`
   - **RESTRICCIÓN CLAVE**: La Raspberry Pi **NO** ejecutará modelos LLM ni cargas pesadas (CPU ARMv6 single-core, ~176 MB RAM utilizables).
-- **PC Principal**:
+- **Target Worker**:
   - `almacena`
   - `busca`
   - `compila`
@@ -143,10 +143,21 @@ ssh Yorologo@192.168.68.85
   - Transportes soportados: stdio y Streamable HTTP (`127.0.0.1:8090/mcp` con chunked SSE).
   - Puente CLI `mcp_gateway.bridge` que preserva el 100% de la autoridad de seguridad, SQLiteRegistry y Policy Engine en Python.
   - Servicio systemd `mcp-gateway-mcp.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (RSS ~10 MB).
-  - Pruebas superadas: 77 unit tests, 8/8 herramientas MCP operativas en vivo, 6/6 vectores negativos bloqueados y Kill Switch funcional.
+  - Pruebas superadas: 77 unit tests, 8/8 herramientas MCP operativas en vivo, 8 negative/control cases DENIED y Kill Switch funcional.
   - Documentación en [docs/mcp-adapter.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/mcp-adapter.md) y runbook en [docs/runbooks/mcp-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/mcp-smoke-test.md).
-- **Fase 5 (Operaciones de Escritura Controlada)**: **SIGUIENTE**.
-- **Fase 6 (Clientes AI Externos & ChatGPT)**: *Planificada*.
+- **Fase 5 (Operaciones de Escritura Controlada)**: **TERMINADA**.
+  - Capacidad de mutación controlada `write_file` operativa y verificada.
+  - Toda autoridad de seguridad permanece en Python Gateway Core (Go adapter actúa estrictamente como puente de protocolo).
+  - 9 herramientas MCP expuestas vía stdio y Streamable HTTP (`127.0.0.1:8090/mcp`).
+  - Reemplazo atómico remoto con preservación de modo, fsync y verificación estricta de hash (`expected_sha256`) contra condiciones de carrera / TOCTOU.
+  - Modo simulación sin mutación (`dry_run=true`) con generación de diffs unificados en memoria.
+  - Política de doble autorización deny-by-default: `writes_enabled == true` (global) AND `project.write == true` (proyecto).
+  - Controles en Admin Console: Botón de pánico `/settings/disable-writes` (bloquea escrituras de inmediato preservando lecturas al 100%) y switches individuales por proyecto.
+  - Respaldos automáticos en Gateway (`~/.local/share/mcp-gateway/backups/...`, retención rodante de hasta 5 versiones).
+  - `APPLY_PATCH: DEFERRED_FOR_SAFE_IMPLEMENTATION` (KISS y seguridad determinista).
+  - Batería de pruebas: 88/88 unit tests remotos en MCP-Pi, 19/19 pruebas E2E en vivo (dry run, hash lock, creación, symlink blocks, traversal blocks, size limits, NUL bytes, pánico, MCP HTTP protocol y recuperación).
+  - Documentación en [docs/controlled-write.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/controlled-write.md) y runbooks en [docs/runbooks/controlled-write-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/controlled-write-smoke-test.md) y [docs/runbooks/write-recovery.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/write-recovery.md).
+- **Fase 6 (Clientes AI Externos & ChatGPT)**: **SIGUIENTE**.
 - **Fase 7 (Operación Estable & Resiliencia)**: *Futura*.
 
 ---

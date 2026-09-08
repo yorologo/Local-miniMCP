@@ -95,9 +95,42 @@ def check_capability(project: Dict[str, Any], capability: str) -> None:
             raise PolicyError("Read capability is disabled for this project", code="TOOL_NOT_ALLOWED")
     elif capability == "write":
         if not project.get("write", False):
-            raise PolicyError("Write capability is disabled for this project", code="TOOL_NOT_ALLOWED")
+            raise PolicyError("Write capability is disabled for this project", code="WRITE_NOT_ALLOWED")
     else:
         raise PolicyError(f"Unknown capability: {capability}", code="TOOL_NOT_ALLOWED")
+
+
+def validate_write_relative_path(relative_path: str) -> str:
+    """Validate relative path for write operation.
+
+    Must be a valid relative path, not empty, not '.', and not ending with '/'.
+    """
+    norm = validate_relative_path(relative_path)
+    if norm == "." or norm == "":
+        raise PolicyError("Target path cannot be the root directory", code="INVALID_PATH")
+    return norm
+
+
+def validate_content_utf8(content: str) -> bytes:
+    """Ensure content is valid UTF-8 string without NUL bytes."""
+    if not isinstance(content, str):
+        raise PolicyError("Content must be a string", code="INVALID_ENCODING")
+    if "\0" in content:
+        raise PolicyError("Content contains NUL byte", code="INVALID_ENCODING")
+    try:
+        content_bytes = content.encode("utf-8")
+    except UnicodeEncodeError as e:
+        raise PolicyError(f"Content is not valid UTF-8: {e}", code="INVALID_ENCODING")
+    return content_bytes
+
+
+def validate_write_size(content_bytes: bytes, max_bytes: int) -> None:
+    """Ensure content size does not exceed allowed max_write_bytes."""
+    if len(content_bytes) > max_bytes:
+        raise PolicyError(
+            f"Content size ({len(content_bytes)} bytes) exceeds allowed limit of {max_bytes} bytes",
+            code="FILE_TOO_LARGE",
+        )
 
 
 def validate_task(project: Dict[str, Any], task_name: str) -> Dict[str, Any]:
@@ -117,3 +150,4 @@ def validate_task(project: Dict[str, Any], task_name: str) -> Dict[str, Any]:
         "argv": list(task_def.get("argv", [])),
         "timeout": int(task_def.get("timeout", 30)),
     }
+
