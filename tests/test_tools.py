@@ -23,7 +23,7 @@ class DummyTransport:
         self.canonical_responses = {}
         self.file_responses = {}
 
-    def run_command(self, target, remote_cmd, timeout=None, cwd=None):
+    def run_command(self, target, remote_cmd, timeout=None, cwd=None, **kwargs):
         if "hostname" in remote_cmd:
             return SSHTransportResult(0, "mock-host\n", "", 15)
         if "git status" in remote_cmd:

@@ -15,6 +15,7 @@ from . import __version__
 from .config import ConfigError, GatewayConfig
 from .policy import (
     PolicyError,
+    can_client_use_tool,
     check_capability,
     validate_canonical_path,
     validate_content_utf8,
@@ -34,9 +35,13 @@ class GatewayTools:
         config: Optional[GatewayConfig] = None,
         transport: Optional[SSHTransport] = None,
         registry: Optional[Any] = None,
+        request_id: Optional[str] = None,
+        client_id: Optional[str] = None,
     ):
         self.config = registry or config or GatewayConfig.load()
         self.transport = transport or SSHTransport()
+        self.request_id = request_id
+        self.client_id = client_id
 
     def _success_response(
         self,
@@ -53,6 +58,8 @@ class GatewayTools:
             "duration_ms": duration_ms,
             "result": result,
         }
+        if self.request_id:
+            resp["request_id"] = self.request_id
         if target:
             resp["target"] = target
         if project:
@@ -78,6 +85,8 @@ class GatewayTools:
                 "message": message,
             },
         }
+        if self.request_id:
+            resp["request_id"] = self.request_id
         if target:
             resp["target"] = target
         if project:
@@ -124,10 +133,17 @@ class GatewayTools:
     ) -> None:
         if hasattr(self.config, "record_activity"):
             duration_ms = int((time.monotonic() - (start_time or time.monotonic())) * 1000)
-            detail_str = json.dumps(detail) if isinstance(detail, (dict, list)) else (str(detail) if detail else "")
+            detail_dict = {}
+            if isinstance(detail, dict):
+                detail_dict = dict(detail)
+            elif detail:
+                detail_dict["detail"] = str(detail)
+            if self.request_id:
+                detail_dict["request_id"] = self.request_id
+            detail_str = json.dumps(detail_dict) if detail_dict else ""
             try:
                 self.config.record_activity({
-                    "actor": "mcp-local",
+                    "actor": self.client_id or "mcp-local",
                     "action": action,
                     "target_id": target_id,
                     "project_id": project_id,
@@ -152,6 +168,16 @@ class GatewayTools:
                 project=project,
                 start_time=start_time,
             )
+        can_use, deny_reason = can_client_use_tool(self.client_id, tool, self.config)
+        if not can_use:
+            return self._error_response(
+                tool=tool,
+                code="CLIENT_UNAUTHORIZED",
+                message=deny_reason or "Client is not authorized to use this tool",
+                target=target,
+                project=project,
+                start_time=start_time,
+            )
         return None
 
     def health(self) -> Dict[str, Any]:
@@ -166,6 +192,7 @@ class GatewayTools:
                 "writes_enabled": writes_enabled,
                 "hostname": socket.gethostname(),
                 "gateway_version": __version__,
+                "architecture": platform.machine(),
                 "python_version": platform.python_version(),
                 "config_loaded": bool(self.config),
                 "configured_targets": self.config.target_count,
@@ -191,7 +218,7 @@ class GatewayTools:
             return gw_check
         try:
             target_cfg = self.config.get_target(target)
-            res = self.transport.run_command(target_cfg, "hostname", timeout=10)
+            res = self.transport.run_command(target_cfg, "hostname", timeout=10, request_id=self.request_id)
             if not res.ok:
                 return self._error_response(
                     "target_status",
@@ -264,7 +291,7 @@ class GatewayTools:
             )
 
             cmd = f"python3 -c {shlex.quote(py_code)} {shlex.quote(canonical)}"
-            res = self.transport.run_command(target_cfg, cmd, timeout=15)
+            res = self.transport.run_command(target_cfg, cmd, timeout=15, request_id=self.request_id)
 
             if res.exit_code == 2:
                 return self._error_response("list_directory", "NOT_FOUND", f"Directory not found: {relative_path}", target, project, start_time)
@@ -313,7 +340,7 @@ class GatewayTools:
             )
 
             cmd = f"python3 -c {shlex.quote(py_code)} {shlex.quote(canonical)}"
-            res = self.transport.run_command(target_cfg, cmd, timeout=10)
+            res = self.transport.run_command(target_cfg, cmd, timeout=10, request_id=self.request_id)
 
             if res.exit_code == 2:
                 return self._error_response("file_stat", "NOT_FOUND", f"File not found: {relative_path}", target, project, start_time)
@@ -376,7 +403,7 @@ class GatewayTools:
             canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(canonical, root)
 
-            res = self.transport.run_command(target_cfg, "git status --short", cwd=canonical, timeout=20)
+            res = self.transport.run_command(target_cfg, "git status --short", cwd=canonical, timeout=20, request_id=self.request_id)
             if not res.ok:
                 return self._error_response(
                     "git_status",
@@ -415,7 +442,7 @@ class GatewayTools:
             argv = task_def["argv"]
             quoted_cmd = " ".join(shlex.quote(arg) for arg in argv)
             res = self.transport.run_command(
-                target_cfg, quoted_cmd, cwd=canonical, timeout=task_def["timeout"]
+                target_cfg, quoted_cmd, cwd=canonical, timeout=task_def["timeout"], request_id=self.request_id
             )
 
             result = {

@@ -3,17 +3,74 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// ExpectedBridgeAPIVersion specifies the required bridge API contract.
+const ExpectedBridgeAPIVersion = 1
+
+// BridgeVersionInfo models the version payload from 'mcp_gateway.bridge version'.
+type BridgeVersionInfo struct {
+	OK                    bool   `json:"ok"`
+	GatewayVersion        string `json:"gateway_version"`
+	CoreAPIVersion        int    `json:"core_api_version"`
+	BridgeAPIVersion      int    `json:"bridge_api_version"`
+	ToolCatalogVersion    int    `json:"tool_catalog_version"`
+	RegistrySchemaVersion int    `json:"registry_schema_version"`
+	MCPProtocol           string `json:"mcp_protocol"`
+	Error                 string `json:"error,omitempty"`
+}
+
+// AdapterState maintains lifecycle readiness and contract version status.
+type AdapterState struct {
+	mu          sync.RWMutex
+	ready       bool
+	notReadyMsg string
+	versionInfo *BridgeVersionInfo
+	startTime   time.Time
+}
+
+// NewAdapterState initializes an AdapterState instance.
+func NewAdapterState() *AdapterState {
+	return &AdapterState{
+		ready:       false,
+		notReadyMsg: "ADAPTER_NOT_READY: Initializing",
+		startTime:   time.Now(),
+	}
+}
+
+func (s *AdapterState) IsReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ready
+}
+
+func (s *AdapterState) GetStatus() (bool, string, *BridgeVersionInfo) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ready, s.notReadyMsg, s.versionInfo
+}
+
+func (s *AdapterState) SetReady(ready bool, msg string, info *BridgeVersionInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ready = ready
+	s.notReadyMsg = msg
+	s.versionInfo = info
+}
 
 // BridgeConfig holds configuration for invoking the Python Core Bridge.
 type BridgeConfig struct {
@@ -42,18 +99,7 @@ func DefaultBridgeConfig() *BridgeConfig {
 	}
 }
 
-// CallBridge invokes python3 -m mcp_gateway.bridge invoke <tool> <argsJSON>.
-func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON []byte) ([]byte, bool, error) {
-	if len(argsJSON) == 0 {
-		argsJSON = []byte("{}")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, b.PythonBin, "-m", "mcp_gateway.bridge", "invoke", toolName, string(argsJSON))
-	
-	// Inherit environment and prepend PYTHONPATH
+func (b *BridgeConfig) buildEnv() []string {
 	env := os.Environ()
 	if b.PythonPath != "" {
 		absPath, err := filepath.Abs(b.PythonPath)
@@ -66,7 +112,57 @@ func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON
 	if b.DBPath != "" {
 		env = append(env, fmt.Sprintf("MCP_GATEWAY_DB=%s", b.DBPath))
 	}
-	cmd.Env = env
+	return env
+}
+
+// CheckBridgeCompatibility queries the Python bridge for its version contract.
+func (b *BridgeConfig) CheckBridgeCompatibility(ctx context.Context) (*BridgeVersionInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, b.PythonBin, "-m", "mcp_gateway.bridge", "version")
+	cmd.Env = b.buildEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("bridge version check failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	var info BridgeVersionInfo
+	if err := json.Unmarshal(stdout.Bytes(), &info); err != nil {
+		return nil, fmt.Errorf("invalid json from bridge version: %w", err)
+	}
+
+	if !info.OK {
+		return &info, fmt.Errorf("bridge error: %s", info.Error)
+	}
+
+	if info.BridgeAPIVersion != ExpectedBridgeAPIVersion {
+		return &info, fmt.Errorf("bridge_api_version mismatch (expected %d, got %d)", ExpectedBridgeAPIVersion, info.BridgeAPIVersion)
+	}
+
+	return &info, nil
+}
+
+// CallBridge invokes python3 -m mcp_gateway.bridge invoke <tool> <argsJSON> [--request-id <reqID>].
+func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON []byte, requestID string) ([]byte, bool, error) {
+	if len(argsJSON) == 0 {
+		argsJSON = []byte("{}")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
+	defer cancel()
+
+	args := []string{"-m", "mcp_gateway.bridge", "invoke", toolName, string(argsJSON)}
+	if requestID != "" {
+		args = append(args, "--request-id", requestID)
+	}
+
+	cmd := exec.CommandContext(ctx, b.PythonBin, args...)
+	cmd.Env = b.buildEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -102,18 +198,79 @@ func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON
 	return outBytes, false, nil
 }
 
-// NewGatewayServer creates an official MCP server registering the 8 Core tools.
-func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
+func generateRequestID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("req-%x", b)
+}
+
+// SecurityMiddleware enforces Host and Origin protection, plus body size limits.
+func SecurityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Limit request body size to 1 MiB
+		r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+		// 2. Validate Host header (must be 127.0.0.1 or localhost)
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && host != "localhost" {
+			http.Error(w, "Forbidden: Invalid Host header (loopback only)", http.StatusForbidden)
+			return
+		}
+
+		// 3. Validate Origin header (if present, must originate from localhost/127.0.0.1)
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			u, err := url.Parse(origin)
+			if err != nil {
+				http.Error(w, "Forbidden: Malformed Origin header", http.StatusForbidden)
+				return
+			}
+			origHost := u.Hostname()
+			if origHost != "127.0.0.1" && origHost != "localhost" {
+				http.Error(w, "Forbidden: Cross-origin access denied", http.StatusForbidden)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// NewGatewayServer creates an official MCP server registering tools in deterministic order.
+func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-gateway-adapter",
 		Title:   "MCP Raspberry Pi Gateway Official Adapter",
-		Version: "0.2.0",
+		Version: "0.6.0",
 	}, nil)
 
 	handlerFor := func(toolName string) mcp.ToolHandler {
 		return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if state != nil && !state.IsReady() {
+				_, notReadyMsg, _ := state.GetStatus()
+				errJSON, _ := json.Marshal(map[string]any{
+					"ok":   false,
+					"tool": toolName,
+					"error": map[string]any{
+						"code":    "ADAPTER_NOT_READY",
+						"message": notReadyMsg,
+					},
+				})
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: string(errJSON)},
+					},
+				}, nil
+			}
+
 			rawArgs := req.Params.Arguments
-			outBytes, isErr, err := bridge.CallBridge(ctx, toolName, rawArgs)
+			reqID := generateRequestID()
+
+			outBytes, isErr, err := bridge.CallBridge(ctx, toolName, rawArgs, reqID)
 			if err != nil {
 				return nil, err
 			}
@@ -131,7 +288,52 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 		}
 	}
 
-	// 1. health
+	// Tools registered in strict alphabetical order for catalog determinism:
+	// 1. file_stat
+	server.AddTool(&mcp.Tool{
+		Name:        "file_stat",
+		Description: "Get metadata of a file or directory within a project",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"target": map[string]any{
+					"type":        "string",
+					"description": "Target ID",
+				},
+				"project": map[string]any{
+					"type":        "string",
+					"description": "Project ID",
+				},
+				"relative_path": map[string]any{
+					"type":        "string",
+					"description": "Relative path to file or directory",
+				},
+			},
+			"required": []string{"target", "project", "relative_path"},
+		},
+	}, handlerFor("file_stat"))
+
+	// 2. git_status
+	server.AddTool(&mcp.Tool{
+		Name:        "git_status",
+		Description: "Run 'git status --short' on authorized project repository",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"target": map[string]any{
+					"type":        "string",
+					"description": "Target ID",
+				},
+				"project": map[string]any{
+					"type":        "string",
+					"description": "Project ID",
+				},
+			},
+			"required": []string{"target", "project"},
+		},
+	}, handlerFor("git_status"))
+
+	// 3. health
 	server.AddTool(&mcp.Tool{
 		Name:        "health",
 		Description: "Check gateway health, uptime, version, and target count",
@@ -139,31 +341,6 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 			"type": "object",
 		},
 	}, handlerFor("health"))
-
-	// 2. list_targets
-	server.AddTool(&mcp.Tool{
-		Name:        "list_targets",
-		Description: "Return safe list of configured targets without secrets",
-		InputSchema: map[string]any{
-			"type": "object",
-		},
-	}, handlerFor("list_targets"))
-
-	// 3. target_status
-	server.AddTool(&mcp.Tool{
-		Name:        "target_status",
-		Description: "Verify reachability and latency of a target machine",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Configured Target ID (e.g. termux-main)",
-				},
-			},
-			"required": []string{"target"},
-		},
-	}, handlerFor("target_status"))
 
 	// 4. list_directory
 	server.AddTool(&mcp.Tool{
@@ -189,29 +366,14 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 		},
 	}, handlerFor("list_directory"))
 
-	// 5. file_stat
+	// 5. list_targets
 	server.AddTool(&mcp.Tool{
-		Name:        "file_stat",
-		Description: "Get metadata of a file or directory within a project",
+		Name:        "list_targets",
+		Description: "Return safe list of configured targets without secrets",
 		InputSchema: map[string]any{
 			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"relative_path": map[string]any{
-					"type":        "string",
-					"description": "Relative path to file or directory",
-				},
-			},
-			"required": []string{"target", "project", "relative_path"},
 		},
-	}, handlerFor("file_stat"))
+	}, handlerFor("list_targets"))
 
 	// 6. read_file
 	server.AddTool(&mcp.Tool{
@@ -237,27 +399,7 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 		},
 	}, handlerFor("read_file"))
 
-	// 7. git_status
-	server.AddTool(&mcp.Tool{
-		Name:        "git_status",
-		Description: "Run 'git status --short' on authorized project repository",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-			},
-			"required": []string{"target", "project"},
-		},
-	}, handlerFor("git_status"))
-
-	// 8. run_task
+	// 7. run_task
 	server.AddTool(&mcp.Tool{
 		Name:        "run_task",
 		Description: "Execute an allowlisted pre-configured task",
@@ -280,6 +422,22 @@ func NewGatewayServer(bridge *BridgeConfig) *mcp.Server {
 			"required": []string{"target", "project", "task"},
 		},
 	}, handlerFor("run_task"))
+
+	// 8. target_status
+	server.AddTool(&mcp.Tool{
+		Name:        "target_status",
+		Description: "Verify reachability and latency of a target machine",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"target": map[string]any{
+					"type":        "string",
+					"description": "Configured Target ID (e.g. termux-main)",
+				},
+			},
+			"required": []string{"target"},
+		},
+	}, handlerFor("target_status"))
 
 	// 9. write_file
 	server.AddTool(&mcp.Tool{
@@ -330,26 +488,126 @@ func RunStdio(ctx context.Context, server *mcp.Server) error {
 }
 
 // RunHTTP starts the Streamable HTTP server on the specified bind address.
-func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string) error {
+func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *AdapterState, bridge *BridgeConfig) error {
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return server
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		PropagateRequestCancellation: true,
+		MaxRequestBodyBytes:          1048576,
 	})
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handler)
+
+	// /live endpoint: only indicates process is alive, no DB, no SSH
+	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"alive"}`)
+	})
+
+	// /ready endpoint: checks Adapter, Bridge API, and Registry
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if state == nil || !state.IsReady() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			msg := "ADAPTER_NOT_READY"
+			if state != nil {
+				_, msg, _ = state.GetStatus()
+			}
+			resp, _ := json.Marshal(map[string]any{
+				"status": "not_ready",
+				"error":  msg,
+			})
+			w.Write(resp)
+			return
+		}
+		_, _, info := state.GetStatus()
+		w.WriteHeader(http.StatusOK)
+		resp, _ := json.Marshal(map[string]any{
+			"status":             "ready",
+			"bridge_api_version": info.BridgeAPIVersion,
+			"core_api_version":   info.CoreAPIVersion,
+			"gateway_version":    info.GatewayVersion,
+			"protocol":           info.MCPProtocol,
+		})
+		w.Write(resp)
+	})
+
+	// /health endpoint: comprehensive status summary without secrets
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","adapter":"mcp-gateway-adapter","version":"0.2.0"}`)
+		reqID := r.Header.Get("X-Request-ID")
+		if reqID == "" {
+			reqID = generateRequestID()
+		}
+
+		var coreHealth map[string]any
+		if bridge != nil {
+			outBytes, _, err := bridge.CallBridge(r.Context(), "health", nil, reqID)
+			if err == nil {
+				_ = json.Unmarshal(outBytes, &coreHealth)
+			}
+		}
+
+		ready := false
+		readyMsg := "uninitialized"
+		var vInfo *BridgeVersionInfo
+		if state != nil {
+			ready, readyMsg, vInfo = state.GetStatus()
+		}
+
+		healthResp := map[string]any{
+			"gateway":        "MCP-Pi",
+			"ready":          ready,
+			"adapter_status": readyMsg,
+			"mcp": map[string]any{
+				"sdk":       "go-sdk",
+				"version":   "1.7.0",
+				"protocol":  "2026-07-28",
+				"stateless": true,
+			},
+			"version_info": vInfo,
+			"core_health":  coreHealth,
+		}
+		w.WriteHeader(http.StatusOK)
+		resp, _ := json.Marshal(healthResp)
+		w.Write(resp)
+	})
+
+	// /server/discover: discovery endpoint for modern MCP clients
+	mux.HandleFunc("/server/discover", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp, _ := json.Marshal(map[string]any{
+			"server": map[string]any{
+				"name":    "mcp-gateway-adapter",
+				"version": "0.6.0",
+			},
+			"protocol": "2026-07-28",
+			"capabilities": map[string]any{
+				"tools": map[string]any{
+					"listChanged": false,
+				},
+			},
+			"endpoints": map[string]any{
+				"mcp":      "/mcp",
+				"live":     "/live",
+				"ready":    "/ready",
+				"health":   "/health",
+				"discover": "/server/discover",
+			},
+		})
+		w.Write(resp)
 	})
 
 	srv := &http.Server{
-		Addr:         bindAddr,
-		Handler:      mux,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		Addr:           bindAddr,
+		Handler:        SecurityMiddleware(mux),
+		ReadTimeout:    60 * time.Second,
+		WriteTimeout:   60 * time.Second,
+		MaxHeaderBytes: 65536,
 	}
 
 	go func() {

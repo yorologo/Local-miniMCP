@@ -69,6 +69,39 @@ class TestBridge(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertEqual(res["error"]["code"], "INVALID_ARGUMENTS")
 
+    def test_cli_version(self):
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            code = main(["version"])
+        self.assertEqual(code, 0)
+        output = json.loads(buf.getvalue())
+        self.assertTrue(output["ok"])
+        self.assertEqual(output["gateway_version"], "0.6.0")
+        self.assertEqual(output["core_api_version"], 1)
+        self.assertEqual(output["bridge_api_version"], 1)
+
+    def test_cli_tools(self):
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            code = main(["tools"])
+        self.assertEqual(code, 0)
+        output = json.loads(buf.getvalue())
+        self.assertTrue(output["ok"])
+        tools = output["tools"]
+        self.assertIsInstance(tools, list)
+        self.assertEqual(len(tools), 9)
+        # Check alphabetical order
+        self.assertEqual(tools, sorted(tools))
+
+    def test_invoke_with_request_id(self):
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            code = main(["invoke", "health", "{}", "--request-id", "req-test-123"])
+        self.assertEqual(code, 0)
+        output = json.loads(buf.getvalue())
+        self.assertTrue(output["ok"])
+        self.assertEqual(output.get("request_id"), "req-test-123")
+
 
 if __name__ == "__main__":
     unittest.main()

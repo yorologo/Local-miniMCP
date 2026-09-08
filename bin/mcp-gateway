@@ -1,0 +1,15 @@
+#!/bin/sh
+# MCP Gateway Unified CLI Wrapper
+set -eu
+
+# Resolve script directory portably
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+
+if [ -d "${ROOT_DIR}/src" ]; then
+    export PYTHONPATH="${ROOT_DIR}/src:${PYTHONPATH:-}"
+elif [ -d "/home/mcp-gateway/mcp-gateway/src" ]; then
+    export PYTHONPATH="/home/mcp-gateway/mcp-gateway/src:${PYTHONPATH:-}"
+fi
+
+exec python3 -m mcp_gateway.cli_unified "$@"

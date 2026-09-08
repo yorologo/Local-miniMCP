@@ -157,6 +157,20 @@ ssh Yorologo@192.168.68.85
   - `APPLY_PATCH: DEFERRED_FOR_SAFE_IMPLEMENTATION` (KISS y seguridad determinista).
   - Batería de pruebas: 88/88 unit tests remotos en MCP-Pi, 19/19 pruebas E2E en vivo (dry run, hash lock, creación, symlink blocks, traversal blocks, size limits, NUL bytes, pánico, MCP HTTP protocol y recuperación).
   - Documentación en [docs/controlled-write.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/controlled-write.md) y runbooks en [docs/runbooks/controlled-write-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/controlled-write-smoke-test.md) y [docs/runbooks/write-recovery.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/write-recovery.md).
+- **Fase 4D (Compatibilidad, Seguridad & Fundación del Ciclo de Vida)**: **TERMINADA**.
+  - Versionado de contratos estricto (`compatibility.json`, Gateway v0.6.0, Core API v1, Bridge API v1, Tool Catalog v2 con 9 herramientas, Schema v1, MCP 2026-07-28 con Go SDK v1.7.0).
+  - Fallo seguro fail-closed: adaptador MCP rechaza invocaciones si la versión del bridge o runtime no es compatible.
+  - Trazabilidad de extremo a extremo con `request_id` propagado desde MCP hasta SSH y registro de auditoría SQLite.
+  - Protección perimetral HTTP: filtrado estricto de cabecera `Host` (loopback exclusivo contra DNS rebinding) y `Origin` (HTTP 403 ante dominios no autorizados), con límite de cuerpo de 1 MiB.
+  - Modelo de salud HTTP multicapa: `/live`, `/ready`, `/health`, y `/server/discover`.
+  - Costura de autorización futura `can_client_use_tool(client_id, tool_name, registry)`.
+  - Herramienta de diagnóstico y reparación segura (`doctor` y `repair`).
+  - CLI unificado portátil [`bin/mcp-gateway`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/bin/mcp-gateway).
+  - Manifiesto de release [`manifest.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/manifest.json) y sumas [`SHA256SUMS`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/SHA256SUMS).
+  - Instalador idempotente [`install.sh`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/install.sh).
+  - Panel administrativo web `/maintenance` con HTMX local (diagnóstico en tiempo real, respaldos online y rollback).
+  - Batería de pruebas: 102/102 unit tests remotos en MCP-Pi, 6/6 Go tests, 19/19 E2E write regression tests y probes HTTP de seguridad superados.
+  - Documentación en [docs/compatibility.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/compatibility.md), [docs/lifecycle.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/lifecycle.md) y runbooks en [docs/runbooks/doctor.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/doctor.md), [docs/runbooks/install.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/install.md), [docs/runbooks/update-rollback.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/update-rollback.md) y [docs/runbooks/uninstall.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/uninstall.md).
 - **Fase 6 (Clientes AI Externos & ChatGPT)**: **SIGUIENTE**.
 - **Fase 7 (Operación Estable & Resiliencia)**: *Futura*.
 

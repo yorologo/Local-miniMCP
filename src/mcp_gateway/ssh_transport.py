@@ -20,11 +20,12 @@ class SSHError(Exception):
 class SSHTransportResult:
     """Result of an SSH remote command execution."""
 
-    def __init__(self, exit_code: int, stdout: str, stderr: str, duration_ms: int):
+    def __init__(self, exit_code: int, stdout: str, stderr: str, duration_ms: int, request_id: Optional[str] = None):
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
         self.duration_ms = duration_ms
+        self.request_id = request_id
 
     @property
     def ok(self) -> bool:
@@ -76,6 +77,7 @@ class SSHTransport:
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
         input_data: Optional[bytes] = None,
+        request_id: Optional[str] = None,
     ) -> SSHTransportResult:
         """Execute a remote shell command string safely constructed by the gateway."""
         effective_timeout = timeout or self.default_timeout
@@ -121,6 +123,7 @@ class SSHTransport:
             stdout=stdout_str,
             stderr=stderr_str,
             duration_ms=duration_ms,
+            request_id=request_id,
         )
 
     def resolve_canonical_path(

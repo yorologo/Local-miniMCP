@@ -15,7 +15,7 @@ from mcp_gateway.web import create_app
 
 
 class MockTransport:
-    def run_command(self, target, remote_cmd, timeout=None, cwd=None):
+    def run_command(self, target, remote_cmd, timeout=None, cwd=None, **kwargs):
         return SSHTransportResult(0, "mock-host\n", "", 10)
 
     def resolve_canonical_path(self, target, candidate_path, timeout=10):
@@ -297,6 +297,28 @@ class TestWebViews(unittest.TestCase):
         self.assertEqual(res_panic.status_code, 200)
         self.assertEqual(self.registry.get_setting("writes_enabled"), "false")
         self.assertIn(b"Controlled writes have been immediately DISABLED", res_panic.data)
+
+    def test_maintenance_views(self):
+        self._login()
+        # 1. Maintenance dashboard GET
+        res = self.client.get("/maintenance")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"Maintenance & Diagnostics", res.data)
+        self.assertIn(b"Doctor Health Check", res.data)
+        self.assertIn(b"Contract Versioning", res.data)
+
+        # 2. Diagnostics refresh POST
+        res_doc = self.client.post("/maintenance/doctor", data={"csrf_token": "valid-token"}, follow_redirects=True)
+        self.assertEqual(res_doc.status_code, 200)
+        self.assertIn(b"Diagnostics refreshed", res_doc.data)
+
+        # 3. Safe repair POST
+        res_repair = self.client.post("/maintenance/repair", data={"csrf_token": "valid-token"}, follow_redirects=True)
+        self.assertEqual(res_repair.status_code, 200)
+
+        # 4. Backup POST
+        res_backup = self.client.post("/maintenance/backup", data={"csrf_token": "valid-token"}, follow_redirects=True)
+        self.assertEqual(res_backup.status_code, 200)
 
 
 if __name__ == "__main__":

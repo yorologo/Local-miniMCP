@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Maintenance & Diagnostics - MCP Gateway Admin{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">Maintenance & Diagnostics</h1>
+      <p class="text-sm text-slate-400">System health verification, contract versioning, backups, and safe repair tools.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <form method="POST" action="{{ url_for('admin.maintenance_backup') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium shadow transition">
+          💾 Create Backup
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Top Grid: Doctor Diagnostics & Contract Versions -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Doctor Diagnostics Card -->
+    <div class="lg:col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-6 space-y-4 shadow">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold text-white flex items-center gap-2">
+          <span>🩺</span> Doctor Health Check
+        </h2>
+        <span class="px-2.5 py-1 text-xs font-semibold rounded-full border {% if overall_status == 'HEALTHY' %}bg-emerald-950 border-emerald-800 text-emerald-300{% elif overall_status == 'DEGRADED' %}bg-amber-950 border-amber-800 text-amber-300{% else %}bg-rose-950 border-rose-800 text-rose-300{% endif %}">
+          {{ overall_status }}
+        </span>
+      </div>
+
+      <div id="doctor-results" class="space-y-2 text-sm divide-y divide-slate-800/60">
+        {% for c in checks %}
+        <div class="pt-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            {% if c.passed %}
+              <span class="text-emerald-400 font-bold">✓</span>
+            {% elif c.severity == 'warning' %}
+              <span class="text-amber-400 font-bold">⚠</span>
+            {% else %}
+              <span class="text-rose-400 font-bold">✗</span>
+            {% endif %}
+            <span class="text-slate-200 font-medium">{{ c.name }}</span>
+          </div>
+          <span class="text-xs text-slate-400">{{ c.message }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex items-center justify-between">
+        <form method="POST" action="{{ url_for('admin.maintenance_doctor') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded transition">
+            🔄 Re-run Diagnostics
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.maintenance_repair') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="px-3 py-1.5 bg-amber-950/60 hover:bg-amber-900 border border-amber-800 text-amber-300 text-xs font-medium rounded transition">
+            🔨 Execute Safe Repair
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Contract Versioning Card -->
+    <div class="bg-slate-950 border border-slate-800 rounded-xl p-6 space-y-4 shadow">
+      <h2 class="text-base font-semibold text-white flex items-center gap-2">
+        <span>📜</span> Contract Versioning
+      </h2>
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Gateway Version:</span>
+          <span class="font-mono text-indigo-400 font-semibold">{{ compat.get('gateway_version') }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Core API:</span>
+          <span class="font-mono text-slate-200">v{{ compat.get('core_api_version') }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Bridge API:</span>
+          <span class="font-mono text-slate-200">v{{ compat.get('bridge_api_version') }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Tool Catalog:</span>
+          <span class="font-mono text-slate-200">v{{ compat.get('tool_catalog_version') }} (9 tools)</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Registry Schema:</span>
+          <span class="font-mono text-slate-200">v{{ compat.get('registry_schema_version') }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">MCP Protocol:</span>
+          <span class="font-mono text-emerald-400 font-semibold">{{ compat.get('mcp', {}).get('protocol') }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">MCP SDK:</span>
+          <span class="font-mono text-slate-200">{{ compat.get('mcp', {}).get('sdk') }} v{{ compat.get('mcp', {}).get('version') }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Grid: Backups & Release Rollback -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Backups Management -->
+    <div class="bg-slate-950 border border-slate-800 rounded-xl p-6 space-y-4 shadow">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold text-white flex items-center gap-2">
+          <span>📦</span> Database Backups
+        </h2>
+        <span class="text-xs text-slate-400">{{ backups|length }} backups found</span>
+      </div>
+
+      <div class="max-h-60 overflow-y-auto divide-y divide-slate-800/60 text-sm">
+        {% if backups %}
+          {% for b in backups %}
+          <div class="py-2.5 flex items-center justify-between">
+            <div>
+              <div class="font-mono text-xs text-slate-200">{{ b.name }}</div>
+              <div class="text-xs text-slate-500">{{ b.size_kb }} KB &bull; {{ b.mtime }}</div>
+            </div>
+            <span class="px-2 py-0.5 text-xs bg-slate-800 text-slate-300 rounded">Online Backup</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="py-6 text-center text-slate-500 text-xs">No backups stored in gateway data directory.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Release & Rollback -->
+    <div class="bg-slate-950 border border-slate-800 rounded-xl p-6 space-y-4 shadow">
+      <h2 class="text-base font-semibold text-white flex items-center gap-2">
+        <span>🔄</span> Release Management & Rollback
+      </h2>
+      <p class="text-xs text-slate-400">
+        MCP Gateway supports versioned releases and instant rollback to the previous version if schema compatibility permits.
+      </p>
+
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Active Release Target:</span>
+          <span class="font-mono text-xs text-indigo-400 truncate max-w-xs">{{ current_target }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-800/60 pb-2">
+          <span class="text-slate-400">Previous Release:</span>
+          <span class="font-mono text-xs text-slate-300 truncate max-w-xs">{{ previous_target or 'None available' }}</span>
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center justify-between">
+        {% if previous_target %}
+        <form method="POST" action="{{ url_for('admin.maintenance_rollback') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" onclick="return confirm('Rollback active release to previous version?');" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition">
+            ⏪ Rollback to Previous Version
+          </button>
+        </form>
+        {% else %}
+        <button disabled class="px-4 py-2 bg-slate-800 text-slate-500 rounded-lg text-sm font-medium cursor-not-allowed">
+          No Previous Release to Rollback
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

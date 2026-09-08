@@ -1,0 +1,17 @@
+{
+  "gateway_version": "0.6.0",
+  "core_api_version": 1,
+  "bridge_api_version": 1,
+  "tool_catalog_version": 2,
+  "registry_schema_version": 1,
+  "mcp": {
+    "sdk": "go-sdk",
+    "version": "1.7.0",
+    "protocol": "2026-07-28",
+    "protocol_legacy": "2025-11-25"
+  },
+  "runtime": {
+    "python": "3.9+",
+    "architecture": ["armv6l", "aarch64", "x86_64"]
+  }
+}

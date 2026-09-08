@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("mcp-gateway-adapter v0.2.0 (MCP Protocol 2026-07-28)")
+		fmt.Println("mcp-gateway-adapter v0.6.0 (MCP Protocol 2026-07-28)")
 		os.Exit(0)
 	}
 
@@ -40,7 +40,17 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	server := NewGatewayServer(bridgeConfig)
+	state := NewAdapterState()
+	info, err := bridgeConfig.CheckBridgeCompatibility(ctx)
+	if err != nil {
+		log.Printf("[WARN] Bridge compatibility check failed: %v", err)
+		state.SetReady(false, fmt.Sprintf("ADAPTER_NOT_READY: %v", err), info)
+	} else {
+		log.Printf("[INFO] Bridge compatibility verified (Core API v%d, Bridge API v%d, Gateway v%s)", info.CoreAPIVersion, info.BridgeAPIVersion, info.GatewayVersion)
+		state.SetReady(true, "ready", info)
+	}
+
+	server := NewGatewayServer(bridgeConfig, state)
 
 	switch *transportFlag {
 	case "stdio":
@@ -48,7 +58,7 @@ func main() {
 			log.Fatalf("Stdio server terminated with error: %v", err)
 		}
 	case "http":
-		if err := RunHTTP(ctx, server, *bindFlag); err != nil {
+		if err := RunHTTP(ctx, server, *bindFlag, state, bridgeConfig); err != nil {
 			log.Fatalf("HTTP server terminated with error: %v", err)
 		}
 	default:

@@ -732,3 +732,89 @@ def disable_writes():
     flash("PANIC: Controlled writes have been immediately DISABLED. All read operations remain fully functional.", "warning")
     return redirect(url_for("admin.settings_view"))
 
+
+# ==========================================
+# Maintenance & Diagnostics
+# ==========================================
+
+@bp.route("/maintenance", methods=["GET"])
+@login_required
+def maintenance_view():
+    from .. import compatibility
+    from ..doctor import run_doctor
+    from ..lifecycle import get_paths
+
+    overall, checks = run_doctor(verbose=False)
+    compat = compatibility.get_compatibility()
+    paths = get_paths()
+
+    backups = []
+    if os.path.isdir(paths["backups"]):
+        for fname in sorted(os.listdir(paths["backups"]), reverse=True):
+            fpath = os.path.join(paths["backups"], fname)
+            if os.path.isfile(fpath):
+                st = os.stat(fpath)
+                backups.append({
+                    "name": fname,
+                    "size_kb": int(st.st_size / 1024),
+                    "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime)),
+                })
+
+    current_target = os.path.realpath(paths["current"]) if os.path.exists(paths["current"]) else "Standard Installation (/home/mcp-gateway/mcp-gateway)"
+    previous_target = os.path.realpath(paths["previous"]) if os.path.exists(paths["previous"]) else None
+
+    return render_template(
+        "maintenance.html",
+        overall_status=overall,
+        checks=checks,
+        compat=compat,
+        backups=backups,
+        current_target=current_target,
+        previous_target=previous_target,
+    )
+
+
+@bp.route("/maintenance/doctor", methods=["POST"])
+@login_required
+def maintenance_doctor():
+    flash("Diagnostics refreshed.", "info")
+    return redirect(url_for("admin.maintenance_view"))
+
+
+@bp.route("/maintenance/backup", methods=["POST"])
+@login_required
+def maintenance_backup():
+    from ..lifecycle import backup_database
+    try:
+        path = backup_database()
+        record_audit("admin_backup", success=True, detail=f"Created backup at {path}")
+        flash(f"Online database backup created: {os.path.basename(path)}", "success")
+    except Exception as e:
+        record_audit("admin_backup", success=False, detail=str(e))
+        flash(f"Backup failed: {e}", "danger")
+    return redirect(url_for("admin.maintenance_view"))
+
+
+@bp.route("/maintenance/repair", methods=["POST"])
+@login_required
+def maintenance_repair():
+    from ..doctor import run_repair
+    repairs = run_repair()
+    record_audit("admin_repair", success=True, detail=f"Executed repairs: {repairs}")
+    if repairs:
+        flash(f"Repairs completed: {', '.join(repairs)}", "success")
+    else:
+        flash("No repair actions required; permissions and units are in desired state.", "info")
+    return redirect(url_for("admin.maintenance_view"))
+
+
+@bp.route("/maintenance/rollback", methods=["POST"])
+@login_required
+def maintenance_rollback():
+    from ..lifecycle import rollback_release
+    ok, msg = rollback_release()
+    record_audit("admin_rollback", success=ok, detail=msg)
+    flash(msg, "warning" if ok else "danger")
+    return redirect(url_for("admin.maintenance_view"))
+
+

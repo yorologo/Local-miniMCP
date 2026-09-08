@@ -374,4 +374,69 @@ El diseño original contemplaba una herramienta `apply_patch` para aplicar diffs
 - **`APPLY_PATCH: DEFERRED_FOR_SAFE_IMPLEMENTATION`**: Aplicar parches multi-hunk de manera remota introduce vulnerabilidades de parsing difuso (fuzzy matching), ambigüedad de codificación de finales de línea (CRLF vs LF) y riesgo de estado inconsistente entre plataformas.
 - La combinación de `read_file` (que expone el `sha256` actual) junto con `write_file(expected_sha256=...)` proporciona a los modelos LLM un flujo de edición determinista, atómico y libre de condiciones de carrera sin añadir complejidad frágil al gateway.
 
+---
+
+## 9. Fundamentos de Compatibilidad, Seguridad y Ciclo de Vida (Fase 4D)
+
+La Fase 4D introduce un marco formal de compatibilidad, hardening de red y gestión del ciclo de vida del Gateway, preparando la infraestructura para la integración con clientes AI externos en la Fase 6.
+
+```text
+[ Cliente AI Externo / ChatGPT / Claude ]
+                   │
+                   │ HTTP / Streamable SSE (Confinado a loopback en Fase 4D)
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Go MCP Protocol Adapter (mcp-gateway-adapter)              │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ SecurityMiddleware (Defensa Perimetral HTTP)          │  │
+│  │  1. Host Header Enforcement (localhost/127.0.0.1 only)│  │
+│  │     --> Bloquea DNS Rebinding Attacks                 │  │
+│  │  2. Origin Header Protection                          │  │
+│  │     --> Rechaza orígenes foráneos maliciosos (HTTP 403│  │
+│  │  3. Max Request Body Limit (1048576 bytes / 1 MiB)    │  │
+│  └──────────────────────────┬────────────────────────────┘  │
+│                             │                               │
+│  ┌──────────────────────────▼────────────────────────────┐  │
+│  │ Endpoints & Modelo de Salud                           │  │
+│  │  - /live            : Liveness probe ligero           │  │
+│  │  - /ready           : Readiness probe (fail-closed)   │  │
+│  │  - /health          : Telemetría sin secretos         │  │
+│  │  - /server/discover : Descubrimiento MCP              │  │
+│  │  - /mcp             : Transporte Streamable HTTP      │  │
+│  └──────────────────────────┬────────────────────────────┘  │
+│                             │ Inyección de request_id (req-*)
+│  ┌──────────────────────────▼────────────────────────────┐  │
+│  │ Fail-Closed Contract Verification                     │  │
+│  │  Verifica bridge_api_version == 1 al arrancar         │  │
+│  │  Si falla: Rechaza llamadas con ADAPTER_NOT_READY     │  │
+│  └──────────────────────────┬────────────────────────────┘  │
+└─────────────────────────────┼───────────────────────────────┘
+                              │ Subprocess JSON CLI
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Python Gateway Core                                        │
+│  - Propagación de request_id hacia logs y transporte SSH    │
+│  - Costura de autorización: can_client_use_tool(...)        │
+│  - Doctor & Safe Repair (diagnóstico integral de salud)     │
+│  - Gestor de ciclo de vida (backup, restore, rollback)      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 9.1 Matriz de Contratos (`compatibility.json`)
+
+El archivo [`compatibility.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/compatibility.json) actúa como fuente de verdad inmutable para versiones de componentes:
+- `gateway_version`: 0.6.0
+- `core_api_version`: 1
+- `bridge_api_version`: 1
+- `tool_catalog_version`: 2 (9 herramientas en orden alfabético estricto)
+- `registry_schema_version`: 1 (`PRAGMA user_version = 1`)
+- `mcp_protocol`: `2026-07-28` con retrocompatibilidad negociada `2025-11-25`
+
+### 9.2 CLI Unificado y Empaquetado
+
+- **CLI Unificado**: [`bin/mcp-gateway`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/bin/mcp-gateway) como punto de entrada único para administración local (`status`, `doctor`, `repair`, `backup`, `restore`, `rollback`, `uninstall`).
+- **Empaquetado e Instalación**: Manifiesto firmado criptográficamente ([`manifest.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/manifest.json), [`SHA256SUMS`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/SHA256SUMS)) e instalador idempotente [`install.sh`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/install.sh).
+- **Consola Web de Mantenimiento**: Ruta `/maintenance` que integra diagnósticos en tiempo real, respaldos online y gestión de versiones mediante HTMX local (sin dependencias de red externas).
+
 

@@ -52,6 +52,7 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 | **Fase 4B: Consola Admin & Registro** | Consola Web en `127.0.0.1:8080` (Flask + Jinja2 + Tailwind), Registro SQLite persistente y Emergency Kill Switch | **COMPLETADA** |
 | **Fase 4C: Adaptador MCP Oficial** | Adaptador de protocolo MCP con Go SDK oficial v1.7.0, stdio y Streamable HTTP (`127.0.0.1:8090`), 8 herramientas | **COMPLETADA** |
 | **Fase 5: Escritura Controlada** | Mutaciones controladas atómicas (`write_file`), verificación precondicional SHA-256, backups locales rotativos en Gateway, dry-run y panic button | **COMPLETADA** |
+| **Fase 4D: Compatibilidad, Seguridad & Ciclo de Vida** | Versionado de contratos (`compatibility.json`), protección Host/Origin (anti DNS rebinding), modelo de salud (/live, /ready, /health), Doctor & Safe Repair, CLI unificado (`mcp-gateway`), instalador y panel web `/maintenance` con HTMX | **COMPLETADA** |
 | **Fase 6: Clientes AI Externos & ChatGPT** | Integración con ChatGPT, Claude Desktop, túneles seguros y perfiles de autenticación cliente | *Siguiente* |
 | **Fase 7: Operación Estable & Resiliencia** | Hardening de red, rotación de claves, monitoreo continuo y recuperación ante desastres | *Futura* |
 
@@ -67,11 +68,11 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 - **Consola Web de Administración**:
   ```bash
   ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
-  # Navegar a http://127.0.0.1:8080
+  # Navegar a http://127.0.0.1:8080 (o /maintenance para diagnósticos)
   ```
 - **Servidor de Protocolo MCP (Streamable HTTP)**:
   - Endpoint local: `http://127.0.0.1:8090/mcp`
-  - Endpoint de salud: `http://127.0.0.1:8090/health`
+  - Endpoint de salud: `http://127.0.0.1:8090/health` (también `/live`, `/ready`, `/server/discover`)
   - Servicio systemd: `mcp-gateway-mcp.service` (escuchando estrictamente en loopback)
 - **Identidad de Servicio Gateway**: `mcp-gateway` (sin sudo, opera el canal SSH, el gateway core, la consola web y el adaptador MCP)
 - **Credenciales locales**: El archivo local `.mcp-pi.local.env` almacena los datos de entorno local (ignorado por Git, no committear).
@@ -84,6 +85,12 @@ La documentación detallada se encuentra en:
 - [AGENTS.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/AGENTS.md): Reglas, directivas de seguridad e identidades operacionales.
 - [docs/architecture.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/architecture.md): Diagramas de red, capas del gateway y roles de seguridad.
 - [docs/project-state.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/project-state.md): Matriz de verificación y estado en tiempo real.
+- [docs/compatibility.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/compatibility.md): Especificación de contratos versionados, protección Host/Origin y request IDs.
+- [docs/lifecycle.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/lifecycle.md): Guía del CLI unificado, ciclo de vida, manifiestos, respaldos y reversión.
+- [docs/runbooks/doctor.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/doctor.md): Manual operativo de diagnóstico y auto-reparación segura.
+- [docs/runbooks/install.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/install.md): Manual de instalación automatizada e idempotente.
+- [docs/runbooks/update-rollback.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/update-rollback.md): Manual de actualización y reversión de releases.
+- [docs/runbooks/uninstall.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/uninstall.md): Manual de desinstalación limpia y purga de datos.
 - [docs/controlled-write.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/controlled-write.md): Especificación técnica del modelo de escritura controlada, seguridad y políticas.
 - [docs/runbooks/controlled-write-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/controlled-write-smoke-test.md): Manual de pruebas de humo y verificación de escrituras atómicas.
 - [docs/runbooks/write-recovery.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/write-recovery.md): Manual de recuperación y restauración desde backups del Gateway.

@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 
 class PolicyError(Exception):
@@ -150,4 +150,42 @@ def validate_task(project: Dict[str, Any], task_name: str) -> Dict[str, Any]:
         "argv": list(task_def.get("argv", [])),
         "timeout": int(task_def.get("timeout", 30)),
     }
+
+
+def can_client_use_tool(
+    client_id: Optional[str],
+    tool_name: str,
+    registry: Optional[Any] = None,
+) -> Tuple[bool, Optional[str]]:
+    """Future authorization seam for client-specific tool discovery and invocation.
+
+    Unified decision point used by both tools/list (filtering) and tools/call (enforcement)
+    to prevent 'tool hidden but callable' vulnerabilities.
+    """
+    valid_tools = {
+        "health",
+        "list_targets",
+        "target_status",
+        "list_directory",
+        "file_stat",
+        "read_file",
+        "git_status",
+        "run_task",
+        "write_file",
+    }
+    if tool_name not in valid_tools:
+        return False, f"Tool '{tool_name}' is not recognized in gateway catalog"
+
+    if not client_id or client_id in ("local", "mcp-local", "default"):
+        return True, None
+
+    if registry and hasattr(registry, "get_client"):
+        client = registry.get_client(client_id)
+        if not client:
+            return False, f"Client '{client_id}' is not registered"
+        if not client.get("enabled", True):
+            return False, f"Client '{client_id}' is disabled"
+
+    return True, None
+
 

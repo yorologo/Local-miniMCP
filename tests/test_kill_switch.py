@@ -13,7 +13,7 @@ from mcp_gateway.tools import GatewayTools
 
 
 class MockTransport:
-    def run_command(self, target, remote_cmd, timeout=None, cwd=None):
+    def run_command(self, target, remote_cmd, timeout=None, cwd=None, **kwargs):
         if "hostname" in remote_cmd:
             return SSHTransportResult(0, "mock-host\n", "", 10)
         return SSHTransportResult(0, "ok\n", "", 10)

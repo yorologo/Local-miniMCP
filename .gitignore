@@ -10,5 +10,6 @@ __pycache__/
 tailwind/node_modules/
 .superpowers/
 mcp-adapter/mcp-gateway-adapter
-bin/
+bin/*
+!bin/mcp-gateway
 

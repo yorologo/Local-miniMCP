@@ -27,7 +27,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Supervivencia a Reboot** | **PASS** | Canal Pi → PC restaurado y verificado tras reboot de `MCP-Pi` |
 | **Revocación de Clave** | **PASS** | Prueba de revocación y restauración ejecutada con éxito |
 | **Gateway Core (Fase 4A)** | **PASS** | Arquitectura multi-target, Python stdlib (cero dependencias externas), UID 1001 |
-| **Remote Unit Tests** | **PASS** | 88/88 pruebas unitarias ejecutadas remotamente en `MCP-Pi` bajo `mcp-gateway` (suites: config, registry, schema, policy, tools, bridge, web_views, cli) |
+| **Remote Unit Tests** | **PASS** | 102/102 pruebas unitarias ejecutadas remotamente en `MCP-Pi` bajo `mcp-gateway` (suites: config, registry, schema, policy, tools, bridge, web_auth, web_security, web_views, cli, compatibility, doctor, lifecycle) |
 | **Live Target Tests** | **PASS** | 9/9 herramientas verificadas en vivo contra `termux-main` (`health`, `list_targets`, `target_status`, `list_directory`, `file_stat`, `read_file`, `git_status`, `run_task`, `write_file`) |
 | **Policy Engine** | **PASS** | Deny-by-default, bloqueo sintáctico `..`, validación canónica remota con `realpath`, allowlist estricta de tareas, validación estricta de rutas de escritura y UTF-8 |
 | **Negative Security Tests** | **PASS** | 14/14 vectores negativos bloqueados (`..`, `/abs`, symlinks, symlink dir escape, non-UTF8, oversized, conflict, unauth target/project, etc.) |
@@ -41,6 +41,14 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Controlled Write (Fase 5)** | **PASS** | Mutación atómica controlada con doble llave (`writes_enabled` AND `project.write`), hash lock precondicional `expected_sha256`, backups rotativos en Pi, dry-run unified diff |
 | **Writes Panic Button (Fase 5)**| **PASS** | Bloqueo instantáneo de escrituras vía `/settings/disable-writes` manteniendo 100% disponibles las operaciones de lectura |
 | **E2E Write Verification (Fase 5)**| **PASS** | 19/19 pruebas E2E superadas en vivo en `scripts/verify-phase-5.py` |
+| **Contract Versioning (Fase 4D)** | **PASS** | Versionado explícito en `compatibility.json` (Gateway v0.6.0, Core v1, Bridge v1, Tools v2, Schema v1, MCP 2026-07-28 con fallback 2025-11-25) |
+| **Fail-Closed Gate (Fase 4D)** | **PASS** | El adaptador Go valida versiones con el bridge al inicio y rechaza invocaciones si hay incompatibilidad (`ADAPTER_NOT_READY`, HTTP 503) |
+| **Host & Origin Security (Fase 4D)** | **PASS** | Protección estricta contra DNS rebinding y spoofing HTTP: Host loopback exclusivo, Origin autorizado o nulo (403 Forbidden en otros casos), body limit 1 MiB |
+| **Health Model & Probes (Fase 4D)** | **PASS** | `/live` (liveness), `/ready` (readiness fail-closed), `/health` (metadatos consolidados sin secretos), `/server/discover` (capacidades MCP) |
+| **Doctor & Safe Repair (Fase 4D)** | **PASS** | Diagnóstico en 8 puntos con auto-reparación no destructiva de permisos y recargas |
+| **Unified CLI (Fase 4D)** | **PASS** | Wrapper portátil `bin/mcp-gateway` implementando `status`, `doctor`, `repair`, `backup`, `restore`, `rollback`, `uninstall` |
+| **Packaging & Manifest (Fase 4D)** | **PASS** | `manifest.json`, `SHA256SUMS`, script de instalación idempotente `install.sh` |
+| **Web Maintenance & HTMX (Fase 4D)** | **PASS** | Panel `/maintenance` con HTMX local embebido (diagnósticos en vivo, respaldos online, rollback) |
 | **apply_patch Tool** | **DEFERRED_FOR_SAFE_IMPLEMENTATION** | Pospuesto intencionalmente bajo KISS; `write_file` con `expected_sha256` provee edición segura atómica sin complejidad de parsing multi-hunk |
 | **Integración ChatGPT** | **DEFERRED_TO_PHASE_6** | Conexión directa no permitida hacia localhost; requiere evaluar Secure MCP Tunnel en Fase 6 |
 

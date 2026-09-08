@@ -9,6 +9,7 @@ import json
 import sys
 from typing import Any, Dict, List, Optional
 
+from . import compatibility
 from .registry import get_registry
 from .tools import GatewayTools
 
@@ -25,7 +26,18 @@ ALLOWED_TOOLS = {
 }
 
 
-def invoke_tool(tool_name: str, args: Dict[str, Any], registry: Optional[Any] = None) -> Dict[str, Any]:
+def get_tools_catalog() -> List[str]:
+    """Return deterministic alphabetically-sorted catalog of allowlisted tools."""
+    return sorted(list(ALLOWED_TOOLS))
+
+
+def invoke_tool(
+    tool_name: str,
+    args: Dict[str, Any],
+    registry: Optional[Any] = None,
+    request_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Invoke an allowlisted Gateway tool with dictionary arguments."""
     if tool_name not in ALLOWED_TOOLS:
         return {
@@ -39,7 +51,9 @@ def invoke_tool(tool_name: str, args: Dict[str, Any], registry: Optional[Any] = 
 
     try:
         reg = registry or get_registry()
-        gateway = GatewayTools(registry=reg)
+        req_id = request_id or args.get("request_id") or args.get("_request_id")
+        cli_id = client_id or args.get("client_id")
+        gateway = GatewayTools(registry=reg, request_id=req_id, client_id=cli_id)
     except Exception as e:
         return {
             "ok": False,
@@ -209,8 +223,30 @@ def main(args_list: Optional[List[str]] = None) -> int:
     invoke_parser = subparsers.add_parser("invoke", help="Invoke an allowlisted tool")
     invoke_parser.add_argument("tool", help="Tool name to execute")
     invoke_parser.add_argument("args_json", nargs="?", default="{}", help="Tool arguments as JSON string")
+    invoke_parser.add_argument("--request-id", dest="request_id", default=None, help="Correlation request ID")
+    invoke_parser.add_argument("--client-id", dest="client_id", default=None, help="Client identifier")
+
+    version_parser = subparsers.add_parser("version", help="Output contract versions")
+    tools_parser = subparsers.add_parser("tools", help="List available tools")
 
     parsed = parser.parse_args(args_list)
+
+    if parsed.command == "version":
+        info = {
+            "ok": True,
+            "gateway_version": compatibility.get_gateway_version(),
+            "core_api_version": compatibility.get_core_api_version(),
+            "bridge_api_version": compatibility.get_bridge_api_version(),
+            "tool_catalog_version": compatibility.get_tool_catalog_version(),
+            "registry_schema_version": compatibility.get_registry_schema_version(),
+            "mcp_protocol": "2026-07-28",
+        }
+        print(json.dumps(info, indent=2))
+        return 0
+
+    if parsed.command == "tools":
+        print(json.dumps({"ok": True, "tools": get_tools_catalog()}, indent=2))
+        return 0
 
     if parsed.command == "invoke":
         try:
@@ -236,7 +272,12 @@ def main(args_list: Optional[List[str]] = None) -> int:
             }, indent=2))
             return 1
 
-        result = invoke_tool(parsed.tool, raw_args)
+        result = invoke_tool(
+            parsed.tool,
+            raw_args,
+            request_id=getattr(parsed, "request_id", None),
+            client_id=getattr(parsed, "client_id", None),
+        )
         print(json.dumps(result, indent=2))
         return 0 if result.get("ok") else 1
 
@@ -245,3 +286,4 @@ def main(args_list: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -1,0 +1,18 @@
+{
+  "version": "0.6.0",
+  "architecture": "armv6l",
+  "architectures": [
+    "armv6l",
+    "aarch64",
+    "x86_64"
+  ],
+  "core_api": 1,
+  "bridge_api": 1,
+  "tool_catalog": 2,
+  "registry_schema_range": ">=1",
+  "mcp_sdk": "go-sdk",
+  "mcp_sdk_version": "1.7.0",
+  "mcp_protocol": "2026-07-28",
+  "minimum_python": "3.9",
+  "created_at": "2026-09-08T23:37:25Z"
+}

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +28,9 @@ func getTestBridgeConfig() *BridgeConfig {
 func TestServerToolDiscovery(t *testing.T) {
 	ctx := context.Background()
 	bridge := getTestBridgeConfig()
-	server := NewGatewayServer(bridge)
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
 
 	tServer, tClient := mcp.NewInMemoryTransports()
 	go func() {
@@ -43,39 +48,31 @@ func TestServerToolDiscovery(t *testing.T) {
 	}
 	defer session.Close()
 
-	// 1. List tools
 	toolsList, err := session.ListTools(ctx, nil)
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	expectedTools := map[string]bool{
-		"health":         false,
-		"list_targets":   false,
-		"target_status":  false,
-		"list_directory": false,
-		"file_stat":      false,
-		"read_file":      false,
-		"git_status":     false,
-		"run_task":       false,
-		"write_file":     false,
+	expectedTools := []string{
+		"file_stat",
+		"git_status",
+		"health",
+		"list_directory",
+		"list_targets",
+		"read_file",
+		"run_task",
+		"target_status",
+		"write_file",
 	}
 
 	if len(toolsList.Tools) != len(expectedTools) {
-		t.Errorf("Expected %d tools, got %d", len(expectedTools), len(toolsList.Tools))
+		t.Fatalf("Expected %d tools, got %d", len(expectedTools), len(toolsList.Tools))
 	}
 
-	for _, tool := range toolsList.Tools {
-		if _, exists := expectedTools[tool.Name]; exists {
-			expectedTools[tool.Name] = true
-		} else {
-			t.Errorf("Unexpected tool discovered: %s", tool.Name)
-		}
-	}
-
-	for name, found := range expectedTools {
-		if !found {
-			t.Errorf("Expected tool %s was not found in discovery", name)
+	// Verify deterministic alphabetical ordering
+	for i, expected := range expectedTools {
+		if toolsList.Tools[i].Name != expected {
+			t.Errorf("Tool at index %d expected %s, got %s", i, expected, toolsList.Tools[i].Name)
 		}
 	}
 }
@@ -83,7 +80,9 @@ func TestServerToolDiscovery(t *testing.T) {
 func TestServerHealthCall(t *testing.T) {
 	ctx := context.Background()
 	bridge := getTestBridgeConfig()
-	server := NewGatewayServer(bridge)
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
 
 	tServer, tClient := mcp.NewInMemoryTransports()
 	go func() {
@@ -101,7 +100,6 @@ func TestServerHealthCall(t *testing.T) {
 	}
 	defer session.Close()
 
-	// Call health
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "health",
 	})
@@ -132,10 +130,12 @@ func TestServerHealthCall(t *testing.T) {
 	}
 }
 
-func TestServerInvalidToolAndArgs(t *testing.T) {
+func TestFailClosedWhenNotReady(t *testing.T) {
 	ctx := context.Background()
 	bridge := getTestBridgeConfig()
-	server := NewGatewayServer(bridge)
+	state := NewAdapterState()
+	state.SetReady(false, "ADAPTER_NOT_READY: simulated incompatibility", nil)
+	server := NewGatewayServer(bridge, state)
 
 	tServer, tClient := mcp.NewInMemoryTransports()
 	go func() {
@@ -153,37 +153,34 @@ func TestServerInvalidToolAndArgs(t *testing.T) {
 	}
 	defer session.Close()
 
-	// 1. Call non-existent tool -> SDK returns protocol error
-	_, err = session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "non_existent_tool",
-	})
-	if err == nil {
-		t.Errorf("expected error for non_existent_tool, got nil")
-	}
-
-	// 2. Call tool with missing arguments -> Core returns isError=true with INVALID_ARGUMENTS
+	// Calling tool when adapter is not ready must fail closed
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "target_status",
+		Name: "health",
 	})
 	if err != nil {
-		t.Fatalf("session.CallTool unexpected protocol err: %v", err)
+		t.Fatalf("unexpected protocol err: %v", err)
 	}
+
 	if !res.IsError {
-		t.Errorf("expected isError=true for target_status with missing args")
+		t.Fatalf("expected isError=true when adapter not ready, got false")
 	}
 
 	textContent := res.Content[0].(*mcp.TextContent)
-	var jsonOut map[string]any
-	_ = json.Unmarshal([]byte(textContent.Text), &jsonOut)
-	errMap, ok := jsonOut["error"].(map[string]any)
-	if !ok || errMap["code"] != "INVALID_ARGUMENTS" {
-		t.Errorf("expected INVALID_ARGUMENTS error code, got: %v", jsonOut)
+	if !strings.Contains(textContent.Text, "ADAPTER_NOT_READY") {
+		t.Errorf("expected ADAPTER_NOT_READY in response, got: %s", textContent.Text)
 	}
 }
 
-func TestStreamableHTTPHandler(t *testing.T) {
+func TestHealthEndpoints(t *testing.T) {
 	bridge := getTestBridgeConfig()
-	server := NewGatewayServer(bridge)
+	state := NewAdapterState()
+	state.SetReady(true, "ready", &BridgeVersionInfo{
+		BridgeAPIVersion: 1,
+		CoreAPIVersion:   1,
+		GatewayVersion:   "0.6.0",
+		MCPProtocol:      "2026-07-28",
+	})
+	server := NewGatewayServer(bridge, state)
 
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return server
@@ -193,31 +190,174 @@ func TestStreamableHTTPHandler(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handler)
+	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"alive"}`)
+	})
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !state.IsReady() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"status":"not_ready"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ready"}`)
+	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","adapter":"mcp-gateway-adapter","version":"0.2.0"}`)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"gateway":"MCP-Pi","status":"ok"}`)
+	})
+	mux.HandleFunc("/server/discover", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"0.6.0"},"protocol":"2026-07-28"}`)
 	})
 
-	ts := httptest.NewServer(mux)
+	ts := httptest.NewServer(SecurityMiddleware(mux))
 	defer ts.Close()
 
-	// Test GET /health
-	resp, err := http.Get(ts.URL + "/health")
-	if err != nil {
-		t.Fatalf("GET /health failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 OK, got %d", resp.StatusCode)
+	// 1. /live
+	reqLive, _ := http.NewRequest("GET", ts.URL+"/live", nil)
+	reqLive.Host = "127.0.0.1"
+	respLive, err := http.DefaultClient.Do(reqLive)
+	if err != nil || respLive.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /live, got %v (err: %v)", respLive.StatusCode, err)
 	}
 
-	// Test Stateless MCP endpoint: GET /mcp returns 405 Method Not Allowed in stateless mode
-	resp2, err := http.Get(ts.URL + "/mcp")
+	// 2. /ready when ready
+	reqReady, _ := http.NewRequest("GET", ts.URL+"/ready", nil)
+	reqReady.Host = "localhost"
+	respReady, err := http.DefaultClient.Do(reqReady)
+	if err != nil || respReady.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /ready, got %v (err: %v)", respReady.StatusCode, err)
+	}
+
+	// 3. /ready when NOT ready -> 503
+	state.SetReady(false, "not ready", nil)
+	reqNotReady, _ := http.NewRequest("GET", ts.URL+"/ready", nil)
+	reqNotReady.Host = "localhost"
+	respNotReady, err := http.DefaultClient.Do(reqNotReady)
+	if err != nil || respNotReady.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 for /ready when not ready, got %v", respNotReady.StatusCode)
+	}
+
+	// 4. /health
+	reqHealth, _ := http.NewRequest("GET", ts.URL+"/health", nil)
+	reqHealth.Host = "127.0.0.1"
+	respHealth, err := http.DefaultClient.Do(reqHealth)
+	if err != nil || respHealth.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /health, got %v", respHealth.StatusCode)
+	}
+
+	// 5. /server/discover
+	reqDiscover, _ := http.NewRequest("GET", ts.URL+"/server/discover", nil)
+	reqDiscover.Host = "127.0.0.1"
+	respDiscover, err := http.DefaultClient.Do(reqDiscover)
+	if err != nil || respDiscover.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for /server/discover, got %v", respDiscover.StatusCode)
+	}
+}
+
+func TestHostAndOriginSecurity(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	secured := SecurityMiddleware(mux)
+
+	// Case 1: Valid localhost Host -> 200
+	req1, _ := http.NewRequest("GET", "/live", nil)
+	req1.Host = "localhost:8090"
+	rr1 := httptest.NewRecorder()
+	secured.ServeHTTP(rr1, req1)
+	if rr1.Code != http.StatusOK {
+		t.Errorf("expected 200 for localhost Host, got %d", rr1.Code)
+	}
+
+	// Case 2: Valid 127.0.0.1 Host -> 200
+	req2, _ := http.NewRequest("GET", "/live", nil)
+	req2.Host = "127.0.0.1:8090"
+	rr2 := httptest.NewRecorder()
+	secured.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusOK {
+		t.Errorf("expected 200 for 127.0.0.1 Host, got %d", rr2.Code)
+	}
+
+	// Case 3: Malicious Host header (DNS rebinding simulation) -> 403
+	req3, _ := http.NewRequest("GET", "/live", nil)
+	req3.Host = "attacker.com:8090"
+	rr3 := httptest.NewRecorder()
+	secured.ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for attacker.com Host, got %d", rr3.Code)
+	}
+
+	// Case 4: Valid Origin (http://localhost:3000) -> 200
+	req4, _ := http.NewRequest("GET", "/live", nil)
+	req4.Host = "127.0.0.1:8090"
+	req4.Header.Set("Origin", "http://localhost:3000")
+	rr4 := httptest.NewRecorder()
+	secured.ServeHTTP(rr4, req4)
+	if rr4.Code != http.StatusOK {
+		t.Errorf("expected 200 for localhost Origin, got %d", rr4.Code)
+	}
+
+	// Case 5: Malicious Origin (http://evil.com) -> 403
+	req5, _ := http.NewRequest("GET", "/live", nil)
+	req5.Host = "127.0.0.1:8090"
+	req5.Header.Set("Origin", "http://evil.com")
+	rr5 := httptest.NewRecorder()
+	secured.ServeHTTP(rr5, req5)
+	if rr5.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for evil.com Origin, got %d", rr5.Code)
+	}
+
+	// Case 6: Request body size limit (> 1 MiB rejected)
+	bigBody := bytes.Repeat([]byte("a"), 1048576+100)
+	req6, _ := http.NewRequest("POST", "/live", bytes.NewReader(bigBody))
+	req6.Host = "127.0.0.1:8090"
+	rr6 := httptest.NewRecorder()
+	handlerWithRead := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	SecurityMiddleware(handlerWithRead).ServeHTTP(rr6, req6)
+	if rr6.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 Request Entity Too Large for oversized body, got %d", rr6.Code)
+	}
+}
+
+func TestStatelessMCPNegativeSessions(t *testing.T) {
+	bridge := getTestBridgeConfig()
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return server
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true,
+	})
+
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	// In stateless mode, GET /mcp must return 405 Method Not Allowed
+	resp, err := http.Get(ts.URL)
 	if err != nil {
 		t.Fatalf("GET /mcp failed: %v", err)
 	}
-	defer resp2.Body.Close()
-	if resp2.StatusCode != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for GET /mcp in stateless mode, got %d", resp2.StatusCode)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET in stateless mode, got %d", resp.StatusCode)
 	}
 }

@@ -33,11 +33,12 @@ SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e ssh -o StrictHostKeyChecking=accept-ne
 
 # Tar and stream codebase to remote directory
 echo "2. Transferring source and config files..."
-tar -C "${PROJECT_ROOT}" -czf - src config tests scripts docs | \
+tar -C "${PROJECT_ROOT}" -czf - src config tests scripts docs bin compatibility.json manifest.json install.sh SHA256SUMS | \
     SSHPASS="${MCP_PI_PASSWORD:-}" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${PI_USER}@${PI_HOST}" "
         sudo -u mcp-gateway tar -xzf - -C '${REMOTE_TARGET_DIR}'
         sudo chown -R mcp-gateway:mcp-gateway '${REMOTE_TARGET_DIR}'
         sudo chmod -R u+rwX,go+rX '${REMOTE_TARGET_DIR}'
+        sudo chmod 755 '${REMOTE_TARGET_DIR}/bin/mcp-gateway' '${REMOTE_TARGET_DIR}/install.sh'
     "
 
 # Transfer Go MCP adapter binary if present and changed
