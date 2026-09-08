@@ -113,7 +113,36 @@
         </div>
         <div class="flex justify-between py-2 border-b border-slate-900">
           <span class="text-slate-400">Write Policy</span>
-          <span class="font-mono text-amber-400">read-only (Phase 4B)</span>
+          <span class="font-mono text-amber-400">read-only (Phase 4B/4C)</span>
+        </div>
+        <div class="pt-2 border-t border-slate-800/80">
+          <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">MCP Protocol Adapter</div>
+          <div class="space-y-1.5">
+            <div class="flex justify-between">
+              <span class="text-slate-400">MCP Adapter</span>
+              {% if mcp_online %}
+                <span class="font-mono text-emerald-400 font-semibold flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ONLINE
+                </span>
+              {% else %}
+                <span class="font-mono text-slate-500 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> OFFLINE
+                </span>
+              {% endif %}
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Protocol</span>
+              <span class="font-mono text-slate-300">2026-07-28</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Transport</span>
+              <span class="font-mono text-slate-300">Streamable HTTP (stdio)</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Bind</span>
+              <span class="font-mono text-slate-300">127.0.0.1:8090</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="pt-2">

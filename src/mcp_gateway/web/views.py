@@ -162,6 +162,16 @@ def dashboard():
     except Exception:
         uptime_sec = 0
 
+    # MCP Adapter status check on 127.0.0.1:8090
+    import socket
+    mcp_online = False
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.15)
+            mcp_online = (s.connect_ex(("127.0.0.1", 8090)) == 0)
+    except Exception:
+        mcp_online = False
+
     return render_template(
         "dashboard.html",
         gateway_enabled=gateway_enabled,
@@ -174,6 +184,7 @@ def dashboard():
         denied_count=denied_count,
         uptime_sec=uptime_sec,
         recent_activity=recent_activity,
+        mcp_online=mcp_online,
     )
 
 

@@ -9,3 +9,6 @@ __pycache__/
 *admin-secret*
 tailwind/node_modules/
 .superpowers/
+mcp-adapter/mcp-gateway-adapter
+bin/
+

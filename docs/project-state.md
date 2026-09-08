@@ -27,17 +27,19 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Supervivencia a Reboot** | **PASS** | Canal Pi → PC restaurado y verificado tras reboot de `MCP-Pi` |
 | **Revocación de Clave** | **PASS** | Prueba de revocación y restauración ejecutada con éxito |
 | **Gateway Core (Fase 4A)** | **PASS** | Arquitectura multi-target, Python stdlib (cero dependencias externas), UID 1001 |
-| **Remote Unit Tests** | **PASS** | 71/71 pruebas unitarias ejecutadas remotamente en `MCP-Pi` bajo `mcp-gateway` (125.3s en ARMv6l) |
+| **Remote Unit Tests** | **PASS** | 77/77 pruebas unitarias ejecutadas remotamente en `MCP-Pi` bajo `mcp-gateway` (126.3s en ARMv6l) |
 | **Live Target Tests** | **PASS** | 8/8 herramientas verificadas en vivo contra `termux-main` (`health`, `list_targets`, `target_status`, `list_directory`, `file_stat`, `read_file`, `git_status`, `run_task`) tanto con backend JSON como con backend SQLite |
 | **Policy Engine** | **PASS** | Deny-by-default, bloqueo sintáctico `..`, validación canónica remota con `realpath`, allowlist estricta de tareas |
 | **Negative Security Tests** | **PASS** | 5/5 vectores bloqueados (`..`, `/abs`, `task`, `target`, escape de symlink fuera de root) |
 | **Persistent Registry (Fase 4B)** | **PASS** | SQLite 3.34.1 con consultas 100% parametrizadas, `PRAGMA user_version = 1`, paridad total con JSON, rollback transparente (`MCP_GATEWAY_REGISTRY=json`) |
 | **Emergency Kill Switch** | **PASS** | Interrupción global inmediata en SQLite (`gateway_enabled=false`) y por target individual (`TARGET_DISABLED`), validado en vivo |
 | **Admin Console (Fase 4B)** | **PASS** | Flask 1.1.2 + Jinja2 + Tailwind CSS en `127.0.0.1:8080`, protegido por túnel SSH, CSRF, cookies HttpOnly/SameSite=Strict, PBKDF2 hashing, rate limiting (5 intentos / 60s) |
-| **Servicio systemd** | **PASS** | `mcp-gateway-admin.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (PID 2255, RSS ~19MB, latencia ~50ms) |
-| **MCP_SDK_GATE** | **DEFERRED** | Python stdlib puro preservado. SDK oficial pospuesto para evitar dependencias pesadas en ARMv6l. |
-| **Adaptador Protocolo MCP** | **NOT_IMPLEMENTED** | Previsto para Fase 5 (stdio JSON-RPC o SDK ultraligero) |
-| **ChatGPT -> Pi** | **NOT_IMPLEMENTED** | Previsto para Fase 5 |
+| **Servicio Admin systemd** | **PASS** | `mcp-gateway-admin.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (PID 2691, RSS ~14.6MB, latencia ~50ms) |
+| **Official Go MCP SDK (Fase 4C)** | **PASS** | `github.com/modelcontextprotocol/go-sdk` v1.7.0 fijado, protocolo 2026-07-28 (compat 2025-11-25), cross-compile estático ARMv6 (8.38MB) |
+| **Transports MCP (Fase 4C)** | **PASS** | stdio (subproceso local) y Streamable HTTP en `127.0.0.1:8090/mcp` (stateless), 8/8 herramientas verificadas vía MCP |
+| **Servicio MCP systemd** | **PASS** | `mcp-gateway-mcp.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (PID 2720, RSS ~10MB) |
+| **Seguridad E2E vía MCP** | **PASS** | 6/6 vectores negativos rechazados por Python Core (`INVALID_PATH`, `UNKNOWN_TARGET`, `UNKNOWN_PROJECT`, `TASK_NOT_ALLOWED`, `PATH_OUTSIDE_ALLOWED_ROOT`, `GATEWAY_DISABLED`) |
+| **Integración ChatGPT** | **DEFERRED_TO_PHASE_6** | Conexión directa no permitida hacia localhost; requiere evaluar Secure MCP Tunnel en Fase 6 |
 
 ---
 
@@ -50,12 +52,17 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 - **Proyecto Autorizado**: `MCP_Local` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local`
 - **DHCP_RESERVATION**: `REQUIRED_MANUAL_ROUTER_ACTION` (Router DHCP para MAC `8c:90:2d:ac:e5:c0` -> `192.168.68.85`)
 - **Consola de Administración**: `http://127.0.0.1:8080` (accesible exclusivamente mediante túnel SSH `ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`)
+- **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service`)
 
 ---
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-08 15:55 CST (21:55 UTC)
-- **CURRENT_PHASE**: FASE 4B (Secure Admin Console + Persistent Registry) - COMPLETADA
-- **NEXT_PHASE**: FASE 5 (Adaptador de Protocolo MCP / Integración con ChatGPT)
-- **NEXT_ACTION**: Implementar el adaptador de protocolo MCP ligero (JSON-RPC stdio) sobre el Gateway Core y el Registro SQLite para permitir la conexión formal de clientes MCP (como ChatGPT o Gemini) sin incurrir en dependencias pesadas en ARMv6l.
+- **LAST_VERIFIED**: 2026-09-08 16:36 CST (22:36 UTC)
+- **CURRENT_PHASE**: FASE 4C (Official MCP Protocol Adapter) - COMPLETADA
+- **ROADMAP**:
+  - **Fase 4C**: Official MCP Adapter (COMPLETADA)
+  - **Fase 5**: Controlled Write (Siguiente)
+  - **Fase 6**: External AI Clients
+  - **Fase 7**: Stable Operations
+- **NEXT_ACTION**: Implementar la Fase 5 (Controlled Write) permitiendo mutaciones seguras y auditadas en workspaces autorizados con validaciones estrictas y protección contra escrituras fuera de límites.

@@ -1,0 +1,17 @@
+[Unit]
+Description=MCP Gateway Official MCP Adapter (Streamable HTTP)
+After=network.target mcp-gateway-admin.service
+
+[Service]
+Type=simple
+User=mcp-gateway
+Group=mcp-gateway
+WorkingDirectory=/home/mcp-gateway/mcp-gateway
+ExecStart=/home/mcp-gateway/mcp-gateway/bin/mcp-gateway-adapter -transport http -bind 127.0.0.1:8090 -python /usr/bin/python3 -pythonpath /home/mcp-gateway/mcp-gateway/src
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

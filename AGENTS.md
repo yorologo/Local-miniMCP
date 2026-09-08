@@ -136,8 +136,18 @@ ssh Yorologo@192.168.68.85
   - Servicio systemd `mcp-gateway-admin.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (RSS ~19 MB, latencia ~50 ms).
   - Herramienta administrativa `mcp_gateway.admin_cli` (set-password, backup online vía SQLite API, export-json saneado, import-json).
   - Batería de pruebas: 71/71 unit tests remotos, 8/8 live tests, 5/5 negative security tests y ciclo completo de kill switch superados.
-  - Documentación en [docs/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/admin-console.md), runbook en [docs/runbooks/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/admin-console.md) y [docs/runbooks/registry-backup-restore.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/registry-backup-restore.md).
-- **Fase 5 (Adaptador de Protocolo MCP & ChatGPT)**: **SIGUIENTE**.
+- **Fase 4C (Adaptador de Protocolo MCP Oficial)**: **TERMINADA**.
+  - Adaptador de protocolo MCP basado en el SDK oficial de Go (`github.com/modelcontextprotocol/go-sdk` v1.7.0).
+  - Binario estático optimizado cross-compilado para ARMv6 (`mcp-gateway-adapter`, 8.38 MB).
+  - Protocolo MCP 2026-07-28 (compatible con negociación 2025-11-25).
+  - Transportes soportados: stdio y Streamable HTTP (`127.0.0.1:8090/mcp` con chunked SSE).
+  - Puente CLI `mcp_gateway.bridge` que preserva el 100% de la autoridad de seguridad, SQLiteRegistry y Policy Engine en Python.
+  - Servicio systemd `mcp-gateway-mcp.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (RSS ~10 MB).
+  - Pruebas superadas: 77 unit tests, 8/8 herramientas MCP operativas en vivo, 6/6 vectores negativos bloqueados y Kill Switch funcional.
+  - Documentación en [docs/mcp-adapter.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/mcp-adapter.md) y runbook en [docs/runbooks/mcp-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/mcp-smoke-test.md).
+- **Fase 5 (Operaciones de Escritura Controlada)**: **SIGUIENTE**.
+- **Fase 6 (Clientes AI Externos & ChatGPT)**: *Planificada*.
+- **Fase 7 (Operación Estable & Resiliencia)**: *Futura*.
 
 ---
 
@@ -152,6 +162,8 @@ Pi (Gateway):
   Service identity: mcp-gateway (UID 1001, NO sudo)
   Web Admin Service: mcp-gateway-admin.service (127.0.0.1:8080)
   Web Admin Access: ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
+  MCP Protocol Service: mcp-gateway-mcp.service (127.0.0.1:8090)
+  MCP Protocol Endpoint: http://127.0.0.1:8090/mcp (Streamable HTTP)
 
 PC (Worker):
   Hostname: localhost
@@ -167,7 +179,7 @@ Pi → PC:
 > [!IMPORTANT]
 > **DIRECTIVAS OBLIGATORIAS DE SEGURIDAD**:
 > - **DO NOT USE `Yorologo` FOR MCP OPERATIONS**: Las herramientas y llamadas MCP operan estrictamente como `mcp-gateway`.
-> - **DO NOT EXPOSE 127.0.0.1:8080 TO LAN**: La consola web se mantiene confinada a localhost y se accede únicamente vía túnel SSH.
+> - **DO NOT EXPOSE 127.0.0.1:8080 OR 127.0.0.1:8090 TO LAN**: La consola web y el servidor MCP se mantienen confinados a localhost.
 > - **DO NOT USE ADMINISTRATOR ACCOUNT ON PC**: El worker en el PC opera sin permisos elevados.
 > - **DO NOT MODIFY `192.168.68.54`**: Pi-hole permanece estrictamente intocable.
 

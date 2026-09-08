@@ -191,3 +191,102 @@ La Fase 4B introduce una capa de persistencia transaccional y una consola de ges
 - **Operaciones Core Auditas**: La consola invoca `GatewayTools` para pruebas y diagnósticos; nunca ejecuta comandos SSH arbitrarios desde los controladores web.
 - **Interruptor de Emergencia (Emergency Kill Switch)**: Corta globalmente el acceso de las herramientas a los targets en milisegundos actualizando `gateway_enabled = false` en la base de datos.
 
+---
+
+## 7. Adaptador de Protocolo MCP Oficial (Fase 4C)
+
+La Fase 4C expone las capacidades del Gateway Core a clientes compatibles con Model Context Protocol (MCP) mediante un adaptador de protocolo dedicado implementado con el SDK oficial de Go (`github.com/modelcontextprotocol/go-sdk` v1.7.0).
+
+```text
+┌────────────────────────────────────────────────────────┐
+│                   Cliente MCP (LLM)                    │
+│             (Claude Desktop, Cursor, etc.)             │
+└───────────────────────────┬────────────────────────────┘
+                            │
+              JSON-RPC 2.0  │ (stdio ó Streamable HTTP)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│ MCP-Pi (127.0.0.1:8090)                                │
+│                                                        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   Adaptador MCP Oficial en Go                    │  │
+│  │   (mcp-gateway-adapter)                          │  │
+│  │   - Protocolo MCP 2026-07-28 (compat 2025-11-25) │  │
+│  │   - Esquemas JSON Schema de 8 herramientas       │  │
+│  │   - Transportes: stdio & Streamable HTTP         │  │
+│  │   - Binario estático compilado para ARMv6 (8 MB) │  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │                          │
+│        Invocación Bridge    │ CLI JSON (stdout/stderr) │
+│        python3 -m bridge    │                          │
+│                             ▼                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   Puente Python Gateway (bridge.py)              │  │
+│  │   - Deserializa argumentos JSON                  │  │
+│  │   - Consulta Registry (SQLite / JSON)            │  │
+│  │   - Invoca GatewayTools con Policy Engine        │  │
+│  │   - Devuelve resultado o error estandarizado     │  │
+│  └──────────────────────────┬───────────────────────┘  │
+│                             │                          │
+│                             ▼                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   Policy Engine + Registry + SSHTransport        │  │
+│  │   - Emergency Kill Switch global & por target    │  │
+│  │   - Validación de rutas canónicas (realpath)     │  │
+│  │   - Tareas predefinidas en lista blanca          │  │
+│  └──────────────────────────┬───────────────────────┘  │
+└─────────────────────────────┼──────────────────────────┘
+                              │
+                              │ SSH Ed25519 (mcp-gateway)
+                              ▼
+                       [ Target Worker ]
+```
+
+### 7.1 Separación Estricta de Responsabilidades
+
+| Responsabilidad | Adaptador Go (`mcp-adapter`) | Núcleo Python (`mcp_gateway`) |
+|---|---|---|
+| **Protocolo MCP** | Handshake, negociación de versión, JSON-RPC 2.0 | Desacoplado de MCP (agnóstico de protocolo) |
+| **Definición de Schemas** | Esquemas formales JSON Schema para 8 herramientas | Define tipos y docstrings de métodos |
+| **Transportes** | Framing stdio y Streamable HTTP (`/mcp` con chunked SSE) | Subproceso CLI invoked on-demand |
+| **Serialización** | Validación sintáctica de inputs MCP y wrapping de respuestas | Estructuras de datos Python a JSON nativo |
+| **Seguridad y Políticas** | NINGUNA (no toma decisiones de autorización) | **AUTORIDAD ÚNICA**: validación de rutas, traversal, allowlists |
+| **Kill Switch** | No almacena estado de seguridad | Evaluado en cada invocación contra `gateway.db` |
+| **Conexiones SSH** | NINGUNA (no maneja credenciales ni claves SSH) | Invocación `ssh` segura con usuario `mcp-gateway` |
+
+### 7.2 Protocolo y Transportes Soportados
+
+1. **Stdio**:
+   - Lectura de mensajes JSON-RPC por `stdin` y emisión por `stdout`.
+   - Ideal para clientes locales (CLI, scripts, subprocesos de herramientas locales).
+   - Flag: `-transport stdio`.
+2. **Streamable HTTP**:
+   - Escucha en `127.0.0.1:8090/mcp`.
+   - Endpoint de salud en `GET /health` (retorna `{"status":"ok"}`).
+   - Protocolo streaming basado en SSE (Server-Sent Events) cuando el cliente solicita `Accept: application/json, text/event-stream`.
+   - Respuestas chunked con eventos de protocolo MCP.
+   - Flag: `-transport http -bind 127.0.0.1:8090`.
+
+### 7.3 Interfaz de Puente (Bridge)
+
+La comunicación entre el adaptador Go y el Gateway Core se realiza a través de la CLI del puente `bridge.py`:
+```bash
+python3 -m mcp_gateway.bridge invoke <tool_name> '<json_arguments>'
+```
+- **Entrada**: Nombre de la herramienta y un string JSON con sus argumentos.
+- **Salida**: JSON estructurado en `stdout`:
+  - En caso exitoso: `{"ok": true, "result": {...}, "tool": "...", "duration_ms": ...}`
+  - En caso de error: `{"ok": false, "error": {"code": "...", "message": "..."}, "tool": "..."}`
+- **Códigos de salida**:
+  - `0`: Ejecución exitosa de la herramienta.
+  - `1`: Error controlado devuelto por la herramienta (política, archivo no encontrado, timeout, etc.).
+  - `2`: Error de sintaxis en argumentos o fallo interno del puente.
+
+### 7.4 Servicio del Sistema e Integración Operacional
+
+- **Servicio systemd**: `mcp-gateway-mcp.service` activo y habilitado en el arranque.
+- **Usuario de ejecución**: `User=mcp-gateway`, `Group=mcp-gateway` (sin privilegios de root ni sudo).
+- **Consumo de memoria**: ~10 MiB RSS en la Raspberry Pi Model A+.
+- **Monitoreo en Consola Admin**: La consola web de administración (`127.0.0.1:8080`) verifica en tiempo real la conectividad contra el socket del adaptador en `127.0.0.1:8090` y muestra el estado en el Dashboard.
+
+

@@ -50,7 +50,10 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 | **Fase 3: Canal Pi → PC** | Canal SSH unidireccional `pc-local` con clave exclusiva y workspace smoke | **COMPLETADA (PASS_WITH_LIMITATION)** |
 | **Fase 4A: Gateway Core** | Núcleo modular multi-target en Python stdlib, políticas deny-by-default y 8 herramientas operativas | **COMPLETADA** |
 | **Fase 4B: Consola Admin & Registro** | Consola Web en `127.0.0.1:8080` (Flask + Jinja2 + Tailwind), Registro SQLite persistente y Emergency Kill Switch | **COMPLETADA** |
-| **Fase 5: Adaptador MCP & ChatGPT** | Exposición mediante protocolo MCP (stdio JSON-RPC ligero) e integración con clientes LLM | *Siguiente* |
+| **Fase 4C: Adaptador MCP Oficial** | Adaptador de protocolo MCP con Go SDK oficial v1.7.0, stdio y Streamable HTTP (`127.0.0.1:8090`), 8 herramientas | **COMPLETADA** |
+| **Fase 5: Escritura Controlada** | Mutaciones controladas, escrituras acotadas a workspaces autorizados y políticas de cambio | *Siguiente* |
+| **Fase 6: Clientes AI Externos & ChatGPT** | Integración con ChatGPT, Claude Desktop, túneles seguros y perfiles de autenticación cliente | *Planificada* |
+| **Fase 7: Operación Estable & Resiliencia** | Hardening de red, rotación de claves, monitoreo continuo y recuperación ante desastres | *Futura* |
 
 ---
 
@@ -66,7 +69,11 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
   ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
   # Navegar a http://127.0.0.1:8080
   ```
-- **Identidad de Servicio Gateway**: `mcp-gateway` (sin sudo, opera el canal SSH, el gateway core y la consola web)
+- **Servidor de Protocolo MCP (Streamable HTTP)**:
+  - Endpoint local: `http://127.0.0.1:8090/mcp`
+  - Endpoint de salud: `http://127.0.0.1:8090/health`
+  - Servicio systemd: `mcp-gateway-mcp.service` (escuchando estrictamente en loopback)
+- **Identidad de Servicio Gateway**: `mcp-gateway` (sin sudo, opera el canal SSH, el gateway core, la consola web y el adaptador MCP)
 - **Credenciales locales**: El archivo local `.mcp-pi.local.env` almacena los datos de entorno local (ignorado por Git, no committear).
 
 ---
@@ -75,8 +82,10 @@ La Raspberry Pi actúa como **orquestador y frontera de seguridad**:
 
 La documentación detallada se encuentra en:
 - [AGENTS.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/AGENTS.md): Reglas, directivas de seguridad e identidades operacionales.
-- [docs/architecture.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/architecture.md): Diagramas de red y roles de seguridad.
+- [docs/architecture.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/architecture.md): Diagramas de red, capas del gateway y roles de seguridad.
 - [docs/project-state.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/project-state.md): Matriz de verificación y estado en tiempo real.
+- [docs/mcp-adapter.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/mcp-adapter.md): Especificación técnica del Adaptador Go MCP, schemas, transportes y puente.
+- [docs/runbooks/mcp-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/mcp-smoke-test.md): Manual de pruebas de humo y verificación E2E del protocolo MCP.
 - [docs/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/admin-console.md): Especificación técnica de la Consola Web de Administración y Registro Persistente.
 - [docs/gateway-mvp.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/gateway-mvp.md): Especificación técnica del Gateway MVP Core, herramientas y políticas.
 - [docs/runbooks/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/admin-console.md): Manual operativo de la consola web, túnel SSH y gestión de usuarios.
