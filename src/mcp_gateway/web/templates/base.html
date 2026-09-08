@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}MCP Gateway Admin{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="h-full flex flex-col md:flex-row antialiased">
+  {% if session.get('user') %}
+  <!-- Sidebar -->
+  <aside class="w-full md:w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow">
+          π
+        </div>
+        <div>
+          <div class="font-semibold text-sm tracking-wide text-white">MCP Gateway</div>
+          <div class="text-xs text-slate-400">Admin Console</div>
+        </div>
+      </div>
+    </div>
+    <nav class="p-3 space-y-1 flex-1 text-sm">
+      <a href="{{ url_for('admin.dashboard') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>📊</span> Dashboard
+      </a>
+      <a href="{{ url_for('admin.targets_list') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>🎯</span> Targets
+      </a>
+      <a href="{{ url_for('admin.projects_list') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>📁</span> Projects
+      </a>
+      <a href="{{ url_for('admin.clients_list') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>🤖</span> AI Clients
+      </a>
+      <a href="{{ url_for('admin.activity_view') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>📜</span> Activity Audit
+      </a>
+      <a href="{{ url_for('admin.system_view') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>⚙️</span> System
+      </a>
+      <a href="{{ url_for('admin.settings_view') }}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition">
+        <span>🛡️</span> Settings & Kill Switch
+      </a>
+    </nav>
+    <div class="p-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+      <span class="truncate">User: <strong class="text-slate-200">{{ session.get('user') }}</strong></span>
+      <form method="POST" action="{{ url_for('auth.logout') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="px-2 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition">
+          Logout
+        </button>
+      </form>
+    </div>
+  </aside>
+  {% endif %}
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col overflow-y-auto bg-slate-900">
+    <div class="p-6 max-w-7xl w-full mx-auto space-y-6">
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="space-y-2">
+            {% for category, message in messages %}
+              {% set bg_class = 'bg-emerald-950/80 border-emerald-800 text-emerald-300' if category == 'success' else ('bg-rose-950/80 border-rose-800 text-rose-300' if category == 'danger' else 'bg-slate-800 border-slate-700 text-slate-200') %}
+              <div class="p-3 rounded-lg border text-sm {{ bg_class }} shadow flex justify-between items-center">
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

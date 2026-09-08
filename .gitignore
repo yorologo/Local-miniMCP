@@ -1,0 +1,11 @@
+.mcp-pi.local.env
+*.local.env
+config/targets.local.json
+*.local.json
+__pycache__/
+*.pyc
+*.db
+*.db.backup*
+*admin-secret*
+tailwind/node_modules/
+.superpowers/

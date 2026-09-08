@@ -1,0 +1,188 @@
+# AGENTS.md - Guía Operativa para Agentes Autónomos e IA
+
+Este documento es la fuente de verdad y guía principal para cualquier IA o agente que trabaje en este repositorio. Cualquier agente nuevo que inicie sesión debe leer este archivo antes de realizar cualquier acción.
+
+---
+
+## 1. Propósito y Visión del Proyecto
+
+Construir un **Gateway MCP personal** utilizando una **Raspberry Pi Model A+**.
+
+### Arquitectura Conceptual
+```text
++-------------------+
+|      ChatGPT      |
++-------------------+
+          |
+          | MCP Seguro (Model Context Protocol)
+          v
++-------------------+
+|  Raspberry Pi A+  |  --> Frontera de seguridad / Orquestador / Gateway
++-------------------+
+          |
+          | SSH / SFTP auditado
+          v
++-------------------+
+|   PC Principal    |  --> Cómputo y almacenamiento pesado
++-------------------+
+```
+
+### División de Roles
+- **Raspberry Pi A+**:
+  - `valida`
+  - `autoriza`
+  - `limita`
+  - `orquesta`
+  - `audita`
+  - **RESTRICCIÓN CLAVE**: La Raspberry Pi **NO** ejecutará modelos LLM ni cargas pesadas (CPU ARMv6 single-core, ~176 MB RAM utilizables).
+- **PC Principal**:
+  - `almacena`
+  - `busca`
+  - `compila`
+  - `ejecuta`
+  - `procesa`
+
+---
+
+## 2. Principios de Diseño Obligatorios
+
+- **KISS (Keep It Simple, Stupid)**: Soluciones mínimas, nativas y directas.
+- **Mínimo Privilegio**: Cuentas dedicadas con permisos acotados.
+- **Deny-by-default**: Todo lo que no esté explícitamente autorizado se deniega.
+- **Cambios pequeños**: Un solo cambio a la vez, verificado inmediatamente.
+- **Pruebas después de cada cambio**: Evidencia antes de confirmación.
+- **No shell arbitrario inicialmente**: El gateway expondrá herramientas de alto nivel acotadas, no ejecución ciega de comandos en shell.
+- **No Docker salvo necesidad demostrada**: No aplica a la arquitectura ARMv6 por restricciones de memoria y soporte.
+- **No exponer SSH a Internet**: El puerto 22 se mantiene exclusivamente dentro de la LAN.
+- **No modificar la Raspberry Pi-hole**: Protección absoluta de la infraestructura de red preexistente.
+
+---
+
+## 3. Especificaciones de la Raspberry Pi Objetivo
+
+Valores verificados y confirmados tras Fase 2A:
+- **Dirección IPv4**: `192.168.68.85`
+- **Dirección MAC**: `8c:90:2d:ac:e5:c0`
+- **Hostname actual**: `MCP-Pi` (anteriormente `YorPi`)
+- **Modelo de hardware**: `Raspberry Pi Model A Plus Rev 1.1` (SoC BCM2835)
+- **Arquitectura de CPU**: `armv6l` (ARMv6-compatible processor rev 7)
+- **Memoria RAM**: `176 MiB` utilizables (de 256 MB físicos compartidos con GPU)
+- **Swap**: `100 MiB` en `/var/swap`
+- **Sistema Operativo**: `Raspbian GNU/Linux 11 (bullseye)` 32-bit
+- **Kernel**: `Linux MCP-Pi 6.1.21+ #1642 Mon Apr 3 17:19:14 BST 2023 armv6l`
+- **Puerto SSH**: `22`
+- **Usuario SSH**: `Yorologo` (sudoer con NOPASSWD)
+- **Interfaz de red activa**: `wlan0` (adaptador USB Wi-Fi Realtek RTL8188EUS, driver `r8188eu` sin alteraciones)
+
+---
+
+## 4. Conexión y Gestión de Credenciales
+
+### Comando de Acceso
+```bash
+ssh Yorologo@192.168.68.85
+```
+
+### Gestión de Secretos
+- **Credenciales locales**: Se encuentran almacenadas en el archivo local `.mcp-pi.local.env` (ignorado por Git, permisos `600`).
+- **PROHIBICIÓN ESTRICTA**:
+  - `DO NOT COMMIT` el archivo `.mcp-pi.local.env`.
+  - **NUNCA** imprimir la contraseña en consola, logs, commits, PRs ni respuestas de texto.
+  - La meta a medio plazo es reemplazar la contraseña por autenticación con clave SSH pública/privada dedicada.
+
+---
+
+## 5. Pi-hole y Resolución de Colisión de Hostname
+
+- **Dirección IP de Pi-hole**: `192.168.68.54`
+- **Hostname de Pi-hole**: `YorPi`
+- **Función**: DNS y bloqueador de anuncios local.
+- **Estado**: Dispositivo crítico e independiente, totalmente **FUERA DEL ALCANCE** de este proyecto. No reiniciar, no reconfigurar, no alterar.
+
+> [!NOTE]
+> **Colisión de Hostname RESUELTA**:
+> - **Gateway**: `192.168.68.85` -> Hostname establecido como `MCP-Pi` (MAC `8c:90:2d:ac:e5:c0`).
+> - **Pi-hole**: `192.168.68.54` -> Conserva su identidad histórica `YorPi`.
+> Ya no existe ambigüedad de nombres en la red local.
+
+---
+
+## 6. Estado Actual del Proyecto
+
+- **Fase 1 (Línea Base Técnica y Diagnóstico)**: **TERMINADA**.
+- **Fase 2A (Identidad de Red, Estabilidad y Recuperación del UPDATE_GATE)**: **TERMINADA**.
+- **Fase 2B (Identidad Técnica en Gateway)**: **TERMINADA**.
+  - Usuario `mcp-gateway` (UID 1001, sin sudo) creado con clave exclusiva Ed25519.
+- **Fase 3 (Canal Seguro Pi → PC)**: **TERMINADA (PASS_WITH_LIMITATION)**.
+  - Alias `pc-local` y `termux-local` configurados y validados sin contraseña desde `mcp-gateway`.
+  - Workspace smoke probado con lectura/escritura (`mcp-workspace-smoke/hello.txt`).
+  - Pruebas negativas y supervivencia tras reinicio de la Raspberry verificadas al 100%.
+  - Limitación: entorno monousuario Android/Termux sin separación POSIX de usuarios.
+  - Runbook detallado disponible en [docs/runbooks/pi-to-pc-ssh.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/pi-to-pc-ssh.md).
+- **Fase 4A (Gateway Core)**: **TERMINADA**.
+  - Núcleo del Gateway implementado en Python 3 stdlib puro (cero dependencias externas).
+  - Ejecución bajo cuenta `mcp-gateway` (UID 1001, sin sudo).
+  - Arquitectura multi-target y multi-proyecto desacoplada de la plataforma.
+  - Políticas de seguridad deny-by-default (traversal bloqueado, resolución canónica remota con `realpath`, lista blanca estricta de tareas).
+  - 8 herramientas implementadas y operativas (`health`, `list_targets`, `target_status`, `list_directory`, `file_stat`, `read_file`, `git_status`, `run_task`).
+  - Verificación exhaustiva: 28/28 unit tests remotos, 8/8 live tests y 5/5 negative tests superados.
+  - `MCP_SDK_GATE: DEFERRED`.
+  - Documentación completa en [docs/gateway-mvp.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/gateway-mvp.md) y runbook en [docs/runbooks/gateway-smoke-test.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/gateway-smoke-test.md).
+- **Fase 4B (Consola de Administración Segura & Registro Persistente)**: **TERMINADA**.
+  - Registro SQLite (`gateway.db`, 64 KB) con esquema parametrizado (`PRAGMA user_version = 1`), soporte para rollback instantáneo a JSON (`MCP_GATEWAY_REGISTRY=json`).
+  - Emergency Kill Switch global y por target verificado en vivo.
+  - Consola web Flask 1.1.2 + Jinja2 + Tailwind CSS precompilado (17 KB) sirviendo exclusivamente en `127.0.0.1:8080`.
+  - Acceso seguro mediante túnel SSH (`ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`).
+  - Servicio systemd `mcp-gateway-admin.service` activo y habilitado en arranque bajo usuario `mcp-gateway` (RSS ~19 MB, latencia ~50 ms).
+  - Herramienta administrativa `mcp_gateway.admin_cli` (set-password, backup online vía SQLite API, export-json saneado, import-json).
+  - Batería de pruebas: 71/71 unit tests remotos, 8/8 live tests, 5/5 negative security tests y ciclo completo de kill switch superados.
+  - Documentación en [docs/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/admin-console.md), runbook en [docs/runbooks/admin-console.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/admin-console.md) y [docs/runbooks/registry-backup-restore.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/registry-backup-restore.md).
+- **Fase 5 (Adaptador de Protocolo MCP & ChatGPT)**: **SIGUIENTE**.
+
+---
+
+## 7. Mapa Rápido de Identidades Operacionales
+
+```text
+Pi (Gateway):
+  Hostname: MCP-Pi
+  IP: 192.168.68.85
+  MAC: 8c:90:2d:ac:e5:c0
+  Administrative access: ssh Yorologo@192.168.68.85
+  Service identity: mcp-gateway (UID 1001, NO sudo)
+  Web Admin Service: mcp-gateway-admin.service (127.0.0.1:8080)
+  Web Admin Access: ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
+
+PC (Worker):
+  Hostname: localhost
+  LAN IP: 192.168.68.84
+  Port: 8022
+  Service identity: u0_a435 (Android 16 / Termux sandbox, NO root)
+
+Pi → PC:
+  Comando: ssh pc-local <comando>
+  Allowed initial root: /data/data/com.termux/files/home/Projects/test/MCP_Local/mcp-workspace-smoke
+```
+
+> [!IMPORTANT]
+> **DIRECTIVAS OBLIGATORIAS DE SEGURIDAD**:
+> - **DO NOT USE `Yorologo` FOR MCP OPERATIONS**: Las herramientas y llamadas MCP operan estrictamente como `mcp-gateway`.
+> - **DO NOT EXPOSE 127.0.0.1:8080 TO LAN**: La consola web se mantiene confinada a localhost y se accede únicamente vía túnel SSH.
+> - **DO NOT USE ADMINISTRATOR ACCOUNT ON PC**: El worker en el PC opera sin permisos elevados.
+> - **DO NOT MODIFY `192.168.68.54`**: Pi-hole permanece estrictamente intocable.
+
+---
+
+## 8. Reglas Inmutables para Futuros Agentes
+
+1. **Leer `AGENTS.md`** antes de cualquier intervención.
+2. **Consultar [docs/project-state.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/project-state.md)** para conocer el estado actual y la siguiente acción autorizada.
+3. **Verificar identidad del host** (`hostname -I`, `/proc/device-tree/model`) antes de aplicar cambios administrativos.
+4. **No modificar `192.168.68.54`** bajo ninguna circunstancia.
+5. **No revelar secretos** ni contraseñas en código, consola, commits ni documentación.
+6. **No instalar componentes innecesarios**: Mantener la Pi extremadamente ligera. No instalar Docker ni software pesado.
+7. **Ejecutar pruebas tras cambios**: Siempre verificar conectividad, servicios y recursos tras modificar cualquier archivo o servicio.
+8. **Actualizar la documentación**: Cualquier cambio de infraestructura debe reflejarse de inmediato en `docs/project-state.md` y archivos relacionados.
+9. **Preferir operaciones explícitas**: No ejecutar scripts ciegos ni comandos destructivos; verificar individualmente.
+10. **Detenerse ante discrepancias**: Si la IP, MAC, modelo o respuesta del host no coincide con los valores registrados, ejecutar `STOP` de inmediato y documentar la anomalía.
+

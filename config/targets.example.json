@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "targets": {
+    "termux-main": {
+      "platform": "android-termux",
+      "host": "192.168.68.84",
+      "port": 8022,
+      "user": "u0_a435",
+      "ssh_alias": "termux-local",
+      "enabled": true,
+      "projects": {
+        "MCP_Local": {
+          "root": "/data/data/com.termux/files/home/Projects/test/MCP_Local",
+          "read": true,
+          "write": false,
+          "tasks": {
+            "git_status": {
+              "enabled": true,
+              "argv": ["git", "status", "--short"],
+              "timeout": 30
+            }
+          }
+        }
+      }
+    },
+    "linux-workstation": {
+      "platform": "linux",
+      "host": "192.168.68.100",
+      "port": 22,
+      "user": "mcp-agent",
+      "ssh_alias": "linux-local",
+      "enabled": false,
+      "projects": {
+        "example-project": {
+          "root": "/home/mcp-agent/projects/example",
+          "read": true,
+          "write": false,
+          "tasks": {
+            "git_status": {
+              "enabled": true,
+              "argv": ["git", "status", "--short"],
+              "timeout": 30
+            }
+          }
+        }
+      }
+    }
+  }
+}

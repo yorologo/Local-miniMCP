@@ -1,0 +1,658 @@
+"""Views and route handlers for MCP Gateway Admin Console."""
+
+import json
+import os
+import platform
+import shutil
+import socket
+import sys
+import time
+from typing import Any, Dict
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
+from .. import __version__
+from .auth import (
+    check_password_hash,
+    is_rate_limited,
+    login_required,
+    record_login_failure,
+    reset_login_failures,
+)
+from .csrf import get_csrf_token
+
+bp = Blueprint("admin", __name__)
+auth_bp = Blueprint("auth", __name__)
+
+
+def get_registry():
+    return current_app.config["REGISTRY"]
+
+
+def get_tools():
+    return current_app.config["TOOLS"]
+
+
+def record_audit(action: str, target_id: str = None, project_id: str = None, success: bool = True, error_code: str = None, detail: str = ""):
+    try:
+        reg = get_registry()
+        reg.record_activity({
+            "actor": session.get("user", "system"),
+            "action": action,
+            "target_id": target_id,
+            "project_id": project_id,
+            "success": success,
+            "error_code": error_code,
+            "detail": detail,
+        })
+    except Exception:
+        pass
+
+
+# ==========================================
+# Authentication Routes
+# ==========================================
+
+@auth_bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method in ("GET", "HEAD"):
+        if session.get("user"):
+            return redirect(url_for("admin.dashboard"))
+        return render_template("login.html")
+
+    # POST login
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    ip = request.remote_addr or "127.0.0.1"
+
+    if is_rate_limited(ip) or is_rate_limited(username):
+        record_audit("admin_login_rate_limited", success=False, error_code="RATE_LIMITED", detail=f"IP {ip} or user {username} locked out")
+        flash("Too many failed login attempts. Please wait 1 minute.", "danger")
+        return render_template("login.html"), 429
+
+    registry = get_registry()
+    user_record = registry.get_admin_user(username)
+
+    if not user_record or not user_record.get("enabled", True):
+        record_login_failure(ip)
+        record_login_failure(username)
+        record_audit("admin_login_failed", success=False, error_code="AUTH_FAILED", detail=f"User '{username}' not found or disabled")
+        flash("Invalid username or password.", "danger")
+        return render_template("login.html"), 401
+
+    if not check_password_hash(user_record["password_hash"], password):
+        record_login_failure(ip)
+        record_login_failure(username)
+        record_audit("admin_login_failed", success=False, error_code="AUTH_FAILED", detail=f"Bad password for user '{username}'")
+        flash("Invalid username or password.", "danger")
+        return render_template("login.html"), 401
+
+    # Successful login: reset session and rate limit
+    reset_login_failures(ip)
+    reset_login_failures(username)
+    session.clear()
+    session["user"] = username
+    session["last_active"] = time.time()
+    get_csrf_token()  # Generate fresh CSRF token
+
+    registry.update_admin_login(username)
+    record_audit("admin_login_success", success=True, detail=f"Admin '{username}' logged in")
+
+    next_url = request.args.get("next")
+    if next_url and next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect(url_for("admin.dashboard"))
+
+
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    user = session.get("user", "unknown")
+    record_audit("admin_logout", success=True, detail=f"User '{user}' logged out")
+    session.clear()
+    flash("You have been successfully logged out.", "info")
+    return redirect(url_for("auth.login"))
+
+
+# ==========================================
+# Dashboard & Main Routes
+# ==========================================
+
+@bp.route("/")
+def index():
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/dashboard")
+@login_required
+def dashboard():
+    registry = get_registry()
+    tools = get_tools()
+
+    gw_enabled_str = str(registry.get_setting("gateway_enabled", "true")).lower()
+    gateway_enabled = gw_enabled_str in ("true", "1", "yes", "on")
+
+    targets = registry.list_targets()
+    total_targets = len(targets)
+    online_targets = sum(1 for t in targets if t.get("enabled", True))
+
+    projects = registry.list_projects()
+    total_projects = len(projects)
+
+    clients = registry.list_clients()
+    total_clients = len(clients)
+
+    total_requests = registry.get_activity_count()
+    recent_activity = registry.list_activity(limit=8)
+    denied_count = sum(1 for a in recent_activity if not a.get("success", True))
+
+    # Basic system info
+    uptime_sec = 0
+    try:
+        with open("/proc/uptime", "r") as f:
+            uptime_sec = int(float(f.readline().split()[0]))
+    except Exception:
+        uptime_sec = 0
+
+    return render_template(
+        "dashboard.html",
+        gateway_enabled=gateway_enabled,
+        gateway_version=__version__,
+        total_targets=total_targets,
+        online_targets=online_targets,
+        total_projects=total_projects,
+        total_clients=total_clients,
+        total_requests=total_requests,
+        denied_count=denied_count,
+        uptime_sec=uptime_sec,
+        recent_activity=recent_activity,
+    )
+
+
+# ==========================================
+# Targets Management
+# ==========================================
+
+@bp.route("/targets")
+@login_required
+def targets_list():
+    registry = get_registry()
+    targets = registry.list_targets()
+    return render_template("targets.html", targets=targets)
+
+
+@bp.route("/targets/add", methods=["GET", "POST"])
+@login_required
+def target_add():
+    if request.method == "GET":
+        return render_template("target_form.html", target=None, is_edit=False)
+
+    # POST add target
+    data = {
+        "id": request.form.get("id", "").strip(),
+        "display_name": request.form.get("display_name", "").strip(),
+        "platform": request.form.get("platform", "linux").strip(),
+        "host": request.form.get("host", "").strip(),
+        "port": int(request.form.get("port", 22)),
+        "user": request.form.get("user", "").strip(),
+        "ssh_alias": request.form.get("ssh_alias", "").strip(),
+        "enabled": request.form.get("enabled") == "on",
+    }
+    if not data["id"] or not data["host"] or not data["user"]:
+        flash("ID, host, and user are required fields.", "danger")
+        return render_template("target_form.html", target=data, is_edit=False)
+
+    try:
+        registry = get_registry()
+        registry.add_target(data)
+        record_audit("add_target", target_id=data["id"], success=True, detail=f"Added target '{data['id']}'")
+        flash(f"Target '{data['id']}' created successfully.", "success")
+        return redirect(url_for("admin.targets_list"))
+    except Exception as e:
+        flash(f"Error creating target: {e}", "danger")
+        return render_template("target_form.html", target=data, is_edit=False)
+
+
+@bp.route("/targets/<target_id>/edit", methods=["GET", "POST"])
+@login_required
+def target_edit(target_id: str):
+    registry = get_registry()
+    try:
+        target = registry.get_target(target_id)
+    except Exception:
+        # Check raw db if disabled
+        with registry._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM targets WHERE id = ?", (target_id,))
+            row = cursor.fetchone()
+            if not row:
+                abort(404, description="Target not found")
+            target = dict(row)
+            target["enabled"] = bool(target["enabled"])
+
+    if request.method == "GET":
+        target["id"] = target_id
+        return render_template("target_form.html", target=target, is_edit=True)
+
+    # POST edit target
+    update_data = {
+        "display_name": request.form.get("display_name", "").strip(),
+        "platform": request.form.get("platform", "linux").strip(),
+        "host": request.form.get("host", "").strip(),
+        "port": int(request.form.get("port", 22)),
+        "user": request.form.get("user", "").strip(),
+        "ssh_alias": request.form.get("ssh_alias", "").strip(),
+        "enabled": request.form.get("enabled") == "on",
+    }
+    try:
+        registry.update_target(target_id, update_data)
+        record_audit("update_target", target_id=target_id, success=True, detail=f"Updated target '{target_id}'")
+        flash(f"Target '{target_id}' updated successfully.", "success")
+        return redirect(url_for("admin.targets_list"))
+    except Exception as e:
+        flash(f"Error updating target: {e}", "danger")
+        target["id"] = target_id
+        target.update(update_data)
+        return render_template("target_form.html", target=target, is_edit=True)
+
+
+@bp.route("/targets/<target_id>/toggle", methods=["POST"])
+@login_required
+def target_toggle(target_id: str):
+    registry = get_registry()
+    with registry._get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT enabled FROM targets WHERE id = ?", (target_id,))
+        row = cursor.fetchone()
+        if not row:
+            abort(404, description="Target not found")
+        new_state = not bool(row["enabled"])
+        registry.update_target(target_id, {"enabled": new_state})
+        record_audit("toggle_target", target_id=target_id, success=True, detail=f"Set target '{target_id}' enabled={new_state}")
+        status_txt = "enabled" if new_state else "disabled"
+        flash(f"Target '{target_id}' is now {status_txt}.", "info")
+    return redirect(url_for("admin.targets_list"))
+
+
+@bp.route("/targets/<target_id>/test", methods=["POST"])
+@login_required
+def target_test(target_id: str):
+    tools = get_tools()
+    res = tools.target_status(target_id)
+    record_audit("test_target", target_id=target_id, success=res.get("ok", False), detail=f"Status test: {res}")
+    if res.get("ok"):
+        latency = res.get("result", {}).get("latency_ms", res.get("duration_ms", 0))
+        flash(f"Target '{target_id}' reachable! Latency: {latency} ms", "success")
+    else:
+        err = res.get("error", {})
+        flash(f"Target check failed [{err.get('code')}]: {err.get('message')}", "danger")
+    return redirect(url_for("admin.targets_list"))
+
+
+# ==========================================
+# Projects Management
+# ==========================================
+
+@bp.route("/projects")
+@login_required
+def projects_list():
+    registry = get_registry()
+    projects = registry.list_projects()
+    return render_template("projects.html", projects=projects)
+
+
+@bp.route("/projects/add", methods=["GET", "POST"])
+@login_required
+def project_add():
+    registry = get_registry()
+    targets = registry.list_targets()
+    if request.method == "GET":
+        return render_template("project_form.html", project=None, targets=targets, is_edit=False)
+
+    target_id = request.form.get("target_id", "").strip()
+    data = {
+        "id": request.form.get("id", "").strip(),
+        "display_name": request.form.get("display_name", "").strip(),
+        "root": request.form.get("root", "").strip(),
+        "read": request.form.get("read") == "on",
+        "write": False,  # Deny-by-default write permission
+        "enabled": request.form.get("enabled") == "on",
+        "tasks": {},
+    }
+    if not target_id or not data["id"] or not data["root"]:
+        flash("Target, Project ID, and Root path are required.", "danger")
+        return render_template("project_form.html", project=data, targets=targets, is_edit=False)
+
+    try:
+        registry.add_project(target_id, data)
+        record_audit("add_project", target_id=target_id, project_id=data["id"], success=True, detail=f"Added project '{data['id']}'")
+        flash(f"Project '{data['id']}' created under target '{target_id}'.", "success")
+        return redirect(url_for("admin.projects_list"))
+    except Exception as e:
+        flash(f"Error adding project: {e}", "danger")
+        return render_template("project_form.html", project=data, targets=targets, is_edit=False)
+
+
+@bp.route("/projects/<target_id>/<project_id>/edit", methods=["GET", "POST"])
+@login_required
+def project_edit(target_id: str, project_id: str):
+    registry = get_registry()
+    targets = registry.list_targets()
+
+    with registry._get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM projects WHERE target_id = ? AND id = ?", (target_id, project_id))
+        p_row = cursor.fetchone()
+        if not p_row:
+            abort(404, description="Project not found")
+        project = dict(p_row)
+        project["read"] = bool(project["read_enabled"])
+        project["write"] = bool(project["write_enabled"])
+        project["enabled"] = bool(project["enabled"])
+
+    if request.method == "GET":
+        return render_template("project_form.html", project=project, targets=targets, is_edit=True)
+
+    # POST edit
+    update_data = {
+        "display_name": request.form.get("display_name", "").strip(),
+        "root": request.form.get("root", "").strip(),
+        "read": request.form.get("read") == "on",
+        "write": False,  # Keep write disabled
+        "enabled": request.form.get("enabled") == "on",
+    }
+    try:
+        registry.update_project(target_id, project_id, update_data)
+        record_audit("update_project", target_id=target_id, project_id=project_id, success=True, detail=f"Updated project '{project_id}'")
+        flash(f"Project '{project_id}' updated.", "success")
+        return redirect(url_for("admin.projects_list"))
+    except Exception as e:
+        flash(f"Error updating project: {e}", "danger")
+        project.update(update_data)
+        return render_template("project_form.html", project=project, targets=targets, is_edit=True)
+
+
+@bp.route("/projects/<target_id>/<project_id>/toggle", methods=["POST"])
+@login_required
+def project_toggle(target_id: str, project_id: str):
+    registry = get_registry()
+    with registry._get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT enabled FROM projects WHERE target_id = ? AND id = ?", (target_id, project_id))
+        row = cursor.fetchone()
+        if not row:
+            abort(404, description="Project not found")
+        new_state = not bool(row["enabled"])
+        registry.update_project(target_id, project_id, {"enabled": new_state})
+        record_audit("toggle_project", target_id=target_id, project_id=project_id, success=True, detail=f"Set project '{project_id}' enabled={new_state}")
+        status_txt = "enabled" if new_state else "disabled"
+        flash(f"Project '{project_id}' is now {status_txt}.", "info")
+    return redirect(url_for("admin.projects_list"))
+
+
+# ==========================================
+# AI Clients Management
+# ==========================================
+
+@bp.route("/clients")
+@login_required
+def clients_list():
+    registry = get_registry()
+    clients = registry.list_clients()
+    return render_template("clients.html", clients=clients)
+
+
+@bp.route("/clients/add", methods=["GET", "POST"])
+@login_required
+def client_add():
+    if request.method == "GET":
+        return render_template("client_form.html", client=None, is_edit=False)
+
+    data = {
+        "id": request.form.get("id", "").strip(),
+        "display_name": request.form.get("display_name", "").strip(),
+        "provider": request.form.get("provider", "").strip(),
+        "protocol": request.form.get("protocol", "mcp").strip(),
+        "enabled": request.form.get("enabled") == "on",
+        "notes": request.form.get("notes", "").strip(),
+    }
+    if not data["id"] or not data["display_name"]:
+        flash("Client ID and Display Name are required.", "danger")
+        return render_template("client_form.html", client=data, is_edit=False)
+
+    try:
+        registry = get_registry()
+        registry.add_client(data)
+        record_audit("add_client", success=True, detail=f"Added AI client '{data['id']}'")
+        flash(f"AI Client '{data['id']}' created.", "success")
+        return redirect(url_for("admin.clients_list"))
+    except Exception as e:
+        flash(f"Error adding client: {e}", "danger")
+        return render_template("client_form.html", client=data, is_edit=False)
+
+
+@bp.route("/clients/<client_id>/edit", methods=["GET", "POST"])
+@login_required
+def client_edit(client_id: str):
+    registry = get_registry()
+    try:
+        client = registry.get_client(client_id)
+    except KeyError:
+        abort(404, description="AI Client not found")
+
+    if request.method == "GET":
+        return render_template("client_form.html", client=client, is_edit=True)
+
+    update_data = {
+        "display_name": request.form.get("display_name", "").strip(),
+        "provider": request.form.get("provider", "").strip(),
+        "protocol": request.form.get("protocol", "mcp").strip(),
+        "enabled": request.form.get("enabled") == "on",
+        "notes": request.form.get("notes", "").strip(),
+    }
+    try:
+        registry.update_client(client_id, update_data)
+        record_audit("update_client", success=True, detail=f"Updated AI client '{client_id}'")
+        flash(f"AI Client '{client_id}' updated.", "success")
+        return redirect(url_for("admin.clients_list"))
+    except Exception as e:
+        flash(f"Error updating client: {e}", "danger")
+        client.update(update_data)
+        return render_template("client_form.html", client=client, is_edit=True)
+
+
+@bp.route("/clients/<client_id>/toggle", methods=["POST"])
+@login_required
+def client_toggle(client_id: str):
+    registry = get_registry()
+    try:
+        client = registry.get_client(client_id)
+        new_state = not client.get("enabled", True)
+        registry.update_client(client_id, {"enabled": new_state})
+        record_audit("toggle_client", success=True, detail=f"Set client '{client_id}' enabled={new_state}")
+        status_txt = "enabled" if new_state else "disabled"
+        flash(f"AI Client '{client_id}' is now {status_txt}.", "info")
+    except KeyError:
+        abort(404, description="AI Client not found")
+    return redirect(url_for("admin.clients_list"))
+
+
+# ==========================================
+# Activity Audit
+# ==========================================
+
+@bp.route("/activity")
+@login_required
+def activity_view():
+    registry = get_registry()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    total = registry.get_activity_count()
+    items = registry.list_activity(limit=per_page, offset=offset)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    return render_template(
+        "activity.html",
+        items=items,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+    )
+
+
+# ==========================================
+# System Info (Read-Only)
+# ==========================================
+
+@bp.route("/system")
+@login_required
+def system_view():
+    registry = get_registry()
+
+    # Hardware & OS details
+    hostname = socket.gethostname()
+    os_name = platform.platform()
+    python_ver = platform.python_version()
+    arch = platform.machine()
+    kernel = platform.release()
+
+    # Device model (Raspberry Pi specific)
+    model = "Generic Linux"
+    if os.path.exists("/proc/device-tree/model"):
+        try:
+            with open("/proc/device-tree/model", "r") as f:
+                model = f.read().replace("\x00", "").strip()
+        except Exception:
+            pass
+
+    # Disk usage
+    total_disk, used_disk, free_disk = 0, 0, 0
+    try:
+        du = shutil.disk_usage("/")
+        total_disk = du.total // (1024 * 1024)
+        free_disk = du.free // (1024 * 1024)
+        used_disk = du.used // (1024 * 1024)
+    except Exception:
+        pass
+
+    # Memory usage
+    mem_total, mem_available = 0, 0
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = int(line.split()[1]) // 1024
+                elif line.startswith("MemAvailable:"):
+                    mem_available = int(line.split()[1]) // 1024
+    except Exception:
+        pass
+
+    # DB size
+    db_path = getattr(registry, "db_path", "in-memory")
+    db_size_bytes = 0
+    if os.path.exists(db_path):
+        db_size_bytes = os.path.getsize(db_path)
+
+    backend_type = type(registry).__name__
+
+    return render_template(
+        "system.html",
+        hostname=hostname,
+        model=model,
+        arch=arch,
+        os_name=os_name,
+        kernel=kernel,
+        python_ver=python_ver,
+        total_disk=total_disk,
+        used_disk=used_disk,
+        free_disk=free_disk,
+        mem_total=mem_total,
+        mem_available=mem_available,
+        gateway_version=__version__,
+        backend_type=backend_type,
+        db_path=db_path,
+        db_size_bytes=db_size_bytes,
+    )
+
+
+# ==========================================
+# Settings & Kill Switch
+# ==========================================
+
+@bp.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings_view():
+    registry = get_registry()
+
+    if request.method == "GET":
+        settings = {
+            "gateway_enabled": str(registry.get_setting("gateway_enabled", "true")).lower() in ("true", "1", "yes", "on"),
+            "default_timeout": int(registry.get_setting("default_timeout", 30)),
+            "max_output_bytes": int(registry.get_setting("max_output_bytes", 262144)),
+            "max_file_read_bytes": int(registry.get_setting("max_file_read_bytes", 1048576)),
+            "activity_retention": int(registry.get_setting("activity_retention", 5000)),
+        }
+        return render_template("settings.html", settings=settings)
+
+    # POST update settings
+    try:
+        timeout = int(request.form.get("default_timeout", 30))
+        max_output = int(request.form.get("max_output_bytes", 262144))
+        max_read = int(request.form.get("max_file_read_bytes", 1048576))
+        retention = int(request.form.get("activity_retention", 5000))
+
+        if not (5 <= timeout <= 300):
+            flash("Timeout must be between 5 and 300 seconds.", "danger")
+            return redirect(url_for("admin.settings_view"))
+        if not (1024 <= max_output <= 10485760):
+            flash("Max output bytes must be between 1KB and 10MB.", "danger")
+            return redirect(url_for("admin.settings_view"))
+        if not (1024 <= max_read <= 10485760):
+            flash("Max file read bytes must be between 1KB and 10MB.", "danger")
+            return redirect(url_for("admin.settings_view"))
+        if not (100 <= retention <= 50000):
+            flash("Activity retention must be between 100 and 50000 rows.", "danger")
+            return redirect(url_for("admin.settings_view"))
+
+        registry.set_setting("default_timeout", timeout)
+        registry.set_setting("max_output_bytes", max_output)
+        registry.set_setting("max_file_read_bytes", max_read)
+        registry.set_setting("activity_retention", retention)
+
+        record_audit("update_settings", success=True, detail="Updated configuration settings")
+        flash("Settings saved successfully.", "success")
+    except ValueError:
+        flash("Invalid numeric value provided.", "danger")
+
+    return redirect(url_for("admin.settings_view"))
+
+
+@bp.route("/settings/kill-switch", methods=["POST"])
+@login_required
+def toggle_kill_switch():
+    registry = get_registry()
+    curr = str(registry.get_setting("gateway_enabled", "true")).lower() in ("true", "1", "yes", "on")
+    new_state = not curr
+    registry.set_setting("gateway_enabled", "true" if new_state else "false")
+    record_audit(
+        "toggle_kill_switch",
+        success=True,
+        detail=f"Admin toggled gateway_enabled to {new_state}"
+    )
+    msg = "Gateway enabled. Operations permitted." if new_state else "KILL SWITCH ACTIVATED: Gateway disabled. Operations blocked."
+    cat = "success" if new_state else "danger"
+    flash(msg, cat)
+    return redirect(url_for("admin.settings_view"))

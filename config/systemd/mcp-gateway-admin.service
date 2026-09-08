@@ -1,0 +1,21 @@
+[Unit]
+Description=MCP Gateway Admin Console
+After=network.target
+
+[Service]
+Type=simple
+User=mcp-gateway
+Group=mcp-gateway
+WorkingDirectory=/home/mcp-gateway/mcp-gateway
+Environment=PYTHONPATH=/home/mcp-gateway/mcp-gateway/src
+Environment=MCP_GATEWAY_REGISTRY=sqlite
+Environment=MCP_GATEWAY_DB=/home/mcp-gateway/.local/share/mcp-gateway/gateway.db
+Environment=MCP_ADMIN_SECRET_FILE=/home/mcp-gateway/.config/mcp-gateway/admin-secret
+ExecStart=/usr/bin/python3 -m mcp_gateway.web 8080
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

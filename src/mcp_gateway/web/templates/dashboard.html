@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - MCP Gateway Admin{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <!-- Header with Global Kill Switch Status -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+    <div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">System Dashboard</h1>
+      <p class="text-xs text-slate-400 mt-1">Gateway Version {{ gateway_version }} &bull; Raspberry Pi Security Boundary</p>
+    </div>
+    <div class="flex items-center gap-3">
+      {% if gateway_enabled %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950 border border-emerald-800 text-emerald-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Gateway Active
+        </span>
+      {% else %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-950 border border-rose-800 text-rose-300">
+          <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+          Kill Switch Active (Disabled)
+        </span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Metric Cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-slate-950 border border-slate-800 p-5 rounded-xl shadow-sm">
+      <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Targets Online</div>
+      <div class="text-2xl font-bold text-white mt-2">{{ online_targets }} <span class="text-sm font-normal text-slate-500">/ {{ total_targets }}</span></div>
+      <div class="text-xs text-slate-500 mt-1">Configured SSH targets</div>
+    </div>
+
+    <div class="bg-slate-950 border border-slate-800 p-5 rounded-xl shadow-sm">
+      <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Projects</div>
+      <div class="text-2xl font-bold text-white mt-2">{{ total_projects }}</div>
+      <div class="text-xs text-slate-500 mt-1">Scoped project directories</div>
+    </div>
+
+    <div class="bg-slate-950 border border-slate-800 p-5 rounded-xl shadow-sm">
+      <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">AI Clients</div>
+      <div class="text-2xl font-bold text-white mt-2">{{ total_clients }}</div>
+      <div class="text-xs text-slate-500 mt-1">Registered consumer identities</div>
+    </div>
+
+    <div class="bg-slate-950 border border-slate-800 p-5 rounded-xl shadow-sm">
+      <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Audit Log Items</div>
+      <div class="text-2xl font-bold text-white mt-2">{{ total_requests }}</div>
+      <div class="text-xs text-slate-500 mt-1">Requests recorded</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions & Status -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Recent Activity Table (2 cols) -->
+    <div class="lg:col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold text-white">Recent Audit Activity</h2>
+        <a href="{{ url_for('admin.activity_view') }}" class="text-xs text-indigo-400 hover:text-indigo-300">View All &rarr;</a>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="py-2 px-3">Time</th>
+              <th class="py-2 px-3">Action</th>
+              <th class="py-2 px-3">Target / Project</th>
+              <th class="py-2 px-3">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-900 text-slate-300">
+            {% for act in recent_activity %}
+            <tr class="hover:bg-slate-900/50">
+              <td class="py-2 px-3 font-mono text-slate-400 whitespace-nowrap">{{ act.timestamp }}</td>
+              <td class="py-2 px-3 font-medium text-white">{{ act.action }}</td>
+              <td class="py-2 px-3 text-slate-400">
+                {% if act.target_id %}{{ act.target_id }}{% if act.project_id %} / {{ act.project_id }}{% endif %}{% else %}&mdash;{% endif %}
+              </td>
+              <td class="py-2 px-3">
+                {% if act.success %}
+                  <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">PASS</span>
+                {% else %}
+                  <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-800">DENY</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="py-4 text-center text-slate-500">No activity logged yet</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- System Status Overview (1 col) -->
+    <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+      <h2 class="text-base font-semibold text-white">Gateway Health</h2>
+      <div class="space-y-3 text-xs">
+        <div class="flex justify-between py-2 border-b border-slate-900">
+          <span class="text-slate-400">Policy Mode</span>
+          <span class="font-mono text-emerald-400">deny-by-default</span>
+        </div>
+        <div class="flex justify-between py-2 border-b border-slate-900">
+          <span class="text-slate-400">Network Exposure</span>
+          <span class="font-mono text-slate-200">127.0.0.1:8080 (tunnel only)</span>
+        </div>
+        <div class="flex justify-between py-2 border-b border-slate-900">
+          <span class="text-slate-400">Pi-hole Protection</span>
+          <span class="font-mono text-emerald-400">Preserved (Untouched)</span>
+        </div>
+        <div class="flex justify-between py-2 border-b border-slate-900">
+          <span class="text-slate-400">Write Policy</span>
+          <span class="font-mono text-amber-400">read-only (Phase 4B)</span>
+        </div>
+      </div>
+      <div class="pt-2">
+        <a href="{{ url_for('admin.settings_view') }}" class="block text-center py-2 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-medium text-slate-200 transition">
+          Emergency Controls &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
