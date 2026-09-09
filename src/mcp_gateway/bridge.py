@@ -42,7 +42,7 @@ def get_tools_catalog(client_id: Optional[str] = None, registry: Optional[Any] =
         reg = registry or get_registry()
         allowed = []
         for tool in sorted(list(ALLOWED_TOOLS)):
-            ok, _ = authorize_client(client_id, None, None, tool, registry=reg)
+            ok, _ = authorize_client(client_id, None, None, tool, registry=reg, for_catalog=True)
             if ok:
                 allowed.append(tool)
         return allowed

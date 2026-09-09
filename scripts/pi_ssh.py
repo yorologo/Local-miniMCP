@@ -13,7 +13,12 @@ def run_remote(cmd, as_user=None, timeout=180):
         
     for attempt in range(1, 9):
         ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        kh = os.path.expanduser("~/.ssh/mcp_known_hosts")
+        if not os.path.isfile(kh):
+            kh = os.path.expanduser("~/.ssh/known_hosts")
+        if os.path.isfile(kh):
+            ssh.load_host_keys(kh)
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
         try:
             ssh.connect(host, username=user, key_filename=key_path, timeout=20, banner_timeout=45)
             stdin, stdout, stderr = ssh.exec_command(full_cmd, timeout=timeout)
@@ -25,6 +30,31 @@ def run_remote(cmd, as_user=None, timeout=180):
         except Exception as e:
             if attempt == 8:
                 return -1, "", f"SSH failed after 8 attempts: {e}"
+            time.sleep(attempt * 3.0)
+
+def copy_to_remote(local_path, remote_path):
+    host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
+    user = os.environ.get("MCP_PI_USER", "Yorologo")
+    key_path = os.path.expanduser("~/.ssh/id_ed25519")
+    
+    for attempt in range(1, 9):
+        ssh = paramiko.SSHClient()
+        kh = os.path.expanduser("~/.ssh/mcp_known_hosts")
+        if not os.path.isfile(kh):
+            kh = os.path.expanduser("~/.ssh/known_hosts")
+        if os.path.isfile(kh):
+            ssh.load_host_keys(kh)
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+        try:
+            ssh.connect(host, username=user, key_filename=key_path, timeout=20, banner_timeout=45)
+            sftp = ssh.open_sftp()
+            sftp.put(local_path, remote_path)
+            sftp.close()
+            ssh.close()
+            return True, "File uploaded successfully"
+        except Exception as e:
+            if attempt == 8:
+                return False, f"SFTP failed after 8 attempts: {e}"
             time.sleep(attempt * 3.0)
 
 if __name__ == "__main__":

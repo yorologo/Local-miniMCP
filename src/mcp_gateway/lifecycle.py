@@ -168,6 +168,45 @@ def verify_checksums(release_dir: str) -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
+def check_candidate(candidate_path: str) -> Tuple[bool, List[str], Dict]:
+    """Validate candidate release manifest and checksums non-destructively."""
+    if not os.path.exists(candidate_path):
+        return False, [f"Candidate release path does not exist: {candidate_path}"], {}
+
+    staging_dir = candidate_path
+    extracted_tmp = None
+    if os.path.isfile(candidate_path) and (candidate_path.endswith(".tar.gz") or candidate_path.endswith(".tgz")):
+        import tempfile
+        import tarfile
+        extracted_tmp = tempfile.mkdtemp(prefix="mcp_check_")
+        with tarfile.open(candidate_path, "r:*") as tar:
+            tar.extractall(extracted_tmp)
+        staging_dir = extracted_tmp
+
+    errors = []
+    meta = {}
+    try:
+        manifest_file = os.path.join(staging_dir, "manifest.json")
+        if not os.path.isfile(manifest_file):
+            return False, ["Candidate release is missing manifest.json"], {}
+
+        ok, errs = verify_manifest(manifest_file)
+        if not ok:
+            errors.extend(errs)
+
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        chk_ok, chk_errs = verify_checksums(staging_dir)
+        if not chk_ok:
+            errors.extend(chk_errs)
+
+        return len(errors) == 0, errors, meta
+    finally:
+        if extracted_tmp and os.path.isdir(extracted_tmp):
+            shutil.rmtree(extracted_tmp, ignore_errors=True)
+
+
 def update_release(candidate_path: str) -> Tuple[bool, str]:
     """Perform safe release update with backup, manifest, checksums, doctor and rollback."""
     if not os.path.exists(candidate_path):

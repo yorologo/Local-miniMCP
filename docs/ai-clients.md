@@ -8,11 +8,11 @@ La comunicación se realiza mediante el transporte estándar **MCP Stdio** trans
 
 ```text
 +------------------------+
-|    AI Client Local     |  (Gemini CLI / Claude Desktop en Windows)
+|    AI Client Local     |  (Antigravity / Gemini CLI / Claude Desktop)
 |    (stdio transport)   |
 +------------------------+
            |
-           | SSH Stdio (Clave Ed25519 dedicada)
+           | SSH Stdio (Clave Ed25519 dedicada + Host Key Pinning)
            v
 +------------------------+
 |    sshd en MCP-Pi      |  (Puerto 22, LAN interna)
@@ -22,8 +22,8 @@ La comunicación se realiza mediante el transporte estándar **MCP Stdio** trans
            | Invoca /home/mcp-gateway/mcp-gateway/bin/mcp-gateway-client-stdio <client_id>
            v
 +------------------------+
-|  mcp_gateway.stdio_server
-|  - MCP JSON-RPC Engine |
+|  mcp-gateway-adapter   |  (Oficial Go SDK v1.7.0, MCP 2026-07-28)
+|  - Stdio Transport     |
 |  - SQLite Grants Check |
 |  - Dynamic tools/list  |
 |  - Guarded tools/call  |
@@ -55,8 +55,33 @@ Cada cliente cuenta con:
 
 ---
 
-## 3. Catálogo Dinámico y Doble Autorización
-
-El servidor MCP stdio asegura que `tools/list` y `tools/call` compartan la misma política:
-- **`tools/list`**: Evalúa en tiempo real `get_tools_catalog(client_id)`. Si el cliente no tiene permiso para una herramienta (por ejemplo, `write_file`), la herramienta ni siquiera aparece en el listado devuelto al modelo LLM.
-- **`tools/call`**: Si el cliente intenta invocar una herramienta forzando la llamada RPC, el motor de políticas rechaza la ejecución con código de error y detiene la acción antes de alcanzar los targets.
+## 3. Catálogo Dinámico y Separación de Precedencia de Autorización
+ 
+El adaptador MCP stdio asegura que `tools/list` y `tools/call` compartan la misma política estricta deny-by-default:
+- **`tools/list`**: Evalúa en tiempo real `get_tools_catalog(client_id, for_catalog=True)`. Si el cliente carece de grant para una herramienta (por ejemplo, `write_file`), la herramienta se excluye de la respuesta al cliente.
+- **`tools/call`**: Si el cliente intenta invocar una herramienta no autorizada por grants, el Policy Engine la rechaza inmediatamente como `TOOL_NOT_ALLOWED` / `unknown tool` sin evaluar ni revelar estados de interruptores operativos inferiores (`WRITES_DISABLED` o `project.write`). Si el cliente posee el grant pero el interruptor operativo está apagado, se rechaza de forma explícita con `WRITES_DISABLED`.
+ 
+---
+ 
+## 4. SSH Host Key Pinning Inmutable
+ 
+Para evitar ataques Man-in-the-Middle y spoofing de red:
+- La clave de host pública Ed25519 de MCP-Pi (`192.168.68.85`) se encuentra fijada en `~/.ssh/mcp_known_hosts`:
+  ```text
+  192.168.68.85 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOP3j98PiZxf8CKwfyEPCXbFSsV5bwfrI0704ZWR1plV
+  ```
+  Fingerprint SHA256: `SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E`.
+- Todas las configuraciones generadas imponen:
+  ```text
+  StrictHostKeyChecking=yes
+  UserKnownHostsFile=~/.ssh/mcp_known_hosts
+  ```
+- Comportamiento fail-closed verificado: ante discrepancia o clave adulterada, el proceso SSH aborta con código 255.
+ 
+---
+ 
+## 5. Estado de Clientes Locales Verificado
+ 
+- **Gemini CLI**: `NOT_INSTALLED` (binario CLI `gemini` no instalado localmente). Cliente operativo real en esta sesión: `ANTIGRAVITY`. Archivo de configuración generado y listo en `~/.gemini/config/mcp_config.json`.
+- **Claude Desktop**: `NOT_INSTALLED` (aplicación de escritorio `Claude` no instalada en Windows). Archivo de configuración generado y listo en `%APPDATA%\Claude\claude_desktop_config.json`.
+- **Canal de Protocolo MCP**: Verificado al 100% sobre sesiones de protocolo reales vía SSH Stdio con las claves e identidades dedicadas `gemini-main` y `claude-desktop`.

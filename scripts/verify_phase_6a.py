@@ -39,7 +39,10 @@ def create_client_session(key_name, client_label):
     key_path = os.path.expanduser(f"~/.ssh/{key_name}")
     for attempt in range(1, 10):
         ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        kh = os.path.expanduser("~/.ssh/mcp_known_hosts")
+        if os.path.isfile(kh):
+            ssh.load_host_keys(kh)
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
         try:
             ssh.connect(HOST, username=USER, key_filename=key_path, timeout=25, banner_timeout=50)
             stdin, stdout, stderr = ssh.exec_command("mcp", timeout=30)

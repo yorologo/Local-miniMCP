@@ -401,3 +401,133 @@ func TestClientToolFiltering(t *testing.T) {
 	}
 }
 
+func TestClientAwareToolsListAndCall(t *testing.T) {
+	ctx := context.Background()
+	bridge := getTestBridgeConfig()
+	bridge.ClientID = "claude-desktop" // Read-only client profile
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	tServer, tClient := mcp.NewInMemoryTransports()
+	go func() {
+		_ = server.Run(ctx, tServer)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "claude-desktop-test",
+		Version: "1.0.0",
+	}, nil)
+
+	session, err := client.Connect(ctx, tClient, nil)
+	if err != nil {
+		t.Fatalf("client.Connect failed: %v", err)
+	}
+	defer session.Close()
+
+	toolsList, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	toolNames := make(map[string]bool)
+	for _, tool := range toolsList.Tools {
+		toolNames[tool.Name] = true
+	}
+
+	// claude-desktop must NOT have run_task or write_file
+	if toolNames["write_file"] {
+		t.Errorf("write_file should not be present for claude-desktop")
+	}
+	if toolNames["run_task"] {
+		t.Errorf("run_task should not be present for claude-desktop")
+	}
+	if !toolNames["health"] {
+		t.Errorf("health should be present for claude-desktop")
+	}
+
+	// Call health tool - should succeed
+	callResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "health",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool health failed: %v", err)
+	}
+	if callResult.IsError {
+		t.Errorf("Expected health call not to be an error")
+	}
+}
+
+func TestDisabledClientGo(t *testing.T) {
+	ctx := context.Background()
+	bridge := getTestBridgeConfig()
+	bridge.ClientID = "disabled-test-client"
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	tServer, tClient := mcp.NewInMemoryTransports()
+	go func() {
+		_ = server.Run(ctx, tServer)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "disabled-test",
+		Version: "1.0.0",
+	}, nil)
+
+	session, err := client.Connect(ctx, tClient, nil)
+	if err != nil {
+		t.Fatalf("client.Connect failed: %v", err)
+	}
+	defer session.Close()
+
+	toolsList, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	if len(toolsList.Tools) != 0 {
+		t.Fatalf("Expected 0 tools for disabled client, got %d", len(toolsList.Tools))
+	}
+}
+
+func TestStdioTransportSimulation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tServer, tClient := mcp.NewInMemoryTransports()
+
+	bridge := getTestBridgeConfig()
+	bridge.ClientID = "gemini-main"
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	go func() {
+		_ = server.Run(ctx, tServer)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "stdio-sim-client",
+		Version: "1.0.0",
+	}, nil)
+
+	session, err := client.Connect(ctx, tClient, nil)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer session.Close()
+
+	toolsList, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	if len(toolsList.Tools) == 0 {
+		t.Fatalf("Expected tools for gemini-main over simulated stdio transport")
+	}
+}
+
+

@@ -171,17 +171,19 @@ def authorize_client(
     project_id: Optional[str],
     tool_name: str,
     registry: Optional[Any] = None,
+    for_catalog: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """Unified Core client authorization decision for discovery and execution.
 
     Evaluates:
     - Authenticated client identity (anonymous denied)
     - Client enabled status
-    - Global Emergency Kill Switch
-    - Target enabled status
-    - Project enabled status
     - Grant capability match
-    - Write policy enforcement
+    - If for_catalog is False (invocation):
+      - Global Emergency Kill Switch
+      - Target enabled status
+      - Project enabled status
+      - Write policy enforcement
     """
     # 1. Reject anonymous/empty/NONE
     if not client_id or str(client_id).strip().upper() in ("NONE", "ANONYMOUS", ""):
@@ -242,6 +244,10 @@ def authorize_client(
         if not grant_matched:
             return False, f"TOOL_NOT_ALLOWED: Client '{client_id}' lacks grant capability for tool '{tool_name}'"
 
+    # For tool catalog discovery (tools/list), authorization is determined by client identity & grants
+    if for_catalog:
+        return True, None
+
     # 5. Check global kill switch
     if hasattr(registry, "get_setting"):
         gateway_enabled = registry.get_setting("gateway_enabled", "true")
@@ -294,6 +300,7 @@ def can_client_use_tool(
     client_id: Optional[str],
     tool_name: str,
     registry: Optional[Any] = None,
+    for_catalog: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """Compatibility wrapper delegating to authorize_client."""
     return authorize_client(
@@ -302,6 +309,7 @@ def can_client_use_tool(
         project_id=None,
         tool_name=tool_name,
         registry=registry,
+        for_catalog=for_catalog,
     )
 
 

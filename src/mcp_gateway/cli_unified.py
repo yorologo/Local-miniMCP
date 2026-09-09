@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from . import compatibility
 from .doctor import run_doctor, run_repair
-from .lifecycle import backup_database, restore_database, rollback_release, update_release, uninstall, get_paths
+from .lifecycle import backup_database, restore_database, rollback_release, update_release, check_candidate, uninstall, get_paths
 from .registry import get_registry
 from .tools import GatewayTools
 
@@ -93,10 +93,30 @@ def cmd_rollback() -> int:
         return 1
 
 
-def cmd_update(candidate_path: str) -> int:
+def cmd_update(candidate_path: Optional[str] = None, check_only: bool = False) -> int:
     print("==================================================")
     print("=== MCP Gateway Release Update                 ===")
     print("==================================================")
+    paths = get_paths()
+    if not candidate_path:
+        candidate_path = paths.get("root", ".")
+
+    if check_only:
+        print(f"Checking candidate release at: {candidate_path}")
+        ok, errs, meta = check_candidate(candidate_path)
+        if ok:
+            print(f"[PASS] Candidate manifest valid: v{meta.get('version', 'unknown')}")
+            archs = meta.get("compatibility", {}).get("architectures", [])
+            print(f"[PASS] Architecture compatibility: {archs}")
+            print(f"[PASS] Checksums verified: SHA256SUMS intact")
+            print(f"[OK] Candidate release passed pre-update validation.")
+            return 0
+        else:
+            print(f"[FAIL] Candidate release check failed:")
+            for e in errs:
+                print(f"  - {e}")
+            return 1
+
     ok, msg = update_release(candidate_path)
     if ok:
         print(f"[OK] {msg}")
@@ -151,7 +171,8 @@ def main(args_list: Optional[List[str]] = None) -> int:
     res_p.add_argument("backup_file", help="Path to database backup file")
 
     up_p = subparsers.add_parser("update", help="Update MCP Gateway release from candidate directory or package")
-    up_p.add_argument("candidate_path", help="Path to candidate release directory or tarball")
+    up_p.add_argument("candidate_path", nargs="?", default=None, help="Path to candidate release directory or tarball")
+    up_p.add_argument("--check", action="store_true", help="Validate candidate release without applying")
 
     subparsers.add_parser("rollback", help="Roll back current release to previous version")
 
@@ -174,7 +195,7 @@ def main(args_list: Optional[List[str]] = None) -> int:
     elif parsed.command == "restore":
         return cmd_restore(parsed.backup_file)
     elif parsed.command == "update":
-        return cmd_update(parsed.candidate_path)
+        return cmd_update(parsed.candidate_path, check_only=parsed.check)
     elif parsed.command == "rollback":
         return cmd_rollback()
     elif parsed.command == "uninstall":
