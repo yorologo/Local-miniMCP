@@ -66,8 +66,9 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **OS Candidate Evaluation (Fase 7A)** | **PASS** | Oficial Raspberry Pi OS Lite 32-bit (Debian 13 Trixie, `2026-06-18-raspios-trixie-armhf-lite.img.xz`) catalogado; Bookworm Legacy Lite como fallback. |
 | **Target Worker Offline Resilience (Fase 7A)**| **PASS** | Ante worker desconectado (`192.168.68.84:8022`), gateway responde en 168 ms con `SSH_FAILED` estructurado, sin cuelgues ni corrupción. Doctor permanece `HEALTHY`. |
 | **Runbooks & Contingencia (Fase 7A)** | **PASS** | Runbooks creados: `microsd-recovery.md`, `disaster-recovery.md`, `reboot-recovery.md`, `network-recovery.md`, `os-migration.md`, `v1-acceptance.md`. |
-| **Physical Migration Trixie (Fase 7B)** | **BLOCKED_PHYSICAL_MEDIA** | Pendiente de inserción física de la segunda tarjeta microSD grabada con Trixie 32-bit Lite. |
-| **Versión Candidata** | **PREMATURE** | `v1.0.0-rc1` pospuesta hasta superar la aceptación física en hardware real (Fase 7B). Tag activo: `phase-7-migration-ready`. |
+| **Physical Migration Trixie (Fase 7B)** | **DEFERRED_POST_V1** | Postpuesta formalmente post-v1.0 por decisión de arquitectura. La línea base operativa de producción para v1.0.0 es Raspbian 11 (Bullseye) sobre Raspberry Pi Model A+. |
+| **Three-Way Source of Truth Audit** | **PASS** | Auditoría rigurosa superada: Local worktree == GitHub origin/develop == MCP-Pi deployment (31/31 archivos core idénticos bit a bit por SHA256). Bóveda privada verificada. Fresh clone reproducible al 100%. |
+| **Versión Candidata v1.0.0** | **READY_FOR_PROMOTION** | Sistema plenamente validado en hardware real. `develop` listo para promoción a `main` y etiquetado de release `v1.0.0`. |
 
 ---
 
@@ -91,13 +92,13 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 15:30 CST (2026-09-09 21:30 UTC)
-- **CURRENT_PHASE**: PHASE 7A (READINESS: PASS) / PHASE 7B (PHYSICAL: BLOCKED_PHYSICAL_MEDIA)
+- **LAST_VERIFIED**: 2026-09-09 17:45 CST (2026-09-09 23:45 UTC)
+- **CURRENT_PHASE**: PHASE 7A (PASS) / OS_MIGRATION (DEFERRED_POST_V1) / AUDIT (PASS)
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
-  - **Fase 6A Final Verification & Security Closure**: (COMPLETADA)
-  - **Fase 7A**: Preparation & Migration Readiness (COMPLETADA - TAG: `phase-7-migration-ready`)
-  - **Fase 7B**: Physical Trixie Migration & Real-Hardware Acceptance (PENDIENTE DE MEDIO FÍSICO)
-  - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta requerimiento formal)
-- **NEXT_ACTION**: Requerir segunda tarjeta microSD física para grabar Trixie y proceder con Fase 7B.
+  - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
+  - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
+  - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
+- **NEXT_ACTION**: Promoción validada de `develop` a `main` y liberación de `v1.0.0`.
+

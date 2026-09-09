@@ -1,4 +1,4 @@
-﻿# Matriz de Aceptación y Estado de Migración Real (Phase 7A / 7B)
+# Matriz de Aceptación y Estado de Migración Real (Phase 7A / 7B)
 
 Documento formal de control de calidad, resiliencia y separación de evidencia entre la línea base Bullseye y la migración física a Debian 13 Trixie.
 
@@ -7,9 +7,11 @@ Documento formal de control de calidad, resiliencia y separación de evidencia e
 ## 1. Estado General de la Fase 7
 
 - **Fase 7A (Preparación, Congelamiento, Inventario y Runbooks)**: **PASS**
-- **Fase 7B (Migración Física y Aceptación en Hardware Real)**: **PENDING_PHYSICAL_MIGRATION / BLOCKED_PHYSICAL_MEDIA**
-- **Versión Candidata `v1.0.0-rc1`**: **PREMATURE** (Requiere ejecución física en nueva microSD antes del tag)
-- **Tag Git Vigente de Preparación**: `phase-7-migration-ready` (HEAD)
+- **Fase 7B (Migración Física a Debian 13 Trixie)**: **DEFERRED_POST_V1** (Postpuesta para ciclo post-v1.0; producción opera sobre Raspbian 11 Bullseye)
+- **Auditoría de Fuente de Verdad (Three-Way Audit)**: **PASS** (Local == GitHub origin/develop == MCP-Pi deployment al 100%)
+- **Versión Candidata `v1.0.0`**: **READY_FOR_RELEASE** (Línea base Bullseye aceptada formalmente en hardware real)
+- **Tag Git Vigente de Preparación**: `phase-7-migration-ready`
+
 
 ---
 
@@ -53,4 +55,5 @@ Documento formal de control de calidad, resiliencia y separación de evidencia e
 | **34** | **Physical Rollback Test** | Apagar Trixie, reinsertar Bullseye y medir RTO real | **PENDING_PHYSICAL_MIGRATION** | Requiere swap físico de vuelta y validación en vivo |
 | **35** | **Protección Pi-hole** | Aislamiento estricto de `192.168.68.54` | **PASS** | Intocable en todas las fases |
 | **36** | **Higiene Git & Runbooks** | Runbooks creados y cero secretos en Git | **PASS** | 7 runbooks/guías creados, secretos resguardados fuera de Git |
-| **37** | **Versión Candidata** | Tag `v1.0.0-rc1` | **PREMATURE** | Pospuesta hasta completar la migración física (Fase 7B) |
+| **37** | **Versión Candidata** | Tag `v1.0.0` | **READY_FOR_RELEASE** | Bullseye aceptada como baseline operativo formal para release v1.0.0 |
+

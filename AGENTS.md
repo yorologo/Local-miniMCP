@@ -188,9 +188,13 @@ ssh Yorologo@192.168.68.85
   - **Candidato de SO Oficial Validado**: Raspberry Pi OS Lite 32-bit (Debian 13 Trixie, `2026-06-18-raspios-trixie-armhf-lite.img.xz`, SHA256 verificado) evaluado como primario; Bookworm Legacy Lite como fallback de hardware.
   - **Resiliencia ante Target Offline**: Comportamiento verificado ante target desconectado (`192.168.68.84:8022`): retorno rápido en 168 ms con `SSH_FAILED` estructurado, sin bloqueos ni corrupción. Doctor permanece `HEALTHY`.
   - **Runbooks de Contingencia**: Creados [docs/os-migration.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/os-migration.md), [docs/runbooks/disaster-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/disaster-recovery.md), [docs/runbooks/reboot-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/reboot-recovery.md), [docs/runbooks/network-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/network-recovery.md) y [docs/v1-acceptance.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/v1-acceptance.md).
-- **Fase 7B (Migración Física Trixie & Aceptación en Hardware Real)**: **PENDIENTE (BLOCKED_PHYSICAL_MEDIA)**.
-  - Requiere segunda tarjeta microSD física grabada con Trixie 32-bit Lite e insertada en Raspberry Pi Model A+.
-  - La liberación de `v1.0.0-rc1` está pospuesta (`PREMATURE`) hasta completar satisfactoriamente la migración física en hardware real.
+- **Fase 7B (Migración Física Trixie)**: **DEFERRED_POST_V1**.
+  - Postpuesta formalmente para el ciclo post-v1.0 por decisión de arquitectura.
+  - La línea base de producción para el release `v1.0.0` es Raspbian 11 (Bullseye) 32-bit sobre Raspberry Pi Model A+, completamente validada y verificada en hardware real.
+- **Auditoría de Fuente de Verdad (Three-Way Audit)**: **TERMINADA (PASS)**.
+  - Sincronización perfecta: local `develop` == GitHub `origin/develop` (`b432a7e`) == software desplegado en MCP-Pi (31/31 archivos core idénticos bit a bit por SHA256).
+  - Estado privado estrictamente fuera de Git: `gateway.db` y claves SSH resguardadas y verificadas en bóveda local (`~/.mcp_migration_backup/`).
+  - Fresh clone aislado probado y autosuficiente (Go 10/10 PASS, Python 107/107 PASS).
 - **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **BLOQUEADA** (requiere túnel autenticado; prohibida exposición pública directa).
 
 ---
