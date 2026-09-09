@@ -2,6 +2,9 @@ import unittest
 import sqlite3
 import tempfile
 import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from mcp_gateway.schema import init_db, get_schema_version, migrate_db
 
@@ -11,8 +14,13 @@ class TestSchema(unittest.TestCase):
         os.close(self.fd)
 
     def tearDown(self):
+        import gc
+        gc.collect()
         if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+            try:
+                os.remove(self.db_path)
+            except Exception:
+                pass
 
     def test_init_db(self):
         init_db(self.db_path)

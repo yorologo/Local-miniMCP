@@ -171,7 +171,16 @@ ssh Yorologo@192.168.68.85
   - Panel administrativo web `/maintenance` con HTMX local (diagnóstico en tiempo real, respaldos online y rollback).
   - Batería de pruebas: 102/102 unit tests remotos en MCP-Pi, 6/6 Go tests, 19/19 E2E write regression tests y probes HTTP de seguridad superados.
   - Documentación en [docs/compatibility.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/compatibility.md), [docs/lifecycle.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/lifecycle.md) y runbooks en [docs/runbooks/doctor.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/doctor.md), [docs/runbooks/install.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/install.md), [docs/runbooks/update-rollback.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/update-rollback.md) y [docs/runbooks/uninstall.md](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/docs/runbooks/uninstall.md).
-- **Fase 6 (Clientes AI Externos & ChatGPT)**: **SIGUIENTE**.
+- **Fase 6A (Clientes AI Locales, Identidad & Grants - Official MCP Unification)**: **TERMINADA (CLOSEOUT COMPLETO)**.
+  - **Unificación MCP Oficial**: Cero implementaciones duplicadas. Se eliminó por completo el servidor Python `stdio_server.py`. Toda la capa de protocolo MCP (stdio y HTTP) reside exclusivamente en el binario estático Go (`mcp-gateway-adapter`) basado en `github.com/modelcontextprotocol/go-sdk` v1.7.0.
+  - **Transporte SSH Stdio con Forzado de Identidad**: Wrapper `bin/mcp-gateway-client-stdio` ejecuta `mcp-gateway-adapter --transport stdio --client-id "${CLIENT_ID}"`. Cero puertos expuestos a LAN o Internet.
+  - **Catálogo Dinámico Real-Time**: Middleware Go `syncServerTools` consulta dinámicamente al Policy Engine en Python ante `tools/list`, reflejando mutaciones de grants en caliente sin reiniciar el proceso adaptador.
+  - **Autorización Fail-Closed y Precedencia Estricta**: La misma política deny-by-default protege tanto `tools/list` como `tools/call`. Los clientes sin grant ven herramientas omitidas del catálogo e invocaciones denegadas.
+  - **Clientes Reales Validados**: Gemini CLI (`gemini-main`) validado interactivamente sobre SSH stdio con 8 herramientas (sin `write_file`); Claude Desktop (`claude-desktop`) validado con 7 herramientas de solo lectura (sin `run_task` ni `write_file`).
+  - **ChatGPT Gate**: Veredicto formal `BLOCKED_BY_PRODUCT_PLAN`. Prohibido avanzar a cloud sin túnel seguro y autenticación previa.
+  - **Batería de Pruebas**: 107/107 unit tests locales, 107/107 unit tests remotos en MCP-Pi, 7/7 Go tests, y suite de verificación en vivo (4/4 bloques) aprobados al 100%.
+  - Documentación completa en [docs/ai-clients.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/ai-clients.md), [docs/client-grants.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/client-grants.md), [docs/chatgpt-gate.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/chatgpt-gate.md), y runbooks [docs/runbooks/gemini-cli.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/gemini-cli.md) y [docs/runbooks/claude-desktop.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/claude-desktop.md).
+- **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **SIGUIENTE**.
 - **Fase 7 (Operación Estable & Resiliencia)**: *Futura*.
 
 ---

@@ -6,10 +6,12 @@ without reimplementing any policy, SSH transport, or registry logic.
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Dict, List, Optional
 
 from . import compatibility
+from .policy import authorize_client
 from .registry import get_registry
 from .tools import GatewayTools
 
@@ -26,8 +28,25 @@ ALLOWED_TOOLS = {
 }
 
 
-def get_tools_catalog() -> List[str]:
-    """Return deterministic alphabetically-sorted catalog of allowlisted tools."""
+def get_tools_catalog(client_id: Optional[str] = None, registry: Optional[Any] = None) -> List[str]:
+    """Return deterministic alphabetically-sorted catalog of allowlisted tools.
+
+    If client_id is 'NONE' or empty, returns empty list (deny anonymous).
+    If client_id is an AI client, filters tools by client authorization.
+    If client_id is None or 'local'/'admin', returns full catalog.
+    """
+    if client_id is not None and str(client_id).strip().upper() in ("NONE", "ANONYMOUS", ""):
+        return []
+
+    if client_id and client_id not in ("local", "admin", "system", "test"):
+        reg = registry or get_registry()
+        allowed = []
+        for tool in sorted(list(ALLOWED_TOOLS)):
+            ok, _ = authorize_client(client_id, None, None, tool, registry=reg)
+            if ok:
+                allowed.append(tool)
+        return allowed
+
     return sorted(list(ALLOWED_TOOLS))
 
 
@@ -52,7 +71,22 @@ def invoke_tool(
     try:
         reg = registry or get_registry()
         req_id = request_id or args.get("request_id") or args.get("_request_id")
-        cli_id = client_id or args.get("client_id")
+        cli_id = client_id or args.get("client_id") or os.environ.get("MCP_CLIENT_ID", "local")
+
+        # Enforce client authorization
+        target_id = args.get("target")
+        project_id = args.get("project")
+        auth_ok, auth_err = authorize_client(cli_id, target_id, project_id, tool_name, registry=reg)
+        if not auth_ok:
+            return {
+                "ok": False,
+                "tool": tool_name,
+                "error": {
+                    "code": "TOOL_NOT_ALLOWED",
+                    "message": auth_err or f"Client '{cli_id}' is not authorized to invoke tool '{tool_name}'",
+                },
+            }
+
         gateway = GatewayTools(registry=reg, request_id=req_id, client_id=cli_id)
     except Exception as e:
         return {
@@ -228,6 +262,7 @@ def main(args_list: Optional[List[str]] = None) -> int:
 
     version_parser = subparsers.add_parser("version", help="Output contract versions")
     tools_parser = subparsers.add_parser("tools", help="List available tools")
+    tools_parser.add_argument("--client-id", dest="client_id", default=None, help="Client identifier to filter tools")
 
     parsed = parser.parse_args(args_list)
 
@@ -245,7 +280,9 @@ def main(args_list: Optional[List[str]] = None) -> int:
         return 0
 
     if parsed.command == "tools":
-        print(json.dumps({"ok": True, "tools": get_tools_catalog()}, indent=2))
+        cli_id = getattr(parsed, "client_id", None) or os.environ.get("MCP_CLIENT_ID")
+        tools = get_tools_catalog(client_id=cli_id)
+        print(json.dumps({"ok": True, "tools": tools}, indent=2))
         return 0
 
     if parsed.command == "invoke":

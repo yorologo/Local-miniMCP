@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from . import compatibility
 from .doctor import run_doctor, run_repair
-from .lifecycle import backup_database, restore_database, rollback_release, uninstall, get_paths
+from .lifecycle import backup_database, restore_database, rollback_release, update_release, uninstall, get_paths
 from .registry import get_registry
 from .tools import GatewayTools
 
@@ -93,6 +93,19 @@ def cmd_rollback() -> int:
         return 1
 
 
+def cmd_update(candidate_path: str) -> int:
+    print("==================================================")
+    print("=== MCP Gateway Release Update                 ===")
+    print("==================================================")
+    ok, msg = update_release(candidate_path)
+    if ok:
+        print(f"[OK] {msg}")
+        return cmd_doctor(verbose=False)
+    else:
+        print(f"[ERROR] Update failed: {msg}", file=sys.stderr)
+        return 1
+
+
 def cmd_setup() -> int:
     print("==================================================")
     print("=== MCP Gateway Quick Setup                    ===")
@@ -137,6 +150,9 @@ def main(args_list: Optional[List[str]] = None) -> int:
     res_p = subparsers.add_parser("restore", help="Restore database from an existing backup file")
     res_p.add_argument("backup_file", help="Path to database backup file")
 
+    up_p = subparsers.add_parser("update", help="Update MCP Gateway release from candidate directory or package")
+    up_p.add_argument("candidate_path", help="Path to candidate release directory or tarball")
+
     subparsers.add_parser("rollback", help="Roll back current release to previous version")
 
     un_p = subparsers.add_parser("uninstall", help="Uninstall MCP Gateway services and binaries")
@@ -157,6 +173,8 @@ def main(args_list: Optional[List[str]] = None) -> int:
         return cmd_backup(parsed.path)
     elif parsed.command == "restore":
         return cmd_restore(parsed.backup_file)
+    elif parsed.command == "update":
+        return cmd_update(parsed.candidate_path)
     elif parsed.command == "rollback":
         return cmd_rollback()
     elif parsed.command == "uninstall":

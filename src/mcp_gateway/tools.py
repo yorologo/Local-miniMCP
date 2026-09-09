@@ -41,7 +41,7 @@ class GatewayTools:
         self.config = registry or config or GatewayConfig.load()
         self.transport = transport or SSHTransport()
         self.request_id = request_id
-        self.client_id = client_id
+        self.client_id = client_id or "local"
 
     def _success_response(
         self,

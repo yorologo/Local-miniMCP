@@ -1,4 +1,5 @@
 import abc
+import contextlib
 import json
 import os
 import sqlite3
@@ -61,6 +62,29 @@ class RegistryBase(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def list_grants(self, client_id: Optional[str] = None) -> List[Dict]:
+        pass
+
+    @abc.abstractmethod
+    def get_grant(self, grant_id: int) -> Dict:
+        pass
+
+    @abc.abstractmethod
+    def add_grant(self, data: Dict) -> int:
+        pass
+
+    @abc.abstractmethod
+    def update_grant(self, grant_id: int, data: Dict) -> None:
+        pass
+
+    @abc.abstractmethod
+    def delete_grant(self, grant_id: int) -> None:
+        pass
+
+    def get_client_grants(self, client_id: str) -> List[Dict]:
+        return [g for g in self.list_grants(client_id=client_id) if g.get("enabled", True)]
+
+    @abc.abstractmethod
     def get_setting(self, key: str, default=None) -> Any:
         pass
 
@@ -108,6 +132,8 @@ class JsonRegistry(RegistryBase):
         self.config = config
         self._settings: Dict[str, Any] = {}
         self._clients: Dict[str, Dict] = {}
+        self._grants: Dict[int, Dict] = {}
+        self._next_grant_id: int = 1
         self._activity: List[Dict] = []
         self._admin_users: Dict[str, Dict] = {}
 
@@ -158,7 +184,7 @@ class JsonRegistry(RegistryBase):
         raise NotImplementedError("JsonRegistry is read-only for targets/projects")
 
     def add_client(self, data: Dict) -> str:
-        client_id = str(uuid.uuid4())
+        client_id = data.get("id") or str(uuid.uuid4())
         client_data = {"id": client_id, **data}
         self._clients[client_id] = client_data
         return client_id
@@ -167,6 +193,33 @@ class JsonRegistry(RegistryBase):
         if client_id not in self._clients:
             raise KeyError(f"Client {client_id} not found")
         self._clients[client_id].update(data)
+
+    def list_grants(self, client_id: Optional[str] = None) -> List[Dict]:
+        if client_id:
+            return [g for g in self._grants.values() if g.get("client_id") == client_id]
+        return list(self._grants.values())
+
+    def get_grant(self, grant_id: int) -> Dict:
+        if grant_id not in self._grants:
+            raise KeyError(f"Grant {grant_id} not found")
+        return self._grants[grant_id]
+
+    def add_grant(self, data: Dict) -> int:
+        gid = self._next_grant_id
+        self._next_grant_id += 1
+        gdata = {"id": gid, "enabled": True, **data}
+        self._grants[gid] = gdata
+        return gid
+
+    def update_grant(self, grant_id: int, data: Dict) -> None:
+        if grant_id not in self._grants:
+            raise KeyError(f"Grant {grant_id} not found")
+        self._grants[grant_id].update(data)
+
+    def delete_grant(self, grant_id: int) -> None:
+        if grant_id not in self._grants:
+            raise KeyError(f"Grant {grant_id} not found")
+        del self._grants[grant_id]
 
     def get_setting(self, key: str, default=None) -> Any:
         return self._settings.get(key, default)
@@ -213,10 +266,14 @@ class SQLiteRegistry(RegistryBase):
         self.db_path = db_path
         init_db(db_path)
 
+    @contextlib.contextmanager
     def _get_conn(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def list_targets(self) -> List[Dict]:
         with self._get_conn() as conn:
@@ -522,6 +579,77 @@ class SQLiteRegistry(RegistryBase):
                 if cursor.rowcount == 0:
                     raise KeyError(f"Client {client_id} not found")
                 conn.commit()
+
+    def list_grants(self, client_id: Optional[str] = None) -> List[Dict]:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            if client_id:
+                cursor.execute("SELECT * FROM grants WHERE client_id = ?", (client_id,))
+            else:
+                cursor.execute("SELECT * FROM grants")
+            grants = []
+            for row in cursor.fetchall():
+                g = dict(row)
+                g["enabled"] = bool(g["enabled"])
+                grants.append(g)
+            return grants
+
+    def get_grant(self, grant_id: int) -> Dict:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM grants WHERE id = ?", (grant_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise KeyError(f"Grant {grant_id} not found")
+            g = dict(row)
+            g["enabled"] = bool(g["enabled"])
+            return g
+
+    def add_grant(self, data: Dict) -> int:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO grants (client_id, target_id, project_id, capability, enabled)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                data["client_id"],
+                data.get("target_id", "*"),
+                data.get("project_id", "*"),
+                data.get("capability", "read"),
+                1 if data.get("enabled", True) else 0,
+            ))
+            gid = cursor.lastrowid
+            conn.commit()
+            return gid
+
+    def update_grant(self, grant_id: int, data: Dict) -> None:
+        set_clauses = []
+        values = []
+        for col in ["client_id", "target_id", "project_id", "capability"]:
+            if col in data:
+                set_clauses.append(f"{col} = ?")
+                values.append(data[col])
+        if "enabled" in data:
+            set_clauses.append("enabled = ?")
+            values.append(1 if data["enabled"] else 0)
+
+        if set_clauses:
+            values.append(grant_id)
+            query = f"UPDATE grants SET {', '.join(set_clauses)} WHERE id = ?"
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, tuple(values))
+                if cursor.rowcount == 0:
+                    raise KeyError(f"Grant {grant_id} not found")
+                conn.commit()
+
+    def delete_grant(self, grant_id: int) -> None:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM grants WHERE id = ?", (grant_id,))
+            if cursor.rowcount == 0:
+                raise KeyError(f"Grant {grant_id} not found")
+            conn.commit()
 
     def get_setting(self, key: str, default=None) -> Any:
         with self._get_conn() as conn:

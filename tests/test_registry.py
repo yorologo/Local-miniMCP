@@ -104,6 +104,15 @@ class TestJsonRegistry(unittest.TestCase):
         self.assertEqual(admin["username"], "admin")
         self.assertEqual(admin["password_hash"], "hash")
 
+        # Test grants in JsonRegistry
+        gid = self.registry.add_grant({"client_id": client_id, "capability": "read"})
+        self.assertEqual(len(self.registry.list_grants(client_id=client_id)), 1)
+        self.assertEqual(self.registry.get_grant(gid)["capability"], "read")
+        self.registry.update_grant(gid, {"capability": "write"})
+        self.assertEqual(self.registry.get_grant(gid)["capability"], "write")
+        self.registry.delete_grant(gid)
+        self.assertEqual(len(self.registry.list_grants(client_id=client_id)), 0)
+
 import tempfile
 import os
 from mcp_gateway.registry import SQLiteRegistry
@@ -115,8 +124,55 @@ class TestSQLiteRegistry(unittest.TestCase):
         self.registry = SQLiteRegistry(self.db_path)
 
     def tearDown(self):
+        import gc
+        gc.collect()
         if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+            try:
+                os.remove(self.db_path)
+            except Exception:
+                pass
+
+    def test_grants_crud(self):
+        client_id = self.registry.add_client({"display_name": "Test Client"})
+        target_id = self.registry.add_target({"display_name": "Target 1", "host": "127.0.0.1", "user": "test"})
+
+        # 1. Add grant
+        gid = self.registry.add_grant({
+            "client_id": client_id,
+            "target_id": target_id,
+            "project_id": "*",
+            "capability": "read",
+            "enabled": True,
+        })
+        self.assertGreater(gid, 0)
+
+        # 2. Get grant
+        g = self.registry.get_grant(gid)
+        self.assertEqual(g["client_id"], client_id)
+        self.assertEqual(g["capability"], "read")
+        self.assertTrue(g["enabled"])
+
+        # 3. List grants
+        grants = self.registry.list_grants(client_id=client_id)
+        self.assertEqual(len(grants), 1)
+        self.assertEqual(grants[0]["id"], gid)
+
+        active = self.registry.get_client_grants(client_id)
+        self.assertEqual(len(active), 1)
+
+        # 4. Update grant
+        self.registry.update_grant(gid, {"capability": "write", "enabled": False})
+        g_updated = self.registry.get_grant(gid)
+        self.assertEqual(g_updated["capability"], "write")
+        self.assertFalse(g_updated["enabled"])
+
+        active_after = self.registry.get_client_grants(client_id)
+        self.assertEqual(len(active_after), 0)
+
+        # 5. Delete grant
+        self.registry.delete_grant(gid)
+        with self.assertRaises(KeyError):
+            self.registry.get_grant(gid)
 
     def test_crud_targets(self):
         tid = self.registry.add_target({

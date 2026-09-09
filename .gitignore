@@ -10,6 +10,10 @@ __pycache__/
 tailwind/node_modules/
 .superpowers/
 mcp-adapter/mcp-gateway-adapter
+mcp-adapter/*.armv6
+*.armv6
 bin/*
 !bin/mcp-gateway
+!bin/mcp-gateway-client-stdio
+*.tar.gz
 

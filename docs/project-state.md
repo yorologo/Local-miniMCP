@@ -50,7 +50,11 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Packaging & Manifest (Fase 4D)** | **PASS** | `manifest.json`, `SHA256SUMS`, script de instalación idempotente `install.sh` |
 | **Web Maintenance & HTMX (Fase 4D)** | **PASS** | Panel `/maintenance` con HTMX local embebido (diagnósticos en vivo, respaldos online, rollback) |
 | **apply_patch Tool** | **DEFERRED_FOR_SAFE_IMPLEMENTATION** | Pospuesto intencionalmente bajo KISS; `write_file` con `expected_sha256` provee edición segura atómica sin complejidad de parsing multi-hunk |
-| **Integración ChatGPT** | **DEFERRED_TO_PHASE_6** | Conexión directa no permitida hacia localhost; requiere evaluar Secure MCP Tunnel en Fase 6 |
+| **Local AI Clients (Fase 6A Closeout)** | **PASS** | Integración nativa de clientes (`gemini-main`, `claude-desktop`) sobre SSH stdio con claves Ed25519 dedicadas y forced command wrapper `bin/mcp-gateway-client-stdio`. Cero exposición LAN/Internet. |
+| **Official MCP Unification (Fase 6A Closeout)** | **PASS** | Servidor stdio MCP JSON-RPC completamente unificado sobre el SDK Oficial de Go (`github.com/modelcontextprotocol/go-sdk` v1.7.0). Cero implementaciones duplicadas (`stdio_server.py` eliminado). Solo UNA implementación MCP activa. |
+| **Dynamic Grants & Policy (Fase 6A Closeout)** | **PASS** | Catálogo dinámico `tools/list` e invocación `tools/call` sincronizados en tiempo real mediante middleware Go hacia Python Policy Engine. Aislamiento estricto: Gemini CLI (8 herramientas, sin escritura), Claude Desktop (7 herramientas lectura). |
+| **Live Client Verification (Fase 6A Closeout)**| **PASS** | 4/4 suites de pruebas en vivo superadas al 100% en `scripts/verify_phase_6a.py` (baseline gemini, baseline claude, mutación dinámica de grants y emergency disable fail-closed). 107/107 unit tests locales y remotos pasados. Smoke test interactivo de clientes reales superado al 100%. |
+| **ChatGPT Gate (Fase 6A Closeout)** | **BLOCKED_BY_PRODUCT_PLAN** | Endpoint Streamable HTTP retenido exclusivamente en `127.0.0.1:8090/mcp`. Integración ChatGPT bloqueada hasta Fase 6B. |
 
 ---
 
@@ -65,17 +69,20 @@ Documento de seguimiento continuo y estado de componentes del sistema.
   - `write_smoke` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local/mcp-write-smoke` (read: true, write: configurable)
 - **DHCP_RESERVATION**: `REQUIRED_MANUAL_ROUTER_ACTION` (Router DHCP para MAC `8c:90:2d:ac:e5:c0` -> `192.168.68.85`)
 - **Consola de Administración**: `http://127.0.0.1:8080` (accesible exclusivamente mediante túnel SSH `ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`)
-- **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service`)
+- **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service` vía `mcp-gateway-adapter`)
+- **Servidor MCP (Stdio sobre SSH)**: Invocación vía clave dedicada por cliente a `mcp-gateway@192.168.68.85` ejecutando `mcp-gateway-client-stdio <client_id>` con el adaptador Go oficial (`mcp-gateway-adapter --transport stdio --client-id <id>`)
 - **Backups Locales de Escritura**: `~/.local/share/mcp-gateway/backups/...` (almacenados en la Raspberry Pi Gateway, hasta 5 versiones por archivo)
 
 ---
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-08 17:15 CST (23:15 UTC)
-- **CURRENT_PHASE**: FASE 5 (Controlled Write) - COMPLETADA
+- **LAST_VERIFIED**: 2026-09-09 01:45 CST (2026-09-09 07:45 UTC)
+- **CURRENT_PHASE**: FASE 6A CLOSEOUT (Official MCP Unification & Real Client Smoke) - COMPLETADA
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
-  - **Fase 6**: External AI Clients & ChatGPT (Siguiente)
+  - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
+  - **Fase 6A Closeout**: Official MCP Unification & Real Client Smoke (COMPLETADA)
+  - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Siguiente)
   - **Fase 7**: Stable Operations & Hardening (Futura)
-- **NEXT_ACTION**: Iniciar Fase 6 (Clientes AI Externos & ChatGPT) para evaluar e implementar mecanismos seguros de túnel/exposición MCP (ej. Cloudflare Tunnels, tailscale o reverse proxy autenticado) que permitan la conexión de ChatGPT o Claude Desktop hacia el endpoint Streamable HTTP del Gateway.
+- **NEXT_ACTION**: Planificar e implementar Fase 6B evaluando soluciones de túnel cifrado (Cloudflare Tunnel o Tailscale con terminación TLS y autenticación de token por cliente) conectando ChatGPT sin exponer puertos LAN.

@@ -73,6 +73,39 @@ class TestLifecycle(unittest.TestCase):
             conn2.close()
             self.assertIsNone(row)
 
+    def test_update_release(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cand_dir = os.path.join(tmpdir, "candidate")
+            os.makedirs(cand_dir)
+            lifecycle.create_manifest(version="0.7.0", output_path=os.path.join(cand_dir, "manifest.json"))
+
+            # Mock get_paths
+            home_dir = os.path.join(tmpdir, "home")
+            os.makedirs(home_dir)
+            db_file = os.path.join(home_dir, "gateway.db")
+            schema.init_db(db_file)
+
+            paths = {
+                "home": home_dir,
+                "releases": os.path.join(home_dir, "releases"),
+                "current": os.path.join(home_dir, "current"),
+                "previous": os.path.join(home_dir, "previous"),
+                "data": home_dir,
+                "config": home_dir,
+                "db": db_file,
+                "backups": os.path.join(home_dir, "backups"),
+            }
+
+            orig_get_paths = lifecycle.get_paths
+            lifecycle.get_paths = lambda: paths
+            try:
+                ok, msg = lifecycle.update_release(cand_dir)
+                self.assertTrue(ok, f"update_release failed: {msg}")
+                self.assertTrue(os.path.islink(paths["current"]))
+                self.assertTrue(os.path.isdir(os.path.realpath(paths["current"])))
+            finally:
+                lifecycle.get_paths = orig_get_paths
+
 
 if __name__ == "__main__":
     unittest.main()

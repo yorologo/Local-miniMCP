@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -77,12 +78,16 @@ type BridgeConfig struct {
 	PythonBin  string
 	PythonPath string
 	DBPath     string
+	ClientID   string
 	Timeout    time.Duration
 }
 
 // DefaultBridgeConfig returns reasonable defaults for development and Pi runtime.
 func DefaultBridgeConfig() *BridgeConfig {
 	pyBin := "python3"
+	if runtime.GOOS == "windows" {
+		pyBin = "python"
+	}
 	if _, err := os.Stat("/usr/bin/python3"); err == nil {
 		pyBin = "/usr/bin/python3"
 	}
@@ -111,6 +116,9 @@ func (b *BridgeConfig) buildEnv() []string {
 	}
 	if b.DBPath != "" {
 		env = append(env, fmt.Sprintf("MCP_GATEWAY_DB=%s", b.DBPath))
+	}
+	if b.ClientID != "" {
+		env = append(env, fmt.Sprintf("MCP_CLIENT_ID=%s", b.ClientID))
 	}
 	return env
 }
@@ -160,6 +168,9 @@ func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON
 	if requestID != "" {
 		args = append(args, "--request-id", requestID)
 	}
+	if b.ClientID != "" {
+		args = append(args, "--client-id", b.ClientID)
+	}
 
 	cmd := exec.CommandContext(ctx, b.PythonBin, args...)
 	cmd.Env = b.buildEnv()
@@ -196,6 +207,48 @@ func (b *BridgeConfig) CallBridge(ctx context.Context, toolName string, argsJSON
 	}
 
 	return outBytes, false, nil
+}
+
+// GetAllowedTools returns a set of allowlisted tool names for the configured ClientID.
+// If ClientID is empty, "local", or "admin", returns nil (all tools allowed).
+// If client has no grants or is invalid, returns an empty map (no tools allowed).
+func (b *BridgeConfig) GetAllowedTools(ctx context.Context) (map[string]bool, error) {
+	if b.ClientID == "" || b.ClientID == "local" || b.ClientID == "admin" {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, b.PythonBin, "-m", "mcp_gateway.bridge", "tools", "--client-id", b.ClientID)
+	cmd.Env = b.buildEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("bridge tools failed for client %s: %w, stderr: %s", b.ClientID, err, stderr.String())
+	}
+
+	var resp struct {
+		OK    bool     `json:"ok"`
+		Tools []string `json:"tools"`
+		Error string   `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		return nil, fmt.Errorf("invalid json from bridge tools: %w", err)
+	}
+
+	if !resp.OK {
+		return nil, fmt.Errorf("bridge tools error: %s", resp.Error)
+	}
+
+	allowed := make(map[string]bool)
+	for _, t := range resp.Tools {
+		allowed[t] = true
+	}
+	return allowed, nil
 }
 
 func generateRequestID() string {
@@ -247,239 +300,282 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 		Version: "0.6.0",
 	}, nil)
 
-	handlerFor := func(toolName string) mcp.ToolHandler {
-		return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			if state != nil && !state.IsReady() {
-				_, notReadyMsg, _ := state.GetStatus()
-				errJSON, _ := json.Marshal(map[string]any{
-					"ok":   false,
-					"tool": toolName,
-					"error": map[string]any{
-						"code":    "ADAPTER_NOT_READY",
-						"message": notReadyMsg,
-					},
-				})
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{
-						&mcp.TextContent{Text: string(errJSON)},
-					},
-				}, nil
-			}
-
-			rawArgs := req.Params.Arguments
-			reqID := generateRequestID()
-
-			outBytes, isErr, err := bridge.CallBridge(ctx, toolName, rawArgs, reqID)
-			if err != nil {
-				return nil, err
-			}
-
-			var structured map[string]any
-			_ = json.Unmarshal(outBytes, &structured)
-
-			return &mcp.CallToolResult{
-				IsError: isErr,
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: string(outBytes)},
-				},
-				StructuredContent: structured,
-			}, nil
+	var allowedTools map[string]bool
+	if bridge != nil {
+		var err error
+		allowedTools, err = bridge.GetAllowedTools(context.Background())
+		if err != nil {
+			log.Printf("[WARN] Failed to query allowed tools for client %q: %v. Defaulting to fail-closed empty catalog.", bridge.ClientID, err)
+			allowedTools = make(map[string]bool)
 		}
 	}
 
-	// Tools registered in strict alphabetical order for catalog determinism:
-	// 1. file_stat
-	server.AddTool(&mcp.Tool{
-		Name:        "file_stat",
-		Description: "Get metadata of a file or directory within a project",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"relative_path": map[string]any{
-					"type":        "string",
-					"description": "Relative path to file or directory",
-				},
-			},
-			"required": []string{"target", "project", "relative_path"},
-		},
-	}, handlerFor("file_stat"))
+	syncServerTools(server, bridge, state, allowedTools)
 
-	// 2. git_status
-	server.AddTool(&mcp.Tool{
-		Name:        "git_status",
-		Description: "Run 'git status --short' on authorized project repository",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-			},
-			"required": []string{"target", "project"},
-		},
-	}, handlerFor("git_status"))
-
-	// 3. health
-	server.AddTool(&mcp.Tool{
-		Name:        "health",
-		Description: "Check gateway health, uptime, version, and target count",
-		InputSchema: map[string]any{
-			"type": "object",
-		},
-	}, handlerFor("health"))
-
-	// 4. list_directory
-	server.AddTool(&mcp.Tool{
-		Name:        "list_directory",
-		Description: "List directory contents under an authorized project",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"relative_path": map[string]any{
-					"type":        "string",
-					"description": "Relative path within project root (default: '.')",
-				},
-			},
-			"required": []string{"target", "project"},
-		},
-	}, handlerFor("list_directory"))
-
-	// 5. list_targets
-	server.AddTool(&mcp.Tool{
-		Name:        "list_targets",
-		Description: "Return safe list of configured targets without secrets",
-		InputSchema: map[string]any{
-			"type": "object",
-		},
-	}, handlerFor("list_targets"))
-
-	// 6. read_file
-	server.AddTool(&mcp.Tool{
-		Name:        "read_file",
-		Description: "Read text file content safely within project boundaries",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"relative_path": map[string]any{
-					"type":        "string",
-					"description": "Relative path to text file",
-				},
-			},
-			"required": []string{"target", "project", "relative_path"},
-		},
-	}, handlerFor("read_file"))
-
-	// 7. run_task
-	server.AddTool(&mcp.Tool{
-		Name:        "run_task",
-		Description: "Execute an allowlisted pre-configured task",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"task": map[string]any{
-					"type":        "string",
-					"description": "Pre-configured task name in project allowlist",
-				},
-			},
-			"required": []string{"target", "project", "task"},
-		},
-	}, handlerFor("run_task"))
-
-	// 8. target_status
-	server.AddTool(&mcp.Tool{
-		Name:        "target_status",
-		Description: "Verify reachability and latency of a target machine",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Configured Target ID (e.g. termux-main)",
-				},
-			},
-			"required": []string{"target"},
-		},
-	}, handlerFor("target_status"))
-
-	// 9. write_file
-	server.AddTool(&mcp.Tool{
-		Name:        "write_file",
-		Description: "Safely write or mutate a text file in an authorized project with atomic replacement and hash verification",
-		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"target": map[string]any{
-					"type":        "string",
-					"description": "Target ID",
-				},
-				"project": map[string]any{
-					"type":        "string",
-					"description": "Project ID",
-				},
-				"relative_path": map[string]any{
-					"type":        "string",
-					"description": "Relative path to file within project root",
-				},
-				"content": map[string]any{
-					"type":        "string",
-					"description": "UTF-8 text content to write",
-				},
-				"expected_sha256": map[string]any{
-					"type":        "string",
-					"description": "Expected SHA256 of existing file before overwrite (required for overwrite unless create=true)",
-				},
-				"dry_run": map[string]any{
-					"type":        "boolean",
-					"description": "If true, returns diff and sha256 without mutating the target file",
-				},
-				"create": map[string]any{
-					"type":        "boolean",
-					"description": "If true, creates a new file (fails if file already exists)",
-				},
-			},
-			"required": []string{"target", "project", "relative_path", "content"},
-		},
-	}, handlerFor("write_file"))
+	if bridge != nil && bridge.ClientID != "" && bridge.ClientID != "local" && bridge.ClientID != "admin" {
+		server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				if method == "tools/list" {
+					allowed, err := bridge.GetAllowedTools(ctx)
+					if err == nil {
+						syncServerTools(server, bridge, state, allowed)
+					}
+				}
+				return next(ctx, method, req)
+			}
+		})
+	}
 
 	return server
+}
+
+var allKnownTools = []string{
+	"file_stat",
+	"git_status",
+	"health",
+	"list_directory",
+	"list_targets",
+	"read_file",
+	"run_task",
+	"target_status",
+	"write_file",
+}
+
+func syncServerTools(server *mcp.Server, bridge *BridgeConfig, state *AdapterState, allowed map[string]bool) {
+	server.RemoveTools(allKnownTools...)
+	for _, toolName := range allKnownTools {
+		if allowed == nil || allowed[toolName] {
+			registerToolByName(server, toolName, bridge, state)
+		}
+	}
+}
+
+func makeToolHandler(toolName string, bridge *BridgeConfig, state *AdapterState) mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if state != nil && !state.IsReady() {
+			_, notReadyMsg, _ := state.GetStatus()
+			errJSON, _ := json.Marshal(map[string]any{
+				"ok":   false,
+				"tool": toolName,
+				"error": map[string]any{
+					"code":    "ADAPTER_NOT_READY",
+					"message": notReadyMsg,
+				},
+			})
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: string(errJSON)},
+				},
+			}, nil
+		}
+
+		rawArgs := req.Params.Arguments
+		reqID := generateRequestID()
+
+		outBytes, isErr, err := bridge.CallBridge(ctx, toolName, rawArgs, reqID)
+		if err != nil {
+			return nil, err
+		}
+
+		var structured map[string]any
+		_ = json.Unmarshal(outBytes, &structured)
+
+		return &mcp.CallToolResult{
+			IsError: isErr,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: string(outBytes)},
+			},
+			StructuredContent: structured,
+		}, nil
+	}
+}
+
+func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfig, state *AdapterState) {
+	handler := makeToolHandler(toolName, bridge, state)
+	switch toolName {
+	case "file_stat":
+		server.AddTool(&mcp.Tool{
+			Name:        "file_stat",
+			Description: "Get metadata of a file or directory within a project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to file or directory",
+					},
+				},
+				"required": []string{"target", "project", "relative_path"},
+			},
+		}, handler)
+	case "git_status":
+		server.AddTool(&mcp.Tool{
+			Name:        "git_status",
+			Description: "Run 'git status --short' on authorized project repository",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+				},
+				"required": []string{"target", "project"},
+			},
+		}, handler)
+	case "health":
+		server.AddTool(&mcp.Tool{
+			Name:        "health",
+			Description: "Check gateway health, uptime, version, and target count",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
+	case "list_directory":
+		server.AddTool(&mcp.Tool{
+			Name:        "list_directory",
+			Description: "List directory contents under an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path within project root (default: '.')",
+					},
+				},
+				"required": []string{"target", "project"},
+			},
+		}, handler)
+	case "list_targets":
+		server.AddTool(&mcp.Tool{
+			Name:        "list_targets",
+			Description: "Return safe list of configured targets without secrets",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
+	case "read_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "read_file",
+			Description: "Read text file content safely within project boundaries",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to text file",
+					},
+				},
+				"required": []string{"target", "project", "relative_path"},
+			},
+		}, handler)
+	case "run_task":
+		server.AddTool(&mcp.Tool{
+			Name:        "run_task",
+			Description: "Execute an allowlisted pre-configured task",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"task": map[string]any{
+						"type":        "string",
+						"description": "Pre-configured task name in project allowlist",
+					},
+				},
+				"required": []string{"target", "project", "task"},
+			},
+		}, handler)
+	case "target_status":
+		server.AddTool(&mcp.Tool{
+			Name:        "target_status",
+			Description: "Verify reachability and latency of a target machine",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Configured Target ID (e.g. termux-main)",
+					},
+				},
+				"required": []string{"target"},
+			},
+		}, handler)
+	case "write_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "write_file",
+			Description: "Safely write or mutate a text file in an authorized project with atomic replacement and hash verification",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to file within project root",
+					},
+					"content": map[string]any{
+						"type":        "string",
+						"description": "UTF-8 text content to write",
+					},
+					"expected_sha256": map[string]any{
+						"type":        "string",
+						"description": "Expected SHA256 of existing file before overwrite (required for overwrite unless create=true)",
+					},
+					"dry_run": map[string]any{
+						"type":        "boolean",
+						"description": "If true, returns diff and sha256 without mutating the target file",
+					},
+					"create": map[string]any{
+						"type":        "boolean",
+						"description": "If true, creates a new file (fails if file already exists)",
+					},
+				},
+				"required": []string{"target", "project", "relative_path", "content"},
+			},
+		}, handler)
+	}
 }
 
 // RunStdio starts the MCP server over standard input/output.

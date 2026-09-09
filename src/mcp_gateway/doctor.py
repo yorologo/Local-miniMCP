@@ -206,12 +206,51 @@ def check_mcp_endpoints(http_base: str = "http://127.0.0.1:8090") -> List[CheckR
     return results
 
 
+def check_ai_clients_and_grants() -> List[CheckResult]:
+    results = []
+    try:
+        reg = get_registry()
+        from .policy import authorize_client
+
+        # 1. Anonymous access denial check
+        anon_ok, _ = authorize_client("NONE", None, None, "read_file", registry=reg)
+        if not anon_ok:
+            results.append(CheckResult("Anonymous Access Seam", True, "Anonymous access ('NONE') is denied fail-closed"))
+        else:
+            results.append(CheckResult("Anonymous Access Seam", False, "Anonymous access was allowed (SECURITY RISK!)"))
+
+        # 2. Registered clients
+        clients = reg.list_clients() if hasattr(reg, "list_clients") else []
+        results.append(CheckResult("Registered AI Clients", True, f"Found {len(clients)} configured AI client(s)"))
+
+        # 3. Grants consistency
+        grants = reg.list_grants() if hasattr(reg, "list_grants") else []
+        results.append(CheckResult("Client Grants", True, f"Found {len(grants)} configured client grant(s)"))
+
+        # 4. SSH stdio wrapper verification
+        wrapper_paths = [
+            "/home/mcp-gateway/mcp-gateway/bin/mcp-gateway-client-stdio",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bin", "mcp-gateway-client-stdio")),
+        ]
+        wrapper_found = any(os.path.isfile(p) and (os.access(p, os.X_OK) or platform.system() == "Windows") for p in wrapper_paths)
+        if wrapper_found or platform.system() == "Windows":
+            results.append(CheckResult("SSH Forced Command Wrapper", True, "mcp-gateway-client-stdio wrapper available"))
+        else:
+            results.append(CheckResult("SSH Forced Command Wrapper", False, "mcp-gateway-client-stdio not found or not executable", severity="warning"))
+
+    except Exception as e:
+        results.append(CheckResult("AI Clients and Grants", False, f"Failed client checks: {e}"))
+
+    return results
+
+
 def run_doctor(verbose: bool = False, check_targets: bool = False) -> Tuple[str, List[CheckResult]]:
     all_checks = []
     all_checks.extend(check_runtime_and_contracts())
     all_checks.extend(check_registry_integrity())
     all_checks.extend(check_security_permissions())
     all_checks.extend(check_core_and_tools())
+    all_checks.extend(check_ai_clients_and_grants())
     all_checks.extend(check_mcp_endpoints())
 
     has_error = any(not c.passed and c.severity == "error" for c in all_checks)

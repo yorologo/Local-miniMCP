@@ -65,13 +65,14 @@ def verify_manifest(manifest_path: str) -> Tuple[bool, List[str]]:
     errors = []
     # Check architecture
     arch = platform.machine()
+    norm_arch = "x86_64" if arch in ("AMD64", "amd64") else arch
     allowed_archs = data.get("architectures")
     if allowed_archs:
-        if arch not in allowed_archs and "all" not in allowed_archs:
+        if norm_arch not in allowed_archs and "all" not in allowed_archs:
             errors.append(f"Architecture mismatch: package supports {allowed_archs}, system is '{arch}'")
     else:
         m_arch = data.get("architecture")
-        if m_arch and m_arch != "all" and m_arch != arch:
+        if m_arch and m_arch != "all" and m_arch != norm_arch:
             errors.append(f"Architecture mismatch: package is '{m_arch}', system is '{arch}'")
 
     # Check contract compatibility
@@ -138,8 +139,125 @@ def restore_database(backup_path: str) -> bool:
     return True
 
 
+def verify_checksums(release_dir: str) -> Tuple[bool, List[str]]:
+    sums_file = os.path.join(release_dir, "SHA256SUMS")
+    if not os.path.isfile(sums_file):
+        return True, []  # Optional if no SHA256SUMS file
+
+    errors = []
+    with open(sums_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            expected_sha, rel_path = parts[0], parts[1].lstrip("./")
+            target_file = os.path.join(release_dir, rel_path)
+            if not os.path.isfile(target_file):
+                errors.append(f"Missing file listed in SHA256SUMS: {rel_path}")
+                continue
+            h = hashlib.sha256()
+            with open(target_file, "rb") as bf:
+                while chunk := bf.read(65536):
+                    h.update(chunk)
+            actual_sha = h.hexdigest()
+            if actual_sha != expected_sha:
+                errors.append(f"Checksum mismatch for {rel_path}: expected {expected_sha}, got {actual_sha}")
+    return len(errors) == 0, errors
+
+
+def update_release(candidate_path: str) -> Tuple[bool, str]:
+    """Perform safe release update with backup, manifest, checksums, doctor and rollback."""
+    if not os.path.exists(candidate_path):
+        return False, f"Candidate release path does not exist: {candidate_path}"
+
+    paths = get_paths()
+    staging_dir = candidate_path
+
+    # Extract tarball if compressed archive
+    extracted_tmp = None
+    if os.path.isfile(candidate_path) and (candidate_path.endswith(".tar.gz") or candidate_path.endswith(".tgz")):
+        import tempfile
+        import tarfile
+        extracted_tmp = tempfile.mkdtemp(prefix="mcp_update_")
+        with tarfile.open(candidate_path, "r:*") as tar:
+            tar.extractall(extracted_tmp)
+        staging_dir = extracted_tmp
+
+    try:
+        # 1. Verify manifest and contract compatibility
+        manifest_file = os.path.join(staging_dir, "manifest.json")
+        if not os.path.isfile(manifest_file):
+            return False, "Candidate release is missing manifest.json"
+
+        ok, errs = verify_manifest(manifest_file)
+        if not ok:
+            return False, f"Candidate compatibility verification failed: {errs}"
+
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            m_data = json.load(f)
+        version = m_data.get("version", "unknown")
+
+        # 2. Verify checksums if present
+        chk_ok, chk_errs = verify_checksums(staging_dir)
+        if not chk_ok:
+            return False, f"Candidate checksum verification failed: {chk_errs}"
+
+        # 3. Pre-update database backup
+        try:
+            bak_path = backup_database()
+        except Exception as e:
+            return False, f"Pre-update database backup failed: {e}"
+
+        # 4. Copy candidate release into releases directory
+        os.makedirs(paths["releases"], exist_ok=True)
+        rel_target = os.path.join(paths["releases"], version)
+        if os.path.exists(rel_target):
+            shutil.rmtree(rel_target, ignore_errors=True)
+        shutil.copytree(staging_dir, rel_target)
+
+        # 5. Swap current and previous release symlinks
+        current = paths["current"]
+        previous = paths["previous"]
+        old_target = os.path.realpath(current) if (os.path.islink(current) or os.path.isdir(current)) else None
+
+        if old_target and os.path.isdir(old_target):
+            temp_prev = previous + ".update_tmp"
+            if os.path.lexists(temp_prev):
+                os.remove(temp_prev)
+            os.symlink(old_target, temp_prev)
+            os.replace(temp_prev, previous)
+
+        temp_curr = current + ".update_tmp"
+        if os.path.lexists(temp_curr):
+            os.remove(temp_curr)
+        os.symlink(rel_target, temp_curr)
+        os.replace(temp_curr, current)
+
+        # 6. Execute doctor health check on updated release
+        doc_status, _ = run_doctor(verbose=False)
+        if doc_status == "UNHEALTHY":
+            # Auto-rollback to previous
+            if old_target:
+                os.symlink(old_target, temp_curr)
+                os.replace(temp_curr, current)
+            return False, f"Doctor check failed (status: {doc_status}) after update. Rolled back to {old_target}."
+
+        # 7. Restart services if on Linux
+        if shutil.which("systemctl"):
+            subprocess.run(["systemctl", "restart", "mcp-gateway-admin", "mcp-gateway-mcp"], check=False)
+        return True, f"Release successfully updated to v{version} (backup at {bak_path})"
+
+    finally:
+        if extracted_tmp and os.path.isdir(extracted_tmp):
+            shutil.rmtree(extracted_tmp, ignore_errors=True)
+
+
 def rollback_release() -> Tuple[bool, str]:
     paths = get_paths()
+
     previous = paths["previous"]
     current = paths["current"]
 
@@ -165,7 +283,8 @@ def rollback_release() -> Tuple[bool, str]:
     os.replace(temp_link, current)
 
     # Restart services
-    subprocess.run(["systemctl", "restart", "mcp-gateway-admin", "mcp-gateway-mcp"], check=False)
+    if shutil.which("systemctl"):
+        subprocess.run(["systemctl", "restart", "mcp-gateway-admin", "mcp-gateway-mcp"], check=False)
     return True, f"Successfully rolled back current release to {prev_target}"
 
 

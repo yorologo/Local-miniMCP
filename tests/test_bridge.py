@@ -102,6 +102,44 @@ class TestBridge(unittest.TestCase):
         self.assertTrue(output["ok"])
         self.assertEqual(output.get("request_id"), "req-test-123")
 
+    def test_anonymous_client_denied(self):
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            code = main(["tools", "--client-id", "NONE"])
+        self.assertEqual(code, 0)
+        output = json.loads(buf.getvalue())
+        self.assertEqual(output["tools"], [])
+
+        res = invoke_tool("health", {}, registry=self.mock_registry, client_id="NONE")
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"]["code"], "TOOL_NOT_ALLOWED")
+        self.assertIn("ANONYMOUS_CLIENT_DENIED", res["error"]["message"])
+
+    def test_client_grants_filtering_and_hidden_call(self):
+        reg = MagicMock()
+        reg.get_client.return_value = {"id": "c1", "enabled": True}
+        reg.get_setting.return_value = "true"
+        # Client only has grant for health and list_targets
+        reg.get_client_grants.return_value = [
+            {"client_id": "c1", "target_id": "*", "project_id": "*", "capability": "health,list_targets", "enabled": True}
+        ]
+
+        from mcp_gateway.bridge import get_tools_catalog
+        tools = get_tools_catalog(client_id="c1", registry=reg)
+        self.assertEqual(tools, ["health", "list_targets"])
+        self.assertNotIn("write_file", tools)
+        self.assertNotIn("read_file", tools)
+
+        # Call allowed tool
+        res_allowed = invoke_tool("health", {}, registry=reg, client_id="c1")
+        self.assertTrue(res_allowed["ok"])
+
+        # Call hidden tool
+        res_hidden = invoke_tool("write_file", {"target": "t1", "project": "p1", "path": "a.txt", "content": "foo"}, registry=reg, client_id="c1")
+        self.assertFalse(res_hidden["ok"])
+        self.assertEqual(res_hidden["error"]["code"], "TOOL_NOT_ALLOWED")
+        self.assertIn("lacks grant capability", res_hidden["error"]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

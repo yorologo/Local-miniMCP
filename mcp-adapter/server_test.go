@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +19,12 @@ import (
 
 func getTestBridgeConfig() *BridgeConfig {
 	pyPath, _ := filepath.Abs("../src")
+	pyBin := "python3"
+	if runtime.GOOS == "windows" {
+		pyBin = "python"
+	}
 	return &BridgeConfig{
-		PythonBin:  "python3",
+		PythonBin:  pyBin,
 		PythonPath: pyPath,
 		Timeout:    10 * time.Second,
 	}
@@ -361,3 +366,38 @@ func TestStatelessMCPNegativeSessions(t *testing.T) {
 		t.Errorf("expected 405 for GET in stateless mode, got %d", resp.StatusCode)
 	}
 }
+
+func TestClientToolFiltering(t *testing.T) {
+	ctx := context.Background()
+	bridge := getTestBridgeConfig()
+	bridge.ClientID = "NONE" // Deny all anonymous tools
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	tServer, tClient := mcp.NewInMemoryTransports()
+	go func() {
+		_ = server.Run(ctx, tServer)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "test-client",
+		Version: "1.0.0",
+	}, nil)
+
+	session, err := client.Connect(ctx, tClient, nil)
+	if err != nil {
+		t.Fatalf("client.Connect failed: %v", err)
+	}
+	defer session.Close()
+
+	toolsList, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	if len(toolsList.Tools) != 0 {
+		t.Fatalf("Expected 0 tools for client NONE, got %d", len(toolsList.Tools))
+	}
+}
+

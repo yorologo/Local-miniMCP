@@ -11,12 +11,14 @@ import (
 )
 
 func main() {
+	log.SetOutput(os.Stderr)
 	var (
 		transportFlag = flag.String("transport", "stdio", "Transport mode: stdio or http")
 		bindFlag      = flag.String("bind", "127.0.0.1:8090", "Bind address for Streamable HTTP mode (default: 127.0.0.1:8090)")
 		pythonFlag    = flag.String("python", "", "Path to python3 binary")
 		pythonPathFlag = flag.String("pythonpath", "", "Path to Python source directory containing mcp_gateway")
 		dbFlag        = flag.String("db", "", "Path to SQLite database file")
+		clientIDFlag  = flag.String("client-id", "", "Authenticated AI client identifier")
 		versionFlag   = flag.Bool("version", false, "Print version information")
 	)
 	flag.Parse()
@@ -35,6 +37,11 @@ func main() {
 	}
 	if *dbFlag != "" {
 		bridgeConfig.DBPath = *dbFlag
+	}
+	if *clientIDFlag != "" {
+		bridgeConfig.ClientID = *clientIDFlag
+	} else if envClient := os.Getenv("MCP_CLIENT_ID"); envClient != "" {
+		bridgeConfig.ClientID = envClient
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
