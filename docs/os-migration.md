@@ -1,4 +1,4 @@
-﻿# Guía de Migración de Sistema Operativo — MCP-Pi Gateway
+# Guía de Migración de Sistema Operativo — MCP-Pi Gateway
 
 Este documento describe el procedimiento detallado, seguro y no destructivo para migrar la Raspberry Pi Model A+ desde Debian 11 (Bullseye) a la versión oficial **Raspberry Pi OS Lite 32-bit (Debian 13 Trixie)**, preservando el rollback físico de la tarjeta microSD original.
 
@@ -63,28 +63,40 @@ En la estación de trabajo (PC):
 3. Esperar aproximadamente 2-3 minutos mientras se expande el sistema de archivos y se asocia a la red Wi-Fi.
 4. **Verificar Asignación de IP**:
    - El router debe asignarle la IP reservada `192.168.68.85` (asociada a la MAC `8c:90:2d:ac:e5:c0` del adaptador USB Wi-Fi RTL8188EUS).
-5. **Comprobar Acceso Administrativo**:
+5. **Comprobar Acceso Administrativo Inicial (Bootstrap Aislado)**:
+   > [!IMPORTANT]
+   > **PROHIBIDO EL USO DE `StrictHostKeyChecking=no` Y PROHIBIDA LA MODIFICACIÓN DE `known_hosts` GLOBAL**:
+   > Para el primer inicio bajo control físico directo, utilizar un archivo temporal dedicado y aislado `~/.ssh/mcp_bootstrap_known_hosts`:
    ```bash
-   ssh -o StrictHostKeyChecking=no Yorologo@192.168.68.85
+   ssh -o UserKnownHostsFile=~/.ssh/mcp_bootstrap_known_hosts Yorologo@192.168.68.85 "hostname"
    ```
-   *(Temporalmente con `StrictHostKeyChecking=no` sólo en este primer login antes de restaurar la clave de host original).*
 
 ---
 
 ## 5. Restauración de la Identidad SSH del Host (Host Key Pinning)
 
-Para mantener la confianza inmutable de los clientes (`~/.ssh/mcp_known_hosts`), restauramos la clave de host original:
+Para mantener la confianza inmutable de los clientes (`~/.ssh/mcp_known_hosts`), restauramos la clave de host Ed25519 original:
 
 Desde la estación de trabajo con la bóveda de respaldo `~/.mcp_migration_backup/`:
 ```bash
-# Copiar las claves de host originales a la Pi
-scp ~/.mcp_migration_backup/ssh_host_ed25519_key* Yorologo@192.168.68.85:/tmp/
+# 1. Copiar las claves de host originales a la Pi usando el archivo de bootstrap
+scp -o UserKnownHostsFile=~/.ssh/mcp_bootstrap_known_hosts ~/.mcp_migration_backup/ssh_host_ed25519_key* Yorologo@192.168.68.85:/tmp/
 
-# En la Pi: instalar con permisos estrictos y reiniciar sshd
-ssh Yorologo@192.168.68.85 "sudo cp /tmp/ssh_host_ed25519_key* /etc/ssh/ && sudo chown root:root /etc/ssh/ssh_host_ed25519_key* && sudo chmod 600 /etc/ssh/ssh_host_ed25519_key && sudo chmod 644 /etc/ssh/ssh_host_ed25519_key.pub && sudo rm /tmp/ssh_host_ed25519_key* && sudo systemctl restart ssh"
+# 2. En la Pi: instalar con permisos estrictos y reiniciar sshd
+ssh -o UserKnownHostsFile=~/.ssh/mcp_bootstrap_known_hosts Yorologo@192.168.68.85 << 'EOF'
+sudo cp /tmp/ssh_host_ed25519_key* /etc/ssh/
+sudo chown root:root /etc/ssh/ssh_host_ed25519_key*
+sudo chmod 600 /etc/ssh/ssh_host_ed25519_key
+sudo chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
+sudo rm -f /tmp/ssh_host_ed25519_key*
+sudo systemctl restart ssh
+EOF
+
+# 3. Eliminar inmediatamente el archivo temporal de bootstrap
+rm -f ~/.ssh/mcp_bootstrap_known_hosts
 ```
 
-### Verificación de Fingerprint
+### Verificación de Fingerprint y Conexión Permanente
 En la estación de trabajo:
 ```bash
 ssh-keygen -lf ~/.ssh/mcp_known_hosts
@@ -93,11 +105,11 @@ El fingerprint devuelto debe ser exactamente:
 ```text
 SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E
 ```
-Probar conexión con verificación estricta:
+Conectar utilizando estrictamente la clave fijada permanente:
 ```bash
 ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts Yorologo@192.168.68.85 "hostname"
 ```
-Debe devolver `MCP-Pi` sin advertencias.
+Debe devolver `MCP-Pi` sin advertencias y sin alterar `known_hosts` global.
 
 ---
 

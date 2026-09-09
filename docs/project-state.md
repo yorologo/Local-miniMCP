@@ -60,13 +60,14 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Dynamic Grants & Policy (Fase 6A)** | **PASS** | Catálogo dinámico `tools/list` e invocación `tools/call` sincronizados en tiempo real mediante middleware Go hacia Python Policy Engine. Aislamiento estricto: Gemini CLI (8 herramientas, sin escritura), Claude Desktop (7 herramientas lectura). |
 | **Live Client Verification (Fase 6A)**| **PASS** | 4/4 suites de pruebas en vivo superadas al 100% en `scripts/verify_phase_6a.py` (baseline gemini, baseline claude, mutación dinámica de grants y emergency disable fail-closed). 107/107 unit tests locales y remotos pasados. 10/10 Go tests pasados. |
 | **ChatGPT Gate** | **BLOCKED_BY_PRODUCT_CAPABILITY** | Endpoint Streamable HTTP retenido exclusivamente en `127.0.0.1:8090/mcp`. Cloudflare/ngrok/public exposure estrictamente bloqueados. |
-| **Inventory & Baseline Freeze (Fase 7)** | **PASS** | Inventario exhaustivo documentado en `docs/migration/pre-migration-inventory.md`. Git limpio en `ee23898`, tag `phase-6a-pass`. |
-| **Backup Gate & Vault Fuera de Git (Fase 7)**| **PASS** | `gateway.db` (86 KB, integridad verificada), export JSON, claves Ed25519 de host y target resguardadas en `~/.mcp_migration_backup/` con permisos 600. |
-| **Physical Rollback (Fase 7)** | **PASS** | MicroSD original Bullseye preservada intacta como `KNOWN_GOOD_PHYSICAL_ROLLBACK`. Procedimiento en `docs/runbooks/microsd-recovery.md` (RTO < 2 min). |
-| **OS Candidate Evaluation (Fase 7)** | **PASS** | Oficial Raspberry Pi OS Lite 32-bit (Debian 13 Trixie, `2026-06-18-raspios-trixie-armhf-lite.img.xz`) evaluado como primario; Bookworm Legacy Lite como fallback. |
-| **Target Worker Offline Resilience (Fase 7)**| **PASS** | Ante worker desconectado (`192.168.68.84:8022`), gateway responde en 168 ms con `SSH_FAILED` estructurado, sin cuelgues ni corrupción. Doctor permanece `HEALTHY`. |
-| **Runbooks & Contingencia (Fase 7)** | **PASS** | Runbooks creados: `microsd-recovery.md`, `disaster-recovery.md`, `reboot-recovery.md`, `network-recovery.md`, `os-migration.md`, `v1-acceptance.md`. |
-| **Versión Candidata (Fase 7)** | **PASS** | Certificación de release candidate `v1.0.0-rc1` lista para aceptación final. |
+| **Inventory & Baseline Freeze (Fase 7A)** | **PASS** | Inventario exhaustivo documentado en `docs/migration/pre-migration-inventory.md`. Git limpio en `ee23898`, tag `phase-6a-pass`. |
+| **Backup Gate & Vault Fuera de Git (Fase 7A)**| **PASS** | `gateway.db` (86 KB, integridad verificada), export JSON, claves Ed25519 de host y target resguardadas en `~/.mcp_migration_backup/` con permisos 600. |
+| **Physical Rollback Preservation (Fase 7A)** | **PASS** | MicroSD original Bullseye preservada intacta como `KNOWN_GOOD_PHYSICAL_ROLLBACK`. Procedimiento en `docs/runbooks/microsd-recovery.md` (RTO < 2 min). |
+| **OS Candidate Evaluation (Fase 7A)** | **PASS** | Oficial Raspberry Pi OS Lite 32-bit (Debian 13 Trixie, `2026-06-18-raspios-trixie-armhf-lite.img.xz`) catalogado; Bookworm Legacy Lite como fallback. |
+| **Target Worker Offline Resilience (Fase 7A)**| **PASS** | Ante worker desconectado (`192.168.68.84:8022`), gateway responde en 168 ms con `SSH_FAILED` estructurado, sin cuelgues ni corrupción. Doctor permanece `HEALTHY`. |
+| **Runbooks & Contingencia (Fase 7A)** | **PASS** | Runbooks creados: `microsd-recovery.md`, `disaster-recovery.md`, `reboot-recovery.md`, `network-recovery.md`, `os-migration.md`, `v1-acceptance.md`. |
+| **Physical Migration Trixie (Fase 7B)** | **BLOCKED_PHYSICAL_MEDIA** | Pendiente de inserción física de la segunda tarjeta microSD grabada con Trixie 32-bit Lite. |
+| **Versión Candidata** | **PREMATURE** | `v1.0.0-rc1` pospuesta hasta superar la aceptación física en hardware real (Fase 7B). Tag activo: `phase-7-migration-ready`. |
 
 ---
 
@@ -90,12 +91,13 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 14:20 CST (2026-09-09 20:20 UTC)
-- **CURRENT_PHASE**: PHASE 7 — RESILIENCE, OS MIGRATION & V1.0 READINESS - COMPLETADA
+- **LAST_VERIFIED**: 2026-09-09 15:30 CST (2026-09-09 21:30 UTC)
+- **CURRENT_PHASE**: PHASE 7A (READINESS: PASS) / PHASE 7B (PHYSICAL: BLOCKED_PHYSICAL_MEDIA)
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
   - **Fase 6A Final Verification & Security Closure**: (COMPLETADA)
-  - **Fase 7**: Resilience, OS Migration & v1.0 Readiness (COMPLETADA)
+  - **Fase 7A**: Preparation & Migration Readiness (COMPLETADA - TAG: `phase-7-migration-ready`)
+  - **Fase 7B**: Physical Trixie Migration & Real-Hardware Acceptance (PENDIENTE DE MEDIO FÍSICO)
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta requerimiento formal)
-- **NEXT_ACTION**: V1_FINAL_ACCEPTANCE (Grabación de la nueva microSD cuando el usuario disponga del medio físico y ejecución de aceptación final).
+- **NEXT_ACTION**: Requerir segunda tarjeta microSD física para grabar Trixie y proceder con Fase 7B.

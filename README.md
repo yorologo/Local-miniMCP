@@ -2,10 +2,10 @@
 
 ### Gateway MCP local, ligero, multi-target, multi-project y agnóstico del cliente de IA
 
-**Versión documental:** 1.0-rc1  
+**Versión documental:** 0.8  
 **Fecha de corte:** 9 de septiembre de 2026  
-**Estado del proyecto:** **Phase 7 Completed (Resilience, OS Migration & v1.0.0-rc1 Readiness PASS)**  
-**Siguiente fase oficial:** **v1.0 Final Physical Acceptance & Release**  
+**Estado del proyecto:** **Phase 7A PASS (Readiness Complete, Tag: `phase-7-migration-ready`) / Phase 7B PENDING (Blocked on Physical Second MicroSD)**  
+**Siguiente fase oficial:** **Phase 7B — Physical Trixie Migration & Real-Hardware Acceptance**  
 **Principio rector:** **KISS — Keep It Simple, Stupid / “Mantenlo simple, estúpido”**  
 **Política de construcción:** **Reuse first; build only what is specific to MCP-Pi**
 
