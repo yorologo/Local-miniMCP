@@ -2,10 +2,10 @@
 
 ### Gateway MCP local, ligero, multi-target, multi-project y agnóstico del cliente de IA
 
-**Versión documental:** 0.7  
+**Versión documental:** 1.0-rc1  
 **Fecha de corte:** 9 de septiembre de 2026  
-**Estado del proyecto:** **Phase 6A Closeout PASS (Official MCP Unification & Real Client Smoke)**  
-**Siguiente fase oficial:** **Phase 6B — Cloud AI Clients & ChatGPT Integration Gate**  
+**Estado del proyecto:** **Phase 7 Completed (Resilience, OS Migration & v1.0.0-rc1 Readiness PASS)**  
+**Siguiente fase oficial:** **v1.0 Final Physical Acceptance & Release**  
 **Principio rector:** **KISS — Keep It Simple, Stupid / “Mantenlo simple, estúpido”**  
 **Política de construcción:** **Reuse first; build only what is specific to MCP-Pi**
 

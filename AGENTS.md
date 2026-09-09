@@ -180,8 +180,16 @@ ssh Yorologo@192.168.68.85
   - **MCP 2026 Native Closure**: Streamable HTTP validado en `127.0.0.1:8090/server/discover` (200 OK) y `POST /mcp` con cabecera `Stateless: true` (200 OK con SSE chunked).
   - **Batería de Pruebas**: 107/107 unit tests locales, 107/107 unit tests remotos en MCP-Pi, 10/10 Go tests, suite en vivo de clientes 4/4 bloques aprobados, y doctor HEALTHY.
   - Documentación en [docs/ai-clients.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/ai-clients.md), [docs/client-grants.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/client-grants.md), [docs/chatgpt-gate.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/chatgpt-gate.md), y runbooks asociados.
-- **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **SIGUIENTE**.
-- **Fase 7 (Operación Estable & Resiliencia)**: *Futura*.
+- **Fase 7 (Resiliencia, Migración de SO & Preparación v1.0)**: **TERMINADA (v1.0.0-rc1 READINESS)**.
+  - **Línea Base & Congelamiento**: Git limpio en `ee23898`, tag `phase-6a-pass`. Batería de pruebas: 107/107 Python locales y remotos, 10/10 Go tests, Phase 6A E2E y Doctor HEALTHY.
+  - **Inventario Técnico Exhaustivo**: Documentado en [docs/migration/pre-migration-inventory.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/migration/pre-migration-inventory.md).
+  - **Bóveda de Respaldo Fuera de Git**: `gateway.db` (integridad `PRAGMA integrity_check = ok`), exportación sanitizada JSON, claves privadas y públicas Ed25519 de host y target resguardadas en `~/.mcp_migration_backup/` (permisos 600) en la estación local. Cero secretos en Git.
+  - **Rollback Físico Inmutable**: MicroSD Bullseye original preservada intacta como `KNOWN_GOOD_PHYSICAL_ROLLBACK`. Procedimiento en [docs/runbooks/microsd-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/microsd-recovery.md) (RTO < 2 min).
+  - **Candidato de SO Oficial Validado**: Raspberry Pi OS Lite 32-bit (Debian 13 Trixie, `2026-06-18-raspios-trixie-armhf-lite.img.xz`, SHA256 verificado) evaluado como primario; Bookworm Legacy Lite como fallback de hardware.
+  - **Resiliencia ante Target Offline**: Comportamiento verificado ante target desconectado (`192.168.68.84:8022`): retorno rápido en 168 ms con `SSH_FAILED` estructurado, sin bloqueos ni corrupción. Doctor permanece `HEALTHY`.
+  - **Runbooks de Contingencia**: Creados [docs/os-migration.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/os-migration.md), [docs/runbooks/disaster-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/disaster-recovery.md), [docs/runbooks/reboot-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/reboot-recovery.md), [docs/runbooks/network-recovery.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/network-recovery.md) y [docs/v1-acceptance.md](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/v1-acceptance.md).
+  - **Release Candidate**: Preparado para aceptación final como `v1.0.0-rc1`.
+- **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **BLOQUEADA** (requiere túnel autenticado; prohibida exposición pública directa).
 
 ---
 
