@@ -242,3 +242,23 @@ Pi → PC:
 9. **Preferir operaciones explícitas**: No ejecutar scripts ciegos ni comandos destructivos; verificar individualmente.
 10. **Detenerse ante discrepancias**: Si la IP, MAC, modelo o respuesta del host no coincide con los valores registrados, ejecutar `STOP` de inmediato y documentar la anomalía.
 
+---
+
+## 9. Política de Ramas, Sincronización y Checkpoints
+
+- **Principio Inmutable**: **NO significant validated work may exist only locally.** Todo trabajo validado debe sincronizarse de manera estructurada y continua al repositorio central.
+- **Estructura de Ramas**:
+  - `main`: Representa el estado estable conocido y validado (`KNOWN_GOOD_STABLE`). Solo recibe fusiones desde `develop` tras aceptación integral en hardware real.
+  - `develop`: Rama de integración activa con el último estado integrado y validado.
+  - Ramas efímeras (`feature/*`, `fix/*`, `experiment/*`): Utilizadas cuando se requiere aislamiento temporal.
+- **Flujo Obligatorio de Checkpoint**:
+  Tras completar y validar cualquier fase o hito relevante:
+  1. `tests` (Python local/remoto 100%, Go SDK 100%, E2E).
+  2. `doctor` (MCP-Pi diagnostics `HEALTHY`).
+  3. `secret gate` (0 secretos, 0 bases de datos, 0 claves privadas en Git).
+  4. `commit` (mensajes convencionales claros).
+  5. `push develop` (publicación a origin).
+- **Flujo de Promoción a Stable / Release**:
+  `feature/fix` → `develop` → `real-hardware acceptance` → `main` → `release tag`.
+
+
