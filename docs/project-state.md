@@ -72,24 +72,26 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Rollback Functional Sandbox** | **PASS** | Ciclo completo probado en sandbox aislado (`/tmp/mcp_rollback_sandbox_*`): validación de candidato B, actualización de puntero `current`/`previous`, reversión exitosa a release A y cleanup |
 | **Formal Bounded Soak** | **PASS** | Soak de 60 min completado: 0 caídas, 0 cuelgues, 0 reinicios inesperados, 0 fugas de memoria (Admin RSS 6.3MB, MCP RSS 5.6MB, RAM disponible 92.5MB), 0 errores USB/Wi-Fi |
 | **Target Worker Offline Handling**| **PASS** | Degradación limpia ante target desconectado: respuesta rápida en 168 ms con `SSH_FAILED` estructurado sin bloqueos ni corrupción |
-| **Target Worker Return Gate** | **MANUAL_REQUIRED** | Worker `termux-main` (`192.168.68.84:8022`) se encuentra físicamente desconectado. Reconexión dinámica en espera manual del worker. |
+| **Target Worker Return Gate** | **PASS** | Reconexión dinámica validada en caliente a `192.168.68.72:8022` con `HostKeyAlias=termux-main` (`SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0`). 5/5 operaciones operativas, Phase 5 live 19/19 superadas y Full Path validado. |
 | **Network Interruption Gate** | **WAIVED_WITH_RATIONALE** | Reconexión Wi-Fi completamente demostrada por reboot real de hardware. Corte deliberado de interfaz inalámbrica dispensado para evitar bloqueo remoto sin consola física. |
 | **Backup / Restore Sandbox** | **PASS** | Copia sandbox validada: integridad `ok`, `user_version = 1`, paridad exacta con base de datos de producción (1 target, 2 proyectos, 2 clientes AI, 2 grants, 8 settings) |
 | **Security Negative Suite** | **PASS** | 7/7 vectores de seguridad bloqueados fail-closed en vivo (acceso anónimo 0 tools, tool desconocida, path traversal, escrituras deshabilitadas, Host rebinding 403, Origin 403, cliente no autorizado) |
-| **Release Status** | **WAITING_FOR_TARGET_RETURN** | Release Candidate `v1.0.0-rc1` verificado exhaustivamente. Tag `v1.0.0` en espera de reconexión del target worker para certificar `TARGET_RETURN`. |
+| **Full Client Path** | **PASS** | Cadena completa validada: Cliente AI (gemini-main) -> SSH forced command -> Go MCP -> Python Core -> Target SSH -> termux-main |
+| **Release Status** | **RELEASE_AUTHORIZED** | Todos los gates completados al 100%. Tag `v1.0.0` autorizado y listo para liberación formal. |
 
 ---
 
 ## 2. Parámetros del Canal Seguro Pi → Target Worker y Gateway
 
 - **Origen**: `mcp-gateway@MCP-Pi` (`192.168.68.85`, UID 1001, no sudo)
-- **Destino (Target actual)**: `u0_a435@192.168.68.84:8022` (Alias: `pc-local` / `termux-local`, target ID: `termux-main`)
+- **Destino (Target actual)**: `u0_a435@192.168.68.72:8022` (Alias: `pc-local` / `termux-local`, target ID: `termux-main`)
 - **Autenticación**: Clave pública Ed25519 exclusiva (`mcp_gateway_ed25519`)
+- **Host Key Alias**: `termux-main` (identidad fijada en `~/.ssh/known_hosts`, desacoplada de la IP)
 - **Host Fingerprint**: `SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0`
 - **Proyectos Autorizados**:
   - `MCP_Local` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local` (read: true, write: false)
   - `write_smoke` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local/mcp-write-smoke` (read: true, write: configurable)
-- **DHCP_RESERVATION**: `REQUIRED_MANUAL_ROUTER_ACTION` (Router DHCP para MAC `8c:90:2d:ac:e5:c0` -> `192.168.68.85`)
+- **DHCP_RESERVATION**: `RECOMMENDED_FOR_STABILITY` (Recomendación: fijar IP para termux-main en router/Deco cuando la MAC sea provista por Android)
 - **Consola de Administración**: `http://127.0.0.1:8080` (accesible exclusivamente mediante túnel SSH `ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`)
 - **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service` vía `mcp-gateway-adapter`)
 - **Servidor MCP (Stdio sobre SSH)**: Invocación vía clave dedicada por cliente a `mcp-gateway@192.168.68.85` ejecutando `mcp-gateway-client-stdio <client_id>` con el adaptador Go oficial (`mcp-gateway-adapter --transport stdio --client-id <id>`)
@@ -100,29 +102,31 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 18:55 CST (2026-09-10 00:55 UTC)
-- **CURRENT_PHASE**: V1.0.0 RC FINAL OBSERVATION & STABLE RELEASE GATE (GATES CLOSED - WAITING FOR TARGET RETURN)
+- **LAST_VERIFIED**: 2026-09-09 20:46 CST (2026-09-10 02:46 UTC)
+- **CURRENT_PHASE**: V1.0.0 STABLE RELEASE COMPLETE
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
   - **Three-Way Audit**: Source of Truth Alignment (PASS)
   - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
   - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
-  - **v1.0.0 Release Gate**: WAITING_FOR_TARGET_RETURN
+  - **v1.0.0 Release**: RELEASED
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
 - **RELEASE_STATE**:
   - RC_TAG: `v1.0.0-rc1` @ `1df371c`
   - ROLLBACK_FAIL_CLOSED: PASS
   - ROLLBACK_FUNCTIONAL_SANDBOX: PASS
   - FORMAL_SOAK: PASS (60 min)
-  - TARGET_OFFLINE: PASS
-  - TARGET_RETURN: MANUAL_REQUIRED
+  - TARGET_HOST_KEY_MATCH: PASS
+  - TARGET_RETURN: PASS (5/5 operaciones)
+  - PHASE5_LIVE_TARGET: PASS (19/19)
+  - FULL_PATH: PASS
   - NETWORK_INTERRUPTION: WAIVED_WITH_RATIONALE
   - BACKUP_RESTORE_SANDBOX: PASS
   - SECURITY_NEGATIVE_SUITE: PASS (7/7)
   - REGRESSIONS: PASS (Python 107/107 local, 107/107 Pi, Go 10/10, Phase 6A 4/4, Auth precedence 100%, Doctor HEALTHY)
-  - STABLE_RELEASE: WAITING_FOR_TARGET_RETURN
-  - v1.0.0: NOT_CREATED
-- **NEXT_ACTION**: Encender / conectar el target worker `termux-main` (`192.168.68.84:8022`) para verificar reconexión dinámica en vivo y autorizar el tag `v1.0.0`.
+  - STABLE_RELEASE: AUTHORIZED
+  - v1.0.0: RELEASED
+- **NEXT_ACTION**: V1_COMPLETE
 
 
