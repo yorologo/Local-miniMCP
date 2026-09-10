@@ -68,7 +68,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Runbooks & Contingencia (Fase 7A)** | **PASS** | Runbooks creados: `microsd-recovery.md`, `disaster-recovery.md`, `reboot-recovery.md`, `network-recovery.md`, `os-migration.md`, `v1-acceptance.md`. |
 | **Physical Migration Trixie (Fase 7B)** | **DEFERRED_POST_V1** | Postpuesta formalmente post-v1.0 por decisión de arquitectura. La línea base operativa de producción para v1.0.0 es Raspbian 11 (Bullseye) sobre Raspberry Pi Model A+. |
 | **Three-Way Source of Truth Audit** | **PASS** | Auditoría rigurosa superada: Local worktree == GitHub origin/develop == MCP-Pi deployment (31/31 archivos core idénticos bit a bit por SHA256). Bóveda privada verificada. Fresh clone reproducible al 100%. |
-| **Versión Candidata v1.0.0** | **READY_FOR_PROMOTION** | Sistema plenamente validado en hardware real. `develop` listo para promoción a `main` y etiquetado de release `v1.0.0`. |
+| **Release Status** | **READY_FOR_FINAL_ACCEPTANCE** | SOURCE_OF_TRUTH: PASS. DEVELOP_TO_MAIN: PENDING_FINAL_ACCEPTANCE. v1.0.0-rc1: PENDING_FINAL_ACCEPTANCE. v1.0.0: NOT_AUTHORIZED. |
 
 ---
 
@@ -92,13 +92,21 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 17:45 CST (2026-09-09 23:45 UTC)
-- **CURRENT_PHASE**: PHASE 7A (PASS) / OS_MIGRATION (DEFERRED_POST_V1) / AUDIT (PASS)
+- **LAST_VERIFIED**: 2026-09-09 17:52 CST (2026-09-09 23:52 UTC)
+- **CURRENT_PHASE**: V1 CURRENT-HARDWARE FINAL ACCEPTANCE (IN PROGRESS)
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
+  - **Three-Way Audit**: Source of Truth Alignment (PASS)
   - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
   - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
-- **NEXT_ACTION**: Promoción validada de `develop` a `main` y liberación de `v1.0.0`.
+- **RELEASE_STATE**:
+  - SOURCE_OF_TRUTH: PASS
+  - RELEASE_STATUS: READY_FOR_FINAL_ACCEPTANCE
+  - DEVELOP_TO_MAIN: PENDING_FINAL_ACCEPTANCE
+  - v1.0.0-rc1: PENDING_FINAL_ACCEPTANCE
+  - v1.0.0: NOT_AUTHORIZED
+- **NEXT_ACTION**: Ejecutar suite de 20 gates de aceptación final sobre hardware actual (Bullseye).
+
 
