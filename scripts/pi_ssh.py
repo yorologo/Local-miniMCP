@@ -64,7 +64,7 @@ if __name__ == "__main__":
         cmd = sys.argv[1]
     code, out, err = run_remote(cmd)
     if out:
-        sys.stdout.write(out)
+        sys.stdout.buffer.write(out.encode("utf-8", errors="replace"))
     if err:
-        sys.stderr.write(err)
+        sys.stderr.buffer.write(err.encode("utf-8", errors="replace"))
     sys.exit(code)
