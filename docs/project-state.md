@@ -41,7 +41,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Controlled Write (Fase 5)** | **PASS** | Mutación atómica controlada con doble llave (`writes_enabled` AND `project.write`), hash lock precondicional `expected_sha256`, backups rotativos en Pi, dry-run unified diff |
 | **Writes Panic Button (Fase 5)**| **PASS** | Bloqueo instantáneo de escrituras vía `/settings/disable-writes` manteniendo 100% disponibles las operaciones de lectura |
 | **E2E Write Verification (Fase 5)**| **PASS** | 19/19 pruebas E2E superadas en vivo en `scripts/verify-phase-5.py` |
-| **Contract Versioning (Fase 4D)** | **PASS** | Versionado explícito en `compatibility.json` (Gateway v0.6.0, Core v1, Bridge v1, Tools v2, Schema v1, MCP 2026-07-28 con fallback 2025-11-25) |
+| **Contract Versioning (Fase 4D)** | **PASS** | Versionado explícito en `compatibility.json` (Gateway v1.0.1, Core v1, Bridge v1, Tools v2, Schema v1, MCP 2026-07-28 con fallback 2025-11-25) |
 | **Fail-Closed Gate (Fase 4D)** | **PASS** | El adaptador Go valida versiones con el bridge al inicio y rechaza invocaciones si hay incompatibilidad (`ADAPTER_NOT_READY`, HTTP 503) |
 | **Host & Origin Security (Fase 4D)** | **PASS** | Protección estricta contra DNS rebinding y spoofing HTTP: Host loopback exclusivo, Origin autorizado o nulo (403 Forbidden en otros casos), body limit 1 MiB |
 | **Health Model & Probes (Fase 4D)** | **PASS** | `/live` (liveness), `/ready` (readiness fail-closed), `/health` (metadatos consolidados sin secretos), `/server/discover` (capacidades MCP) |
@@ -77,7 +77,8 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Backup / Restore Sandbox** | **PASS** | Copia sandbox validada: integridad `ok`, `user_version = 1`, paridad exacta con base de datos de producción (1 target, 2 proyectos, 2 clientes AI, 2 grants, 8 settings) |
 | **Security Negative Suite** | **PASS** | 7/7 vectores de seguridad bloqueados fail-closed en vivo (acceso anónimo 0 tools, tool desconocida, path traversal, escrituras deshabilitadas, Host rebinding 403, Origin 403, cliente no autorizado) |
 | **Full Client Path** | **PASS** | Cadena completa validada: Cliente AI (gemini-main) -> SSH forced command -> Go MCP -> Python Core -> Target SSH -> termux-main |
-| **Release Status** | **RELEASE_AUTHORIZED** | Todos los gates completados al 100%. Tag `v1.0.0` autorizado y listo para liberación formal. |
+| **Release Status v1.0.0** | **RELEASED** | Release formal v1.0.0 completado y publicado (commit `d52f848`, tag `v1.0.0`) |
+| **Release Status v1.0.1** | **RELEASE_AUTHORIZED** | Patch release de higiene de metadata, targets genéricos y documentación post-v1 |
 
 ---
 
@@ -102,18 +103,21 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 20:46 CST (2026-09-10 02:46 UTC)
-- **CURRENT_PHASE**: V1.0.0 STABLE RELEASE COMPLETE
+- **LAST_VERIFIED**: 2026-09-09 21:15 CST (2026-09-10 03:15 UTC)
+- **CURRENT_PHASE**: V1.0.1 POST-V1 HYGIENE PATCH RELEASE
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
   - **Three-Way Audit**: Source of Truth Alignment (PASS)
   - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
   - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
-  - **v1.0.0 Release**: RELEASED
+  - **v1.0.0 Release**: RELEASED (commit `d52f848`)
+  - **v1.0.1 Release**: IN_PROGRESS (fix/v1.0.1-hygiene)
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
 - **RELEASE_STATE**:
   - RC_TAG: `v1.0.0-rc1` @ `1df371c`
+  - STABLE_TAG: `v1.0.0` @ `d52f848`
+  - PATCH_TAG: `v1.0.1` (pending merge)
   - ROLLBACK_FAIL_CLOSED: PASS
   - ROLLBACK_FUNCTIONAL_SANDBOX: PASS
   - FORMAL_SOAK: PASS (60 min)
@@ -121,12 +125,10 @@ Documento de seguimiento continuo y estado de componentes del sistema.
   - TARGET_RETURN: PASS (5/5 operaciones)
   - PHASE5_LIVE_TARGET: PASS (19/19)
   - FULL_PATH: PASS
-  - NETWORK_INTERRUPTION: WAIVED_WITH_RATIONALE
-  - BACKUP_RESTORE_SANDBOX: PASS
   - SECURITY_NEGATIVE_SUITE: PASS (7/7)
-  - REGRESSIONS: PASS (Python 107/107 local, 107/107 Pi, Go 10/10, Phase 6A 4/4, Auth precedence 100%, Doctor HEALTHY)
-  - STABLE_RELEASE: AUTHORIZED
+  - REGRESSIONS: PASS (Python 107/107 local, 107/107 Pi, Go 10/10, Phase 6A 4/4, Doctor HEALTHY)
   - v1.0.0: RELEASED
-- **NEXT_ACTION**: V1_COMPLETE
+  - v1.0.1: RELEASE_AUTHORIZED
+- **NEXT_ACTION**: MERGE_AND_TAG_V1.0.1
 
 

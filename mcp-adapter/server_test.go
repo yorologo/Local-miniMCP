@@ -182,7 +182,7 @@ func TestHealthEndpoints(t *testing.T) {
 	state.SetReady(true, "ready", &BridgeVersionInfo{
 		BridgeAPIVersion: 1,
 		CoreAPIVersion:   1,
-		GatewayVersion:   "0.6.0",
+		GatewayVersion:   "1.0.1",
 		MCPProtocol:      "2026-07-28",
 	})
 	server := NewGatewayServer(bridge, state)
@@ -218,7 +218,7 @@ func TestHealthEndpoints(t *testing.T) {
 	mux.HandleFunc("/server/discover", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"0.6.0"},"protocol":"2026-07-28"}`)
+		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"1.0.1"},"protocol":"2026-07-28"}`)
 	})
 
 	ts := httptest.NewServer(SecurityMiddleware(mux))

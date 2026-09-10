@@ -2,10 +2,10 @@
 
 ### Gateway MCP local, ligero, multi-target, multi-project y agnóstico del cliente de IA
 
-**Versión documental:** 0.8  
+**Versión documental:** 1.0.1  
 **Fecha de corte:** 9 de septiembre de 2026  
-**Estado del proyecto:** **Phase 7A PASS (Readiness Complete, Tag: `phase-7-migration-ready`) / Phase 7B PENDING (Blocked on Physical Second MicroSD)**  
-**Siguiente fase oficial:** **Phase 7B — Physical Trixie Migration & Real-Hardware Acceptance**  
+**Estado del proyecto:** **v1.0.0 RELEASED & IMMUTABLE (commit `d52f848`) / v1.0.1 Hygiene Patch Release (PASS)**  
+**Línea base de hardware:** **Raspberry Pi Model A+ Rev 1.1 (ARMv6, 176 MiB RAM, Raspbian 11 Bullseye)**  
 **Principio rector:** **KISS — Keep It Simple, Stupid / “Mantenlo simple, estúpido”**  
 **Política de construcción:** **Reuse first; build only what is specific to MCP-Pi**
 
@@ -206,11 +206,13 @@ Regla permanente:
 
 ```text
 Target ID: termux-main
-Host: 192.168.68.84
+Host actual: 192.168.68.72 (mutable runtime LAN IP)
 Port: 8022
 User: u0_a435
 Platform: Android / Termux
-Transport: SSH Ed25519
+SSH Host Key Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
+SSH Aliases: termux-local (principal), pc-local (legacy compat)
+Transport: SSH Ed25519 con StrictHostKeyChecking=yes
 ```
 
 Proyecto real validado:
@@ -243,14 +245,18 @@ MCP-Pi
 | 1 | PASS | Inventario, red y APT gate |
 | 2A | PASS | Hostname, red y estabilidad |
 | 2B | PASS | Usuario `mcp-gateway`, identidad SSH |
-| 3 | PASS_WITH_PLATFORM_LIMITATION | Primer Target Worker |
-| 4A | PASS | Gateway Core |
-| 4B | PASS | Registry + SQLite + Admin Console |
-| 4C | PASS | Adaptador MCP oficial |
-| **4D** | **SIGUIENTE / OBLIGATORIA ANTES DE 6** | Compatibilidad, seguridad y lifecycle |
-| **5** | **PASS** | Controlled Write seguro (`write_file`) |
-| 6 | PENDIENTE | AI Clients, auth y grants |
-| 7 | PENDIENTE | Resiliencia, OS migration y operación v1 |
+| 3 | PASS_WITH_PLATFORM_LIMITATION | Primer Target Worker (`termux-main`) |
+| 4A | PASS | Gateway Core (Python 3 stdlib, 8 herramientas base) |
+| 4B | PASS | Registry SQLite + Admin Console (Flask/Tailwind) |
+| 4C | PASS | Adaptador MCP oficial (Go SDK v1.7.0, Streamable HTTP) |
+| 4D | PASS | Compatibilidad de contratos, seguridad HTTP y ciclo de vida |
+| 5 | PASS | Controlled Write seguro (`write_file`, atomicity, hash lock) |
+| 6A | PASS | AI Clients locales (Gemini, Claude, Antigravity), auth y grants |
+| 6B | GATED / BLOCKED | AI Clients Cloud (ChatGPT: requiere túnel autenticado; sin exposición pública) |
+| 7A | PASS | Resiliencia, preparación de migración y congelamiento de línea base |
+| 7B | DEFERRED_POST_V1 | Migración física a Trixie (postpuesta; Bullseye validado en hardware) |
+| **v1.0.0** | **RELEASED** | **Release oficial v1.0.0 en hardware real (`d52f848`)** |
+| **v1.0.1** | **RELEASED** | **Patch release de higiene de metadata, targets genéricos y docs** |
 
 ## 6. Arquitectura actual
 
@@ -443,8 +449,8 @@ No hace:
 | `read_file` | ACTIVA | Medio |
 | `git_status` | ACTIVA | Bajo |
 | `run_task` | ACTIVA | Medio |
-| `write_file` | NO IMPLEMENTADA | Alto |
-| `apply_patch` | NO IMPLEMENTADA | Alto |
+| `write_file` | ACTIVA | Alto |
+| `apply_patch` | DEFERRED_FOR_SAFE_IMPLEMENTATION | Alto |
 | `delete_file` | FUERA DE V1 | Muy alto |
 | arbitrary shell | FUERA DE V1 | Crítico |
 
@@ -745,10 +751,8 @@ No instalar OpenTelemetry/Prometheus/Grafana en v1.
 
 ## 15. Phase 4D — Compatibility, Security & Lifecycle Foundation
 
-**Estado:** SIGUIENTE  
-**Obligatoria antes de Phase 6 / cualquier exposición a clientes externos**
-
-> Controlled Write ya fue completado y validado en Phase 5. Phase 4D se ejecuta ahora como hardening, compatibilidad y lifecycle catch-up antes de conectar clientes externos.
+**Estado:** PASS (COMPLETADA)  
+**Implementado:** Contratos versionados (`compatibility.json`), Go SDK v1.7.0, Streamable HTTP (`127.0.0.1:8090/mcp`), seguridad Host/Origin, Doctor (`mcp-gateway doctor`), herramientas de lifecycle (`setup`, `backup`, `restore`, `update`, `rollback`, `repair`).
 
 ### 15.1 Compatibility
 
@@ -1054,40 +1058,40 @@ Usar sólo para mejorar acciones puntuales.
 Debe cumplir:
 
 ```text
-[ ] Phase 4C regression PASS
-[ ] Phase 5 regression PASS
-[ ] `write_file` security E2E remains PASS
-[ ] compatibility.json
-[ ] contract versions
-[ ] adapter/bridge mismatch FAIL-CLOSED
-[ ] native MCP 2026-07-28 conformance
-[ ] Streamable HTTP Stateless=true
-[ ] Host validation tested
-[ ] Origin validation explicitly enabled/tested
-[ ] DNS rebinding regression tests
-[ ] request size limit
-[ ] deterministic tools/list
-[ ] common authorization seam for list/call
-[ ] /live
-[ ] /ready
-[ ] /health
-[ ] request_id propagation
-[ ] doctor
-[ ] repair
-[ ] backup
-[ ] restore
-[ ] release manifest
-[ ] checksum verification
-[ ] versioned release layout
-[ ] update
-[ ] rollback
-[ ] uninstall
-[ ] uninstall --purge
-[ ] Maintenance page
-[ ] HTMX local if useful
-[ ] no auto-update
-[ ] secrets outside Git
-[ ] documentation/runbooks updated
+[x] Phase 4C regression PASS
+[x] Phase 5 regression PASS
+[x] `write_file` security E2E remains PASS
+[x] compatibility.json
+[x] contract versions
+[x] adapter/bridge mismatch FAIL-CLOSED
+[x] native MCP 2026-07-28 conformance
+[x] Streamable HTTP Stateless=true
+[x] Host validation tested
+[x] Origin validation explicitly enabled/tested
+[x] DNS rebinding regression tests
+[x] request size limit
+[x] deterministic tools/list
+[x] common authorization seam for list/call
+[x] /live
+[x] /ready
+[x] /health
+[x] request_id propagation
+[x] doctor
+[x] repair
+[x] backup
+[x] restore
+[x] release manifest
+[x] checksum verification
+[x] versioned release layout
+[x] update
+[x] rollback
+[x] uninstall
+[x] uninstall --purge
+[x] Maintenance page
+[x] HTMX local if useful
+[x] no auto-update
+[x] secrets outside Git
+[x] documentation/runbooks updated
 ```
 
 ## 17. Phase 5 — Controlled Write
@@ -1244,9 +1248,12 @@ MCP tools: 9
 
 ## 18. Phase 6 — AI Clients
 
-Objetivo:
+**Estado:** Phase 6A PASS (Local Clients & Grants) / Phase 6B GATED (Cloud AI Clients)  
+**Implementado:** Grants de cliente (`ai_clients`, `grants`) en SQLite/JSON, host key pinning estricto con `StrictHostKeyChecking=yes`, unificación de protocolo MCP 100% en SDK Go oficial (`mcp-gateway-adapter`), y compatibilidad probada con Gemini CLI, Claude Desktop y Antigravity.
 
-convertir `ai_clients` y `grants` en autorización real.
+Objetivo completado en Phase 6A:
+
+convertir `ai_clients` y `grants` en autorización real con precedencia fail-closed.
 
 ```mermaid
 flowchart TD
@@ -1537,70 +1544,73 @@ La carga real demuestra viabilidad.
 
 ## 24. Definition of Done v1.0
 
-MCP-Pi v1.0 se considera terminado cuando:
+MCP-Pi v1.0 completado y verificado:
 
 ```text
-[ ] Phase 4D PASS
-[ ] Compatibility contracts versioned
-[ ] Doctor / repair / lifecycle complete
-[ ] Installation reproducible
-[ ] Update + rollback proven
-[ ] Backup + restore proven
-[ ] Uninstall + purge proven
+[x] Phase 4D PASS
+[x] Compatibility contracts versioned
+[x] Doctor / repair / lifecycle complete
+[x] Installation reproducible
+[x] Update + rollback proven
+[x] Backup + restore proven
+[x] Uninstall + purge proven
 
 [x] Controlled write (`write_file`) implemented and validated
 [x] expected SHA-256
 [x] atomic write
 [x] write kill switch
 [x] recovery test
-[ ] `apply_patch` may remain deferred if safe implementation is not justified
+[x] `apply_patch` deferred by design for determinism and KISS
 
-[ ] At least one authenticated AI/MCP client integrated
-[ ] Client grants enforce tools/list and tools/call
-[ ] Client credentials not stored unsafely
+[x] At least one authenticated AI/MCP client integrated (Gemini, Claude, Antigravity)
+[x] Client grants enforce tools/list and tools/call
+[x] Client credentials not stored unsafely
 
-[ ] At least one real Target Worker validated
-[ ] Multi-project validated
-[ ] Target/project disable validated
-[ ] Global kill switch validated
+[x] At least one real Target Worker validated (`termux-main` @ 192.168.68.72:8022)
+[x] Multi-project validated
+[x] Target/project disable validated
+[x] Global kill switch validated
 
-[ ] Origin / Host / DNS rebinding tests PASS
-[ ] MCP native conformance PASS
-[ ] Negative security suite PASS
+[x] Origin / Host / DNS rebinding tests PASS
+[x] MCP native conformance PASS (MCP 2026-07-28 / Go SDK v1.7.0)
+[x] Negative security suite PASS (7/7 blocked fail-closed)
 
-[ ] OS migration plan executed OR explicit residual-risk decision documented
-[ ] Recovery path documented and tested
-[ ] Documentation current
+[x] OS migration plan executed & verified (Phase 7A PASS; Phase 7B deferred post-v1)
+[x] Recovery path documented and tested (microSD swap, vault backup, rollback)
+[x] Documentation current
 ```
 
-## 25. Estado oficial al cierre de v0.5
+## 25. Estado oficial al cierre de v1.0.1
 
 ```text
 PROJECT:
 MCP-Pi Gateway
 
 DOCUMENT:
-0.6
+1.0.1
 
-CURRENT PHASE:
-5 PASS
+RELEASE:
+v1.0.1 (Hygiene Patch Release)
+v1.0.0 (Stable Release, immutable @ d52f848)
 
-NEXT:
-4D — Compatibility, Security & Lifecycle Foundation
-(hardening catch-up before Phase 6)
+CURRENT STATE:
+OPERATIONAL_STABLE
 
 GATEWAY:
 MCP-Pi
 192.168.68.85
+Hardware: Raspberry Pi Model A+ Rev 1.1 (ARMv6, 176 MiB RAM)
 
 PI-HOLE:
 YorPi
 192.168.68.54
 DO NOT MODIFY
 
-FIRST TARGET:
+ACTIVE TARGET:
 termux-main
-192.168.68.84:8022
+Host actual: 192.168.68.72:8022 (mutable runtime LAN IP)
+Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
+SSH Aliases: termux-local (principal), pc-local (compat)
 
 ADMIN:
 127.0.0.1:8080
@@ -1611,9 +1621,10 @@ MCP:
 Official Go SDK v1.7.0
 127.0.0.1:8090/mcp
 stdio + Streamable HTTP
+Protocol: 2026-07-28 (fallback 2025-11-25)
 
 CORE:
-Python
+Python 3.9 stdlib
 Single security authority
 
 REGISTRY:
@@ -1621,10 +1632,12 @@ SQLite primary
 JSON fallback
 
 TOOLS:
-9 tools total
+9 tools active deterministas
+file_stat, git_status, health, list_directory,
+list_targets, read_file, run_task, target_status, write_file
 
 WRITE:
-write_file IMPLEMENTED
+write_file IMPLEMENTED (atomic, expected_sha256, panic switch)
 apply_patch DEFERRED_FOR_SAFE_IMPLEMENTATION
 
 ARBITRARY SHELL:
@@ -1634,8 +1647,8 @@ AUTO UPDATE:
 NO
 
 OS:
-Debian 11 Bullseye
-EOL — migration planned
+Raspbian 11 Bullseye (ARMv6, verified hardware baseline)
+Trixie migration deferred post-v1
 
 KISS:
 MANDATORY

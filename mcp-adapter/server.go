@@ -297,7 +297,7 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-gateway-adapter",
 		Title:   "MCP Raspberry Pi Gateway Official Adapter",
-		Version: "0.6.0",
+		Version: "1.0.1",
 	}, nil)
 
 	var allowedTools map[string]bool
@@ -679,7 +679,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		resp, _ := json.Marshal(map[string]any{
 			"server": map[string]any{
 				"name":    "mcp-gateway-adapter",
-				"version": "0.6.0",
+				"version": "1.0.1",
 			},
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{

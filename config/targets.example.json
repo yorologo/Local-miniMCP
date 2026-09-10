@@ -3,7 +3,7 @@
   "targets": {
     "termux-main": {
       "platform": "android-termux",
-      "host": "192.168.68.84",
+      "host": "192.168.1.50",
       "port": 8022,
       "user": "u0_a435",
       "ssh_alias": "termux-local",
@@ -25,7 +25,7 @@
     },
     "linux-workstation": {
       "platform": "linux",
-      "host": "192.168.68.100",
+      "host": "192.168.1.100",
       "port": 22,
       "user": "mcp-agent",
       "ssh_alias": "linux-local",

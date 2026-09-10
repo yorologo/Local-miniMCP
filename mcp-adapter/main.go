@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("mcp-gateway-adapter v0.6.0 (MCP Protocol 2026-07-28)")
+		fmt.Println("mcp-gateway-adapter v1.0.1 (MCP Protocol 2026-07-28)")
 		os.Exit(0)
 	}
 

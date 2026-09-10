@@ -13,8 +13,8 @@ class TestLifecycle(unittest.TestCase):
     def test_create_and_verify_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             m_path = os.path.join(tmpdir, "manifest.json")
-            m = lifecycle.create_manifest(version="0.6.0", output_path=m_path)
-            self.assertEqual(m["version"], "0.6.0")
+            m = lifecycle.create_manifest(version="1.0.1", output_path=m_path)
+            self.assertEqual(m["version"], "1.0.1")
             self.assertTrue(os.path.isfile(m_path))
 
             ok, errors = lifecycle.verify_manifest(m_path)
@@ -30,7 +30,7 @@ class TestLifecycle(unittest.TestCase):
     def test_architecture_mismatch(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             m_path = os.path.join(tmpdir, "manifest.json")
-            m = lifecycle.create_manifest(version="0.6.0", output_path=m_path)
+            m = lifecycle.create_manifest(version="1.0.1", output_path=m_path)
             # Tamper with architecture
             m["architecture"] = "non_existent_arch_999"
             m["architectures"] = ["non_existent_arch_999"]

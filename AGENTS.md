@@ -203,7 +203,12 @@ ssh Yorologo@192.168.68.85
   - **Resiliencia de Red**: Reasociación Wi-Fi y auto-arranque demostrados tras reinicio físico real. `NETWORK_INTERRUPTION: WAIVED_WITH_RATIONALE`.
   - **Seguridad**: 7/7 vectores de seguridad negativos bloqueados fail-closed.
   - **Batería de Pruebas**: Python local 107/107 PASS, Python remoto MCP-Pi 107/107 PASS, Go SDK 10/10 PASS, Phase 6A clientes 4/4 PASS, Doctor 19/19 HEALTHY.
-  - **Tag Oficial de Release**: `v1.0.0` creado y publicado a origin.
+- **V1.0.1 (Patch Release de Higiene Post-V1)**: **TERMINADA (PASS - TAG: `v1.0.1`)**.
+  - **Alineación de Metadata**: Versión `1.0.1` consolidada en `manifest.json`, `compatibility.json`, `__init__.py`, `compatibility.py`, `lifecycle.py`, y `mcp-adapter` (manteniendo inmutables los contratos de Core API v1, Bridge API v1, Tools v2, Schema v1, Go SDK 1.7.0 y MCP 2026-07-28).
+  - **Higiene de Ejemplos**: `config/targets.example.json` actualizado a IPs RFC 1918 genéricas (`192.168.1.50`, `192.168.1.100`), documentando que el endpoint es runtime mutable mientras `target_id: termux-main` provee identidad criptográfica fija.
+  - **Auditoría de Alias SSH**: `pc-local` preservado como alias de compatibilidad hacia atrás; `termux-main` / `termux-local` estandarizado como identidad canónica.
+  - **Integridad**: `SHA256SUMS` recalculado y verificado. Artefacto estático ARMv6 compilado.
+  - **Pruebas**: Python local 107/107 PASS, Go SDK 10/10 PASS, Python remoto 107/107 PASS, Doctor 19/19 HEALTHY.
 - **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **BLOQUEADA** (requiere túnel autenticado; prohibida exposición pública directa).
 
 ---

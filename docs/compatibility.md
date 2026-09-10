@@ -12,7 +12,7 @@ El archivo [`compatibility.json`](file:///data/data/com.termux/files/home/Projec
 
 ```json
 {
-  "gateway_version": "0.6.0",
+  "gateway_version": "1.0.1",
   "core_api_version": 1,
   "bridge_api_version": 1,
   "tool_catalog_version": 2,
@@ -32,7 +32,7 @@ El archivo [`compatibility.json`](file:///data/data/com.termux/files/home/Projec
 ```
 
 ### Componentes y Roles
-- **Gateway Version (`0.6.0`)**: Versión semántica global del Gateway.
+- **Gateway Version (`1.0.1`)**: Versión semántica global del Gateway.
 - **Core API (`v1`)**: Interfaz interna en Python (`GatewayTools`).
 - **Bridge API (`v1`)**: Protocolo CLI de invocación entre el Go Adapter y Python (`python3 -m mcp_gateway.bridge invoke <tool> <args>`).
 - **Tool Catalog (`v2`)**: Catálogo determinista alfabético de 9 herramientas (`file_stat`, `git_status`, `health`, `list_directory`, `list_targets`, `read_file`, `run_task`, `target_status`, `write_file`).
