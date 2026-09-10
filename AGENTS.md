@@ -161,6 +161,8 @@ Runtime esperado:
 
 ```text
 user: mcp-gateway
+UID: 102 (histórico Bullseye: 1001)
+GID: 105 (histórico Bullseye: 1001)
 sudo: NO
 ```
 
@@ -489,12 +491,12 @@ rewrite historical release
 
 ## 10. Runtime esperado de v1.0.1
 
-En el Trixie candidate **todavía no debe asumirse que este runtime está restaurado**.
-
-Después de un restore autorizado y validado, se espera:
+En la línea base de producción Trixie este runtime está formalmente validado y activo:
 
 ```text
 Service user: mcp-gateway
+UID: 102 (histórico Bullseye: 1001)
+GID: 105 (histórico Bullseye: 1001)
 Privilege: NO sudo
 Admin: 127.0.0.1:8080
 MCP: 127.0.0.1:8090/mcp
@@ -620,7 +622,8 @@ Rollback principal:
 
 ```text
 original Bullseye microSD
-status: PRESERVED / KNOWN_GOOD
+status: PRESERVED AS KNOWN_GOOD_PHYSICAL_ROLLBACK UNTIL EXPLICIT DECOMMISSION DECISION
+RTO: < 2 min (swap físico de microSD)
 ```
 
 Ante blocker grave en Trixie:
@@ -633,7 +636,7 @@ shutdown safely
 -> verify v1.0.1 known-good state
 ```
 
-No sobrescribir la microSD Bullseye durante Phase 8.
+Está estrictamente prohibido sobrescribir o reutilizar la microSD Bullseye original.
 
 ---
 
@@ -747,9 +750,9 @@ Phase 6A: 4/4 PASS
 Doctor: 19/19 HEALTHY
 ```
 
-### 15.1 Seguridad negativa: nomenclatura canónica
+### 15.1 Seguridad negativa: nomenclatura canónica y comparación semántica
 
-La Documentación Maestra consolida **ocho controles negativos**:
+La Documentación Maestra consolida **ocho controles negativos canónicos**:
 
 1. path traversal;
 2. absolute path;
@@ -760,19 +763,22 @@ La Documentación Maestra consolida **ocho controles negativos**:
 7. disabled target;
 8. global kill switch.
 
-Por tanto, el resultado documental canónico es:
+Además de tres controles de ingress: loopback host protection, origin rejection (HTTP 403), y anonymous access denial.
+
+Por tanto, la comparación de seguridad entre líneas base se expresa semánticamente:
 
 ```text
-Negative / control E2E: 8/8 DENIED
+BULLSEYE:
+SECURITY_GATE PASS (7/7 tests negativos en v1 acceptance histórico)
+
+TRIXIE:
+SECURITY_GATE PASS (8/8 canonical negatives + 3/3 ingress controls)
+
+FAIL-CLOSED SEMANTICS:
+PRESERVED
 ```
 
-Si un reporte histórico se refiere a una suite antigua de siete tests y muestra `7/7 PASS`, debe etiquetarse explícitamente como **legacy test-suite result**, no como el conjunto canónico de controles de seguridad.
-
-### 15.2 Regla para Trixie
-
-Todos los números anteriores son referencias históricas.
-
-**No preasignarlos a Trixie.** Las suites deben ejecutarse realmente antes de declarar equivalencia.
+No presentar los conteos brutos como paridad numérica directa sin contexto: la suite evolucionó incorporando el octavo control negativo consolidado y los controles de ingress, preservando idénticamente la semántica fail-closed.
 
 ---
 

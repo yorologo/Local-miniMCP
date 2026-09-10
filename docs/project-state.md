@@ -11,7 +11,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Raspberry identificada** | **PASS** | BCM2835, Model A+ Rev 1.1, ARMv6l (`MCP-Pi`) en `192.168.68.85` |
 | **Hostname & Colisión** | **PASS** | Hostname establecido en `MCP-Pi`. Colisión con Pi-hole (`YorPi`) resuelta. |
 | **SSH Administrativo** | **PASS** | OpenSSH 8.4p1 activo en puerto 22 (`Yorologo@192.168.68.85`) |
-| **Identidad Técnica Pi** | **PASS** | Usuario `mcp-gateway` creado (UID 1001, sin sudo, sin login por password) |
+| **Identidad Técnica Pi** | **PASS** | Usuario `mcp-gateway` creado (UID: 102, GID: 105 en Trixie; histórico Bullseye: UID 1001, sin sudo, sin login por password) |
 | **Clave Dedicada Gateway** | **PASS** | Clave Ed25519 generada en `~/.ssh/mcp_gateway_ed25519` (privada 600, retenida en Pi) |
 | **Hardware Pi** | **PASS** | CPU ARMv6l 700MHz, 176MB RAM SO, 14.5GB rootfs (12GB libres) |
 | **MAC Pi** | **PASS** | Interfaz `wlan0`: `8c:90:2d:ac:e5:c0` (preservada tras reinicios) |
@@ -26,7 +26,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Aislamiento en PC** | **PASS_WITH_LIMITATION** | Non-root en Android 16 (`u:r:untrusted_app_27`), pero monousuario Termux |
 | **Supervivencia a Reboot** | **PASS** | Canal Pi → PC restaurado y verificado tras reboot de `MCP-Pi` |
 | **Revocación de Clave** | **PASS** | Prueba de revocación y restauración ejecutada con éxito |
-| **Gateway Core (Fase 4A)** | **PASS** | Arquitectura multi-target, Python stdlib (cero dependencias externas), UID 1001 |
+| **Gateway Core (Fase 4A)** | **PASS** | Arquitectura multi-target, Python stdlib (cero dependencias externas), UID 102 en Trixie (histórico Bullseye: UID 1001) |
 | **Remote Unit Tests** | **PASS** | 102/102 pruebas unitarias ejecutadas remotamente en `MCP-Pi` bajo `mcp-gateway` (suites: config, registry, schema, policy, tools, bridge, web_auth, web_security, web_views, cli, compatibility, doctor, lifecycle) |
 | **Live Target Tests** | **PASS** | 9/9 herramientas verificadas en vivo contra `termux-main` (`health`, `list_targets`, `target_status`, `list_directory`, `file_stat`, `read_file`, `git_status`, `run_task`, `write_file`) |
 | **Policy Engine** | **PASS** | Deny-by-default, bloqueo sintáctico `..`, validación canónica remota con `realpath`, allowlist estricta de tareas, validación estricta de rutas de escritura y UTF-8 |
@@ -84,7 +84,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 2. Parámetros del Canal Seguro Pi → Target Worker y Gateway
 
-- **Origen**: `mcp-gateway@MCP-Pi` (`192.168.68.85`, UID 1001, no sudo)
+- **Origen**: `mcp-gateway@MCP-Pi` (`192.168.68.85`, UID: 102, GID: 105 en Trixie; histórico Bullseye: UID 1001, no sudo)
 - **Destino (Target actual)**: `u0_a435@192.168.68.72:8022` (Alias: `pc-local` / `termux-local`, target ID: `termux-main`)
 - **Autenticación**: Clave pública Ed25519 exclusiva (`mcp_gateway_ed25519`)
 - **Host Key Alias**: `termux-main` (identidad fijada en `~/.ssh/known_hosts`, desacoplada de la IP)
@@ -160,7 +160,8 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 - **RELEASE_STATE**:
   - STABLE_TAG: `v1.0.1` @ `bcd8fe9`
   - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`
-  - BULLSEYE_MICROSD: PRESERVED / KNOWN_GOOD_PHYSICAL_ROLLBACK
+  - CURRENT_SERVICE_USER: `mcp-gateway` (UID: 102, GID: 105, sudo: NO)
+  - BULLSEYE_MICROSD: PRESERVED AS KNOWN_GOOD_PHYSICAL_ROLLBACK UNTIL EXPLICIT DECOMMISSION DECISION
   - TRIXIE_PRODUCTION_STATUS: PROMOTED_TO_PRODUCTION_BASELINE
   - APPLICATION_BASELINE: MCP-Pi Gateway v1.0.1 (Commit `bcd8fe907f9e305733896f1d286d04d57a8b1f5e`)
   - PHASE_8_STATUS: CLOSED / PASS

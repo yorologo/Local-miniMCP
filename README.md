@@ -98,9 +98,9 @@ LAN IP: 192.168.68.85
 Hardware: Raspberry Pi Model A Plus Rev 1.1
 Architecture: armv6l
 RAM utilizable: ~176 MiB
-OS: Raspbian / Debian 11 Bullseye
-Python: 3.9.2
-Runtime user: mcp-gateway (UID 1001)
+OS: Raspberry Pi OS 13 Trixie (producción actual) / Raspbian 11 Bullseye (rollback físico histórico)
+Python: 3.13.5 (Trixie) / 3.9.2 (Bullseye)
+Runtime user: mcp-gateway (UID: 102, GID: 105 en Trixie; histórico Bullseye: UID 1001)
 Runtime sudo: NO
 ```
 
