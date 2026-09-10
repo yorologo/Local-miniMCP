@@ -68,7 +68,15 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Runbooks & Contingencia (Fase 7A)** | **PASS** | Runbooks creados: `microsd-recovery.md`, `disaster-recovery.md`, `reboot-recovery.md`, `network-recovery.md`, `os-migration.md`, `v1-acceptance.md`. |
 | **Physical Migration Trixie (Fase 7B)** | **DEFERRED_POST_V1** | Postpuesta formalmente post-v1.0 por decisión de arquitectura. La línea base operativa de producción para v1.0.0 es Raspbian 11 (Bullseye) sobre Raspberry Pi Model A+. |
 | **Three-Way Source of Truth Audit** | **PASS** | Auditoría rigurosa superada: Local worktree == GitHub origin/develop == MCP-Pi deployment (31/31 archivos core idénticos bit a bit por SHA256). Bóveda privada verificada. Fresh clone reproducible al 100%. |
-| **Release Status** | **READY_FOR_FINAL_ACCEPTANCE** | SOURCE_OF_TRUTH: PASS. DEVELOP_TO_MAIN: PENDING_FINAL_ACCEPTANCE. v1.0.0-rc1: PENDING_FINAL_ACCEPTANCE. v1.0.0: NOT_AUTHORIZED. |
+| **Rollback Fail-Closed** | **PASS** | `mcp-gateway rollback` sin versión previa rechaza fail-closed con código de salida 1 |
+| **Rollback Functional Sandbox** | **PASS** | Ciclo completo probado en sandbox aislado (`/tmp/mcp_rollback_sandbox_*`): validación de candidato B, actualización de puntero `current`/`previous`, reversión exitosa a release A y cleanup |
+| **Formal Bounded Soak** | **PASS** | Soak de 60 min completado: 0 caídas, 0 cuelgues, 0 reinicios inesperados, 0 fugas de memoria (Admin RSS 6.3MB, MCP RSS 5.6MB, RAM disponible 92.5MB), 0 errores USB/Wi-Fi |
+| **Target Worker Offline Handling**| **PASS** | Degradación limpia ante target desconectado: respuesta rápida en 168 ms con `SSH_FAILED` estructurado sin bloqueos ni corrupción |
+| **Target Worker Return Gate** | **MANUAL_REQUIRED** | Worker `termux-main` (`192.168.68.84:8022`) se encuentra físicamente desconectado. Reconexión dinámica en espera manual del worker. |
+| **Network Interruption Gate** | **WAIVED_WITH_RATIONALE** | Reconexión Wi-Fi completamente demostrada por reboot real de hardware. Corte deliberado de interfaz inalámbrica dispensado para evitar bloqueo remoto sin consola física. |
+| **Backup / Restore Sandbox** | **PASS** | Copia sandbox validada: integridad `ok`, `user_version = 1`, paridad exacta con base de datos de producción (1 target, 2 proyectos, 2 clientes AI, 2 grants, 8 settings) |
+| **Security Negative Suite** | **PASS** | 7/7 vectores de seguridad bloqueados fail-closed en vivo (acceso anónimo 0 tools, tool desconocida, path traversal, escrituras deshabilitadas, Host rebinding 403, Origin 403, cliente no autorizado) |
+| **Release Status** | **WAITING_FOR_TARGET_RETURN** | Release Candidate `v1.0.0-rc1` verificado exhaustivamente. Tag `v1.0.0` en espera de reconexión del target worker para certificar `TARGET_RETURN`. |
 
 ---
 
@@ -92,21 +100,29 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 17:52 CST (2026-09-09 23:52 UTC)
-- **CURRENT_PHASE**: V1 CURRENT-HARDWARE FINAL ACCEPTANCE (IN PROGRESS)
+- **LAST_VERIFIED**: 2026-09-09 18:55 CST (2026-09-10 00:55 UTC)
+- **CURRENT_PHASE**: V1.0.0 RC FINAL OBSERVATION & STABLE RELEASE GATE (GATES CLOSED - WAITING FOR TARGET RETURN)
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
   - **Three-Way Audit**: Source of Truth Alignment (PASS)
   - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
   - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
+  - **v1.0.0 Release Gate**: WAITING_FOR_TARGET_RETURN
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
 - **RELEASE_STATE**:
-  - SOURCE_OF_TRUTH: PASS
-  - RELEASE_STATUS: READY_FOR_FINAL_ACCEPTANCE
-  - DEVELOP_TO_MAIN: PENDING_FINAL_ACCEPTANCE
-  - v1.0.0-rc1: PENDING_FINAL_ACCEPTANCE
-  - v1.0.0: NOT_AUTHORIZED
-- **NEXT_ACTION**: Ejecutar suite de 20 gates de aceptación final sobre hardware actual (Bullseye).
+  - RC_TAG: `v1.0.0-rc1` @ `1df371c`
+  - ROLLBACK_FAIL_CLOSED: PASS
+  - ROLLBACK_FUNCTIONAL_SANDBOX: PASS
+  - FORMAL_SOAK: PASS (60 min)
+  - TARGET_OFFLINE: PASS
+  - TARGET_RETURN: MANUAL_REQUIRED
+  - NETWORK_INTERRUPTION: WAIVED_WITH_RATIONALE
+  - BACKUP_RESTORE_SANDBOX: PASS
+  - SECURITY_NEGATIVE_SUITE: PASS (7/7)
+  - REGRESSIONS: PASS (Python 107/107 local, 107/107 Pi, Go 10/10, Phase 6A 4/4, Auth precedence 100%, Doctor HEALTHY)
+  - STABLE_RELEASE: WAITING_FOR_TARGET_RETURN
+  - v1.0.0: NOT_CREATED
+- **NEXT_ACTION**: Encender / conectar el target worker `termux-main` (`192.168.68.84:8022`) para verificar reconexión dinámica en vivo y autorizar el tag `v1.0.0`.
 
 

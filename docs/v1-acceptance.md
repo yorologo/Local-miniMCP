@@ -55,5 +55,26 @@ Documento formal de control de calidad, resiliencia y separación de evidencia e
 | **34** | **Physical Rollback Test** | Apagar Trixie, reinsertar Bullseye y medir RTO real | **PENDING_PHYSICAL_MIGRATION** | Requiere swap físico de vuelta y validación en vivo |
 | **35** | **Protección Pi-hole** | Aislamiento estricto de `192.168.68.54` | **PASS** | Intocable en todas las fases |
 | **36** | **Higiene Git & Runbooks** | Runbooks creados y cero secretos en Git | **PASS** | 7 runbooks/guías creados, secretos resguardados fuera de Git |
-| **37** | **Versión Candidata** | Tag `v1.0.0` | **READY_FOR_RELEASE** | Bullseye aceptada como baseline operativo formal para release v1.0.0 |
+| **37** | **Versión Candidata** | Tag `v1.0.0` | **WAITING_FOR_TARGET_RETURN** | Línea base Bullseye aceptada formalmente; tag `v1.0.0` en espera de reconexión de `termux-main` |
+
+---
+
+## 3. Matriz de Observación y Aceptación Final Bullseye (v1.0.0-rc1)
+
+| Control / Gate | Requisito | Estado | Evidencia / Detalle Técnico |
+|---|---|---|---|
+| **Rollback Fail-Closed** | `mcp-gateway rollback` sin versión previa | **PASS** | Rechazo fail-closed con código 1: `No previous release symlink found for rollback` |
+| **Rollback Functional Sandbox** | Ciclo completo en `/tmp/mcp_rollback_sandbox_*` | **PASS** | Candidato B (0.6.1) validado, actualizado, punteros verificados y reversión limpia a A (0.6.0) sin tocar producción |
+| **Formal Bounded Soak** | Soak acotado de 60 min sin mutaciones repetitivas | **PASS** | 60 min de operación continua: 0 caídas, 0 cuelgues, 0 reinicios inesperados. Admin RSS: 5.7MB -> 6.3MB, MCP RSS: 4.2MB -> 5.6MB, RAM disponible 92.5MB, 0 errores Wi-Fi/USB |
+| **Reboot Recovery** | `sudo reboot` y auto-arranque | **PASS** | Wi-Fi reasoció a `192.168.68.85`, SSH pinning verificado, servicios Admin y MCP activos, Doctor HEALTHY |
+| **Service Recovery** | Muerte controlada de procesos (`SIGKILL`) | **PASS** | Systemd reinició Admin en 5s y MCP en 5s (`Restart=on-failure`), retornando a estado activo sin corrupción |
+| **Target Worker Offline** | Desconexión de `192.168.68.84:8022` | **PASS** | Retorno de error estructurado `SSH_FAILED` en 168 ms sin bloqueos ni cuelgues |
+| **Target Worker Return** | Reconexión dinámica sin reiniciar Pi | **MANUAL_REQUIRED** | Worker `termux-main` físicamente desconectado. No se fabrica PASS; tag v1.0.0 en espera de retorno. |
+| **Network Interruption** | Resiliencia ante desconexión de enlace | **WAIVED_WITH_RATIONALE** | Reasociación probada en reboot real de hardware; corte remoto deliberado dispensado para evitar bloqueo sin consola física |
+| **Backup / Restore Sandbox** | Restauración lógica en copia aislada | **PASS** | Integridad `ok`, schema version 1, paridad exacta con DB productiva (1 target, 2 proyectos, 2 clientes AI, 2 grants, 8 settings) |
+| **Security Negative Suite** | 7 vectores de seguridad bloqueados | **PASS** | 7/7 superados en vivo: anónimo (0 tools), tool desconocida, path traversal, writes disabled, Host rebinding (403), Origin (403), cliente no autorizado |
+| **Regresiones de Código** | Pruebas locales y remotas | **PASS** | Python local 107/107 PASS, Python MCP-Pi 107/107 PASS, Go SDK 10/10 PASS, Phase 6A clientes 4/4 PASS, Precedencia 100% PASS, Doctor 19/19 HEALTHY |
+| **Source of Truth Alignment**| Local develop == origin/develop == MCP-Pi | **PASS** | 31/31 archivos idénticos bit a bit por SHA256; bóveda local íntegra fuera de Git; zero secrets en Git |
+| **Veredicto Release v1.0.0** | Autorización formal del tag de release | **WAITING_FOR_TARGET_RETURN** | Todos los gates de software cerrados. Requiere encender `termux-main` para certificar `TARGET_RETURN` antes de crear el tag `v1.0.0`. |
+
 

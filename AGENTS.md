@@ -195,6 +195,14 @@ ssh Yorologo@192.168.68.85
   - Sincronización perfecta: local `develop` == GitHub `origin/develop` (`b432a7e`) == software desplegado en MCP-Pi (31/31 archivos core idénticos bit a bit por SHA256).
   - Estado privado estrictamente fuera de Git: `gateway.db` y claves SSH resguardadas y verificadas en bóveda local (`~/.mcp_migration_backup/`).
   - Fresh clone aislado probado y autosuficiente (Go 10/10 PASS, Python 107/107 PASS).
+- **V1.0.0 RC Final Observation & Stable Release Gate**: **GATES CERRADOS (PASS_WAITING_TARGET_RETURN)**.
+  - **Release Candidate**: Tag `v1.0.0-rc1` fijado en commit `1df371c` y desplegado en MCP-Pi.
+  - **Rollback Fail-Closed & Functional Sandbox**: Ambos demostrados al 100% (código 1 ante ausencia de anterior; y ciclo completo candidato B -> swap -> rollback -> A verificado en `/tmp/mcp_rollback_sandbox_*`).
+  - **Formal Bounded Soak**: 60 minutos de operación continua bajo carga de pruebas: 0 caídas, 0 cuelgues, 0 reinicios inesperados, consumo de RSS estable (Admin 6.3 MB, MCP 5.6 MB, RAM disponible 92.5 MB).
+  - **Resiliencia de Red**: Reasociación Wi-Fi y auto-arranque demostrados tras reinicio físico real. `NETWORK_INTERRUPTION: WAIVED_WITH_RATIONALE`.
+  - **Seguridad**: 7/7 vectores de seguridad negativos bloqueados fail-closed.
+  - **Batería de Pruebas**: Python local 107/107 PASS, Python remoto MCP-Pi 107/107 PASS, Go SDK 10/10 PASS, Phase 6A clientes 4/4 PASS, Doctor 19/19 HEALTHY.
+  - **Target Return & Release Status**: `TARGET_OFFLINE: PASS`, `TARGET_RETURN: MANUAL_REQUIRED` (`192.168.68.84:8022` físicamente desconectado). `STABLE_RELEASE: WAITING_FOR_TARGET_RETURN`. Tag `v1.0.0`: `NOT_CREATED` (no se inventa PASS).
 - **Fase 6B (Clientes AI Cloud & Gate de Integración ChatGPT)**: **BLOQUEADA** (requiere túnel autenticado; prohibida exposición pública directa).
 
 ---
