@@ -6,7 +6,7 @@ import paramiko
 
 def run_remote(cmd, as_user=None, timeout=180):
     host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
-    user = os.environ.get("MCP_PI_USER", "Yorologo")
+    user = os.environ.get("MCP_PI_USER", "yorologo")
     key_path = os.path.expanduser("~/.ssh/id_ed25519")
     
     full_cmd = f"sudo -u {as_user} {cmd}" if as_user else cmd
@@ -34,7 +34,7 @@ def run_remote(cmd, as_user=None, timeout=180):
 
 def copy_to_remote(local_path, remote_path):
     host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
-    user = os.environ.get("MCP_PI_USER", "Yorologo")
+    user = os.environ.get("MCP_PI_USER", "yorologo")
     key_path = os.path.expanduser("~/.ssh/id_ed25519")
     
     for attempt in range(1, 9):

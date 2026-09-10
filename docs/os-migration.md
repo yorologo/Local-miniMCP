@@ -172,3 +172,48 @@ Ejecutar desde la estación de trabajo:
 - `python scripts/verify_phase_6a.py` (4/4 bloques PASS)
 - `python scripts/verify_auth_precedence.py` (100% PASS)
 - `& "C:\Program Files\Go\bin\go.exe" test -v ./...` (10/10 PASS)
+
+---
+
+## 9. Cierre Operacional de Phase 8 y Promoción a Línea Base de Producción
+
+En fecha **10 de septiembre de 2026**, la modernización de sistema operativo hacia **Raspberry Pi OS Lite 32-bit (Debian 13 Trixie)** concluyó exitosamente todos los gates de validación técnica, funcional, de seguridad y de estabilidad en hardware real.
+
+### 9.1 Matriz de Gates de Modernización (Phase 8)
+
+| # | Gate Operativo | Estado | Evidencia Clave |
+|---|---|---|---|
+| 1 | Rescate pre-migración (USB Tethering) | **PASS** | RTO < 60s vía `usb0` Android sin dependencia de Wi-Fi |
+| 2 | Arranque base Trixie y SO limpio | **PASS** | Kernel `6.18.34+rpt-rpi-v6 armv6l`, ext4 RW mount, zram swap |
+| 3 | RTL8188EUS Wi-Fi (`rtl8xxxu`) | **PASS** | `0bda:8179` enumerado, driver in-tree, wlan0 en `192.168.68.85/22` |
+| 4 | Independencia Wi-Fi y Estabilidad USB | **PASS** | Transferencia directa 37 MB: 0 desconexiones, 0 caídas, 0 USB resets |
+| 5 | Restauración Identidad SSH del Host | **PASS** | ED25519 `SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E` fijada con `StrictHostKeyChecking=yes` |
+| 6 | Restauración Aplicación v1.0.1 | **PASS** | Binario oficial ARMv6 `bcaea3d5...`, SQLite integrity ok, UID `mcp-gateway` (sin sudo) |
+| 7 | Regresión Integral Funcional y Seguridad | **PASS** | Python: 107/107 PASS; Go: 10/10 PASS; Controlled Write: 19/19 PASS; Phase 6A: 4/4 PASS; Seguridad Negativa: 8/8 DENIED; Tools: 8/8 PASS |
+| 8 | Reboot Acceptance | **PASS** | `sudo sync && sudo reboot`: auto-reinicio, Admin PID 845, MCP PID 846, Doctor 19/19 HEALTHY |
+| 9 | Formal 60-Minute Soak | **PASS** | 60 minutos continuos (12/12 muestras cada 5 min): 0 reinicios de servicios, 0 OOM, 0 caídas USB/Wi-Fi, probes T0/T30/T60 100% PASS |
+| 10 | Promoción a Producción | **PASS** | Trixie declarado formalmente `KNOWN_GOOD_PRODUCTION_BASELINE` |
+
+### 9.2 Matriz Comparativa de Líneas Base (Bullseye vs Trixie)
+
+| Métrica / Parámetro | Bullseye (Línea Base Histórica) | Trixie (Nueva Línea Base Producción) |
+|---|---|---|
+| **Distribución** | Raspbian 11 (Bullseye) 32-bit | Raspberry Pi OS 13 (Trixie) 32-bit |
+| **Kernel** | `5.10.x` / `5.15.x` | `6.18.34+rpt-rpi-v6` (ARMv6l) |
+| **Driver RTL8188EUS** | `r8188eu` (staging) | `rtl8xxxu` (in-tree / `mac80211`) |
+| **Python Runtime** | Python 3.9.2 | Python 3.13.5 |
+| **RAM Usable del SO** | ~176 MiB | ~173 MiB |
+| **Memoria Disponible (Servicios activos)** | ~92 MiB | ~71 - 73 MiB |
+| **Mecanismo de Swap** | Swapfile en SD (`dphys-swapfile`) | `zram` comprimido en RAM (`/dev/zram0`, 172 MB) |
+| **RSS Admin Console** | ~14.6 MiB | ~10.7 - 11.1 MiB |
+| **RSS Go MCP Adapter** | ~10.0 MiB | ~4.1 - 4.2 MiB |
+| **Temperatura SoC en reposo** | ~33 - 35 °C | ~33.6 - 34.2 °C |
+| **Identidad Host SSH** | ED25519 `SHA256:wovttruok...` | ED25519 `SHA256:wovttruok...` (Exacta) |
+| **Integridad Aplicación** | MCP-Pi Gateway v1.0.1 | MCP-Pi Gateway v1.0.1 (Exacta) |
+
+---
+
+## 10. Política de Retención del Rollback Físico
+
+- La tarjeta microSD original con Debian 11 Bullseye permanece **etiquetada, protegida físicamente y retenida indefinidamente** como `KNOWN_GOOD_PHYSICAL_ROLLBACK`.
+- Ante cualquier eventualidad crítica en hardware o soporte a largo plazo de Trixie, el tiempo de recuperación objetivo (RTO) se mantiene en **< 2 minutos** mediante swap físico de microSD.

@@ -1,55 +1,54 @@
 # MCP-Pi Gateway — Documentación Maestra
 
-### Gateway MCP local, ligero, multi-target, multi-project y agnóstico del cliente de IA
+> Gateway MCP local, ligero, multi-target, multi-project y agnóstico del cliente de IA.
 
-**Versión documental:** 1.0.1  
-**Fecha de corte:** 9 de septiembre de 2026  
-**Estado del proyecto:** **v1.0.0 RELEASED & IMMUTABLE (commit `d52f848`) / v1.0.1 Hygiene Patch Release (PASS)**  
-**Línea base de hardware:** **Raspberry Pi Model A+ Rev 1.1 (ARMv6, 176 MiB RAM, Raspbian 11 Bullseye)**  
-**Principio rector:** **KISS — Keep It Simple, Stupid / “Mantenlo simple, estúpido”**  
-**Política de construcción:** **Reuse first; build only what is specific to MCP-Pi**
+| Campo | Valor |
+| --- | --- |
+| Versión documental | 1.0.1 |
+| Fecha de corte técnico | 9 de septiembre de 2026 |
+| Revisión editorial | 10 de septiembre de 2026 |
+| Estado del proyecto | **v1.0.0 RELEASED & IMMUTABLE** (`d52f848`) / **v1.0.1 Hygiene Patch Release — PASS** |
+| Hardware base | Raspberry Pi Model A+ Rev 1.1 — ARMv6, 176 MiB RAM |
+| OS validado | Raspbian / Debian 11 Bullseye |
+| Política de construcción | **Reuse first; build only what is specific to MCP-Pi** |
 
-> Este documento sustituye conceptualmente a la línea base v0.1 como fuente de verdad general del proyecto.  
-> Los documentos por fase, runbooks, reportes y pruebas siguen siendo evidencia histórica y operativa.
+> Este documento es la fuente de verdad general del proyecto y sustituye conceptualmente a la línea base v0.1. Los documentos por fase, runbooks, reportes y pruebas permanecen como evidencia histórica y operativa.
 
-## 1. Propósito
+## 1. Propósito y alcance
 
-MCP-Pi busca convertir una **Raspberry Pi Model A+** en un appliance ligero que medie entre clientes de IA/MCP y dispositivos de una red privada.
+MCP-Pi convierte una **Raspberry Pi Model A+** en un appliance ligero que media entre clientes de IA/MCP y dispositivos de una red privada.
 
-La Raspberry Pi no ejecuta el trabajo pesado. Su función es:
+La Raspberry Pi **no ejecuta el trabajo pesado**. Su función es:
 
 > **autenticar + validar + autorizar + limitar + delegar + auditar**
 
-Los dispositivos objetivo realizan el trabajo real:
+Los Targets ejecutan el trabajo real, por ejemplo:
 
 - lectura de archivos;
 - operaciones Git;
-- tests;
-- builds;
+- pruebas y builds;
 - búsquedas;
-- herramientas del proyecto;
-- futuras modificaciones controladas.
+- herramientas específicas del proyecto;
+- modificaciones controladas mediante capacidades explícitas.
 
 El proyecto debe mantenerse:
 
-- sencillo;
-- auditable;
+- sencillo y auditable;
 - reversible;
-- multi-target;
-- multi-project;
+- multi-target y multi-project;
 - agnóstico del cliente de IA;
 - deny-by-default;
 - sin shell arbitrario;
 - sin exposición pública por defecto;
 - sin dependencias pesadas innecesarias.
 
-## 2. Objetivo final
+### 1.1 Alcance funcional de v1
 
-La versión 1.0 deberá permitir:
+La arquitectura de v1 queda resumida así:
 
 ```mermaid
 flowchart TD
-    U[Usuario] --> C[Cliente AI / MCP]
+    U[Usuario] --> C[Cliente IA / MCP]
     C --> G[MCP-Pi Gateway]
     G --> P[Policy Engine]
     P --> R[Registry]
@@ -62,7 +61,7 @@ flowchart TD
     L --> PL[Projects]
 ```
 
-El usuario final deberá poder administrar de forma simple:
+El usuario debe poder administrar de forma simple:
 
 - Targets;
 - Projects;
@@ -78,23 +77,110 @@ El usuario final deberá poder administrar de forma simple:
 - Repair;
 - Uninstall.
 
-El usuario no debería necesitar recordar comandos internos, rutas de Python, SQL, ni detalles de systemd para las operaciones habituales.
+Las operaciones habituales no deben exigir recordar rutas internas de Python, SQL ni detalles de systemd.
+
+### 1.2 Convenciones de términos
+
+- **Target:** máquina o workspace remoto sobre el que se delega trabajo.
+- **Project:** raíz de proyecto autorizada dentro de un Target.
+- **Tool:** operación MCP expuesta por el Gateway.
+- **Grant:** autorización que limita visibilidad y capacidades de un cliente.
+- **Core:** autoridad única de seguridad y ejecución de políticas.
+- **Service:** servidor MCP externo; concepto futuro y distinto de Target.
+
+## 2. Estado oficial de v1.0.1
+
+### 2.1 Gateway
+
+```text
+Hostname: MCP-Pi
+LAN IP: 192.168.68.85
+Hardware: Raspberry Pi Model A Plus Rev 1.1
+Architecture: armv6l
+RAM utilizable: ~176 MiB
+OS: Raspbian / Debian 11 Bullseye
+Python: 3.9.2
+Runtime user: mcp-gateway (UID 1001)
+Runtime sudo: NO
+```
+
+### 2.2 Pi-hole separado
+
+```text
+Hostname: YorPi
+IP: 192.168.68.54
+Rol: Pi-hole
+```
+
+> **Regla permanente:** nunca instalar MCP-Pi en YorPi ni mezclar la infraestructura DNS con este proyecto.
+
+### 2.3 Primer Target Worker validado
+
+```text
+Target ID: termux-main
+Host actual: 192.168.68.72   # IP LAN mutable en runtime
+Port: 8022
+User: u0_a435
+Platform: Android / Termux
+SSH Host Key Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
+SSH Aliases: termux-local (principal), pc-local (compatibilidad legacy)
+Transport: SSH Ed25519 con StrictHostKeyChecking=yes
+```
+
+Proyecto real validado:
+
+```text
+Project: MCP_Local
+Root: /data/data/com.termux/files/home/Projects/test/MCP_Local
+```
+
+Android/Termux usa el UID de la aplicación, por lo que el aislamiento POSIX independiente entre proyectos es limitado. La mitigación aplicada es:
+
+```text
+MCP-Pi
+→ project roots
+→ canonical path
+→ capability policy
+→ task allowlist
+→ deny-by-default
+```
+
+### 2.4 Estado de fases
+
+| Fase | Estado | Resultado |
+| --- | --- | --- |
+| 0 | PASS | Línea base |
+| 1 | PASS | Inventario, red y APT gate |
+| 2A | PASS | Hostname, red y estabilidad |
+| 2B | PASS | Usuario `mcp-gateway` e identidad SSH |
+| 3 | PASS_WITH_PLATFORM_LIMITATION | Primer Target Worker (`termux-main`) |
+| 4A | PASS | Gateway Core — Python 3 stdlib, 8 herramientas base |
+| 4B | PASS | Registry SQLite + Admin Console |
+| 4C | PASS | Adaptador MCP oficial — Go SDK v1.7.0, Streamable HTTP |
+| 4D | PASS | Compatibilidad de contratos, seguridad HTTP y lifecycle |
+| 5 | PASS | Controlled Write seguro — `write_file`, atomicidad y hash lock |
+| 6A | PASS | Clientes IA locales, autenticación y grants |
+| 6B | GATED / BLOCKED | Clientes IA cloud; ChatGPT requiere revalidar túnel autenticado y no se expone públicamente |
+| 7A | PASS | Resiliencia, preparación de migración y congelamiento de línea base |
+| 7B | DEFERRED_POST_V1 | Migración física de OS postpuesta; Bullseye sigue siendo la base validada en hardware |
+| **v1.0.0** | **RELEASED** | Release oficial en hardware real — `d52f848` |
+| **v1.0.1** | **RELEASED** | Hygiene Patch Release de metadata, targets genéricos y documentación |
 
 ## 3. Principios no negociables
 
 ### 3.1 KISS
 
-Antes de añadir cualquier componente:
+Antes de añadir cualquier componente, responder:
 
 1. ¿Resuelve una necesidad real?
 2. ¿Existe un estándar o SDK oficial?
-3. ¿Existe un patrón maduro que podamos reutilizar?
+3. ¿Existe un patrón maduro reutilizable?
 4. ¿Añade una dependencia permanente?
 5. ¿Duplica lógica?
 6. ¿Puede probarse y revertirse?
-7. ¿La Raspberry A+ puede ejecutarlo razonablemente?
+7. ¿La Raspberry Pi A+ puede ejecutarlo razonablemente?
 
-Si una solución pequeña resuelve el problema, se prefiere sobre una plataforma compleja.
+Si una solución pequeña resuelve el problema, se prefiere frente a una plataforma compleja.
 
 ### 3.2 Reuse first
 
@@ -120,7 +206,7 @@ El código propio se reserva para lo específico de MCP-Pi:
 
 ### 3.3 Single Core
 
-La Web y MCP usan exactamente el mismo Gateway Core.
+Admin Web y MCP usan exactamente el mismo Gateway Core.
 
 ```mermaid
 flowchart LR
@@ -130,7 +216,7 @@ flowchart LR
     POLICY --> SSH[SSH Transport]
 ```
 
-Está prohibido:
+Está prohibido introducir rutas de ejecución paralelas como:
 
 ```text
 Admin Web → SSH directo
@@ -139,7 +225,7 @@ Go MCP Adapter → SSH directo
 
 ### 3.4 Deny by default
 
-Todo lo no autorizado explícitamente se rechaza.
+Todo lo que no esté autorizado explícitamente se rechaza.
 
 ### 3.5 Least privilege
 
@@ -150,7 +236,7 @@ mcp-gateway
 sin sudo
 ```
 
-Los privilegios administrativos se usan sólo para instalación y mantenimiento controlado.
+Los privilegios administrativos se reservan para instalación y mantenimiento controlado.
 
 ### 3.6 No arbitrary shell
 
@@ -174,105 +260,23 @@ flowchart LR
     D -->|FAIL| RB[Rollback]
 ```
 
-## 4. Estado real confirmado
+## 4. Arquitectura actual
 
-### 4.1 MCP-Pi
-
-```text
-Hostname: MCP-Pi
-LAN IP: 192.168.68.85
-Hardware: Raspberry Pi Model A Plus Rev 1.1
-Architecture: armv6l
-RAM utilizable: ~176 MiB
-OS actual: Raspbian / Debian 11 Bullseye
-Python: 3.9.2
-Runtime user: mcp-gateway (UID 1001)
-Runtime sudo: NO
-```
-
-### 4.2 Pi-hole separado
-
-```text
-Hostname: YorPi
-IP: 192.168.68.54
-Rol: Pi-hole
-```
-
-Regla permanente:
-
-> Nunca instalar MCP-Pi en YorPi ni mezclar la infraestructura DNS con este proyecto.
-
-### 4.3 Primer Target Worker
-
-```text
-Target ID: termux-main
-Host actual: 192.168.68.72 (mutable runtime LAN IP)
-Port: 8022
-User: u0_a435
-Platform: Android / Termux
-SSH Host Key Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
-SSH Aliases: termux-local (principal), pc-local (legacy compat)
-Transport: SSH Ed25519 con StrictHostKeyChecking=yes
-```
-
-Proyecto real validado:
-
-```text
-Project: MCP_Local
-Root: /data/data/com.termux/files/home/Projects/test/MCP_Local
-```
-
-Limitación conocida:
-
-Android/Termux usa el UID de la aplicación. El aislamiento POSIX independiente entre proyectos es limitado.
-
-Mitigación:
-
-```text
-MCP-Pi
-→ project roots
-→ canonical path
-→ capability policy
-→ task allowlist
-→ deny-by-default
-```
-
-## 5. Estado de fases
-
-| Fase | Estado | Resultado |
-|---|---|---|
-| 0 | PASS | Línea base |
-| 1 | PASS | Inventario, red y APT gate |
-| 2A | PASS | Hostname, red y estabilidad |
-| 2B | PASS | Usuario `mcp-gateway`, identidad SSH |
-| 3 | PASS_WITH_PLATFORM_LIMITATION | Primer Target Worker (`termux-main`) |
-| 4A | PASS | Gateway Core (Python 3 stdlib, 8 herramientas base) |
-| 4B | PASS | Registry SQLite + Admin Console (Flask/Tailwind) |
-| 4C | PASS | Adaptador MCP oficial (Go SDK v1.7.0, Streamable HTTP) |
-| 4D | PASS | Compatibilidad de contratos, seguridad HTTP y ciclo de vida |
-| 5 | PASS | Controlled Write seguro (`write_file`, atomicity, hash lock) |
-| 6A | PASS | AI Clients locales (Gemini, Claude, Antigravity), auth y grants |
-| 6B | GATED / BLOCKED | AI Clients Cloud (ChatGPT: requiere túnel autenticado; sin exposición pública) |
-| 7A | PASS | Resiliencia, preparación de migración y congelamiento de línea base |
-| 7B | DEFERRED_POST_V1 | Migración física a Trixie (postpuesta; Bullseye validado en hardware) |
-| **v1.0.0** | **RELEASED** | **Release oficial v1.0.0 en hardware real (`d52f848`)** |
-| **v1.0.1** | **RELEASED** | **Patch release de higiene de metadata, targets genéricos y docs** |
-
-## 6. Arquitectura actual
+### 4.1 Flujo MCP
 
 ```mermaid
 flowchart TD
     CLIENT[MCP Client] --> GO[Official Go MCP Adapter]
     GO --> BRIDGE[Python Bridge]
     BRIDGE --> CORE[Gateway Core]
-    CORE --> REG[SQLite / Json Registry]
+    CORE --> REG[SQLite / JSON Registry]
     CORE --> POLICY[Policy Engine]
     POLICY --> TRANSPORT[SSH Transport]
     TRANSPORT --> TARGET[Target Worker]
     TARGET --> PROJECT[Authorized Project]
 ```
 
-Admin:
+### 4.2 Flujo administrativo
 
 ```mermaid
 flowchart TD
@@ -282,11 +286,13 @@ flowchart TD
     ADMIN --> CORE[Gateway Core]
 ```
 
-## 7. Componentes
+La consola administrativa permanece accesible únicamente por localhost y túnel SSH.
 
-### 7.1 Gateway Core
+## 5. Componentes
 
-Lenguaje:
+### 5.1 Gateway Core
+
+Runtime:
 
 ```text
 Python 3.9.2
@@ -294,20 +300,20 @@ Python 3.9.2
 
 Responsabilidades:
 
-- target/project resolution;
+- resolución de Target y Project;
 - policy enforcement;
 - deny-by-default;
 - canonical paths;
-- traversal protection;
-- symlink escape protection;
-- tasks allowlist;
+- protección contra path traversal;
+- protección contra symlink escape;
+- allowlist de tareas;
 - timeouts;
-- output limits;
-- target/project enabled state;
+- límites de salida;
+- estado enabled/disabled de Targets y Projects;
 - global kill switch;
-- audit metadata.
+- metadata de auditoría.
 
-### 7.2 Registry
+### 5.2 Registry
 
 Backends:
 
@@ -322,7 +328,7 @@ Schema actual:
 PRAGMA user_version = 1
 ```
 
-Entidades actuales:
+Entidades:
 
 ```text
 targets
@@ -334,17 +340,16 @@ settings
 admin_users
 ```
 
-Nunca guardar:
+Nunca almacenar en el Registry:
 
-- SSH private keys;
-- passwords externos;
+- claves privadas SSH;
+- contraseñas externas;
 - cookies;
-- browser sessions;
-- ChatGPT passwords;
-- Gemini passwords;
-- Admin session secret.
+- sesiones del navegador;
+- contraseñas de ChatGPT o Gemini;
+- el secreto de sesión de Admin.
 
-### 7.3 Admin Console
+### 5.3 Admin Console
 
 Stack:
 
@@ -363,25 +368,25 @@ mcp-gateway-admin.service
 User=mcp-gateway
 ```
 
-Acceso:
+Acceso habitual:
 
 ```bash
 ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
 ```
 
-Seguridad existente:
+Controles existentes:
 
-- local admin auth;
+- autenticación local de administrador;
 - password hashing;
-- HttpOnly;
-- SameSite=Strict;
+- cookies `HttpOnly`;
+- `SameSite=Strict`;
 - CSRF;
 - CSP y security headers;
-- login rate limiting;
-- no debug;
-- localhost-only.
+- rate limiting de login;
+- debug deshabilitado;
+- bind exclusivo a localhost.
 
-### 7.4 MCP Adapter
+### 5.4 MCP Adapter
 
 SDK:
 
@@ -399,7 +404,7 @@ Protocolos soportados por esta versión:
 2024-11-05
 ```
 
-Target build:
+Build target:
 
 ```text
 GOOS=linux
@@ -422,25 +427,25 @@ mcp-gateway-mcp.service
 User=mcp-gateway
 ```
 
-El Go Adapter sólo:
+El Go Adapter solo:
 
 - habla MCP;
 - expone schemas;
-- maneja transport;
-- serializa/deserializa.
+- gestiona el transport;
+- serializa y deserializa.
 
-No hace:
+No realiza:
 
 - SSH;
 - path policy;
 - target policy;
 - project policy;
-- authorization decisions.
+- decisiones de autorización.
 
-## 8. Herramientas actuales
+## 6. Catálogo de herramientas y capacidades
 
 | Tool | Estado | Riesgo |
-|---|---|---|
+| --- | --- | --- |
 | `health` | ACTIVA | Bajo |
 | `list_targets` | ACTIVA | Bajo |
 | `target_status` | ACTIVA | Bajo |
@@ -454,11 +459,135 @@ No hace:
 | `delete_file` | FUERA DE V1 | Muy alto |
 | arbitrary shell | FUERA DE V1 | Crítico |
 
-`run_task` sólo acepta tareas declaradas.
+`run_task` solo acepta tareas declaradas en allowlist.
 
-## 9. Seguridad
+### 6.1 Política de escritura controlada
 
-### 9.1 Capas
+La escritura exige simultáneamente:
+
+```text
+gateway_enabled
+AND
+writes_enabled
+AND
+target.enabled
+AND
+project.enabled
+AND
+project.write
+AND
+client grant/capability
+AND
+path policy
+```
+
+La configuración global de seguridad parte de:
+
+```text
+writes_enabled = false
+```
+
+### 6.2 `write_file`
+
+`write_file` está implementada y validada con:
+
+- rutas relativas;
+- texto UTF-8 únicamente;
+- `max_write_bytes` de 256 KiB por defecto;
+- `expected_sha256` obligatorio para overwrite;
+- semántica explícita de create/overwrite;
+- dry-run;
+- preview mediante unified diff;
+- validación canónica del parent;
+- denegación de symlink en destino o ancestros;
+- reemplazo atómico;
+- preservación de modo POSIX cuando aplica;
+- backup local rotatorio;
+- metadata de auditoría;
+- prueba de recuperación.
+
+#### Optimistic concurrency
+
+Todo overwrite requiere:
+
+```text
+expected_sha256
+```
+
+Si el contenido cambió, la operación devuelve:
+
+```text
+WRITE_CONFLICT
+```
+
+#### Atomic write
+
+Secuencia implementada:
+
+```text
+temporary file in same directory
+→ write
+→ flush
+→ fsync
+→ preserve mode
+→ os.replace
+→ fsync directory
+→ cleanup
+```
+
+#### Backups de archivo
+
+Ubicación conceptual:
+
+```text
+~/.local/share/mcp-gateway/backups/
+```
+
+Retención:
+
+```text
+hasta 5 versiones históricas por archivo
+```
+
+Los backups permanecen fuera del Target Worker.
+
+#### Panic switch
+
+Admin Console:
+
+```text
+Disable Controlled Writes
+```
+
+Efecto:
+
+```text
+read_file  → sigue funcionando
+write_file → WRITES_DISABLED
+```
+
+### 6.3 `apply_patch`
+
+Estado:
+
+```text
+DEFERRED_FOR_SAFE_IMPLEMENTATION
+```
+
+Decisión KISS: `read_file` + SHA-256 + `write_file` seguro cubren edición controlada sin introducir un parser de patch frágil.
+
+### 6.4 Operaciones fuera de v1
+
+- delete;
+- arbitrary rename;
+- binary mutation;
+- chmod/chown;
+- symlink creation;
+- arbitrary shell.
+
+## 7. Modelo de seguridad
+
+### 7.1 Capas de control
 
 ```mermaid
 flowchart TD
@@ -475,7 +604,7 @@ flowchart TD
     AUDIT --> KS[Kill Switches]
 ```
 
-### 9.2 Seguridad E2E confirmada
+### 7.2 E2E negativo confirmado
 
 Casos bloqueados:
 
@@ -488,35 +617,15 @@ Casos bloqueados:
 7. disabled target;
 8. global kill switch.
 
-La documentación general debe usar:
+Resultado documental canónico:
 
 ```text
 Negative / control E2E: 8/8 DENIED
 ```
 
-## 10. Decisiones basadas en el ecosistema
+### 7.3 Visibilidad y capacidad
 
-No sustituiremos MCP-Pi por plataformas generales como ContextForge o ToolHive.
-
-Razón:
-
-MCP-Pi tiene un diferenciador específico:
-
-```text
-AI Client
-→ MCP-Pi
-→ Target
-→ Project
-→ SSH Worker
-```
-
-Los gateways existentes se enfocan principalmente en federar servidores MCP existentes.
-
-Sin embargo, reutilizaremos patrones maduros.
-
-### 10.1 Tool visibility + tool call enforcement
-
-Inspirado en ToolHive:
+La misma decisión de autorización debe gobernar:
 
 ```text
 tools/list
@@ -524,75 +633,27 @@ AND
 tools/call
 ```
 
-deben utilizar la misma decisión de autorización.
+Una Tool que un cliente no puede ver tampoco puede ejecutarse manualmente fuera de esa autorización.
 
-Una herramienta que un cliente no puede ver tampoco puede ejecutarse manualmente.
-
-### 10.2 Visibility + Capability
-
-Inspirado en ContextForge, simplificado:
+Modelo simplificado:
 
 ```text
-Visibility:
-qué target/project puede ver
-
-Capability:
-qué puede hacer
+Visibility: qué Target/Project puede ver
+Capability: qué puede hacer
 ```
 
-No introducir:
+No introducir en v1:
 
 - OPA;
 - Cedar;
 - enterprise teams;
-- organization hierarchy.
+- jerarquías de organización.
 
-### 10.3 HTMX
+## 8. MCP, contratos y seguridad HTTP
 
-Aprobado como mejora pequeña.
+### 8.1 MCP 2026-07-28
 
-Uso:
-
-- Test Target;
-- Enable / Disable;
-- Run Doctor;
-- status cards;
-- Maintenance actions.
-
-Condiciones:
-
-```text
-vendored locally
-no CDN
-no SPA
-no Node runtime
-```
-
-### 10.4 Official MCP Registry
-
-Futuro opcional.
-
-Debe modelarse como:
-
-```text
-Services
-```
-
-no como Targets.
-
-```mermaid
-flowchart LR
-    G[MCP-Pi] --> T[Targets]
-    G --> S[MCP Services]
-    T --> SSH[SSH]
-    S --> MCP[MCP]
-```
-
-No es requisito de v1.0.
-
-## 11. MCP 2026-07-28
-
-La revisión 2026-07-28 introdujo:
+La documentación del proyecto registra para la revisión 2026-07-28:
 
 - stateless protocol core;
 - `server/discover`;
@@ -603,47 +664,33 @@ La revisión 2026-07-28 introdujo:
 - authorization hardening;
 - formal extensions.
 
-### 11.1 Requisito Phase 4D
+El soporte no se considera válido solo porque el SDK lo declare: debe estar cubierto por pruebas nativas.
 
-No basta con “soportar” 2026-07-28 en el SDK.
+### 8.2 Streamable HTTP
 
-Debe demostrarse con pruebas nativas.
-
-### 11.2 Streamable HTTP
-
-Para servir 2026-07-28 mediante el Go SDK:
+Para servir 2026-07-28 mediante el Go SDK se validó explícitamente:
 
 ```text
 Stateless = true
 ```
 
-debe validarse explícitamente.
+### 8.3 Host, Origin y exposición
 
-### 11.3 Origin / Host
+Controles requeridos y validados para el endpoint local:
 
-Requisito MCP:
+- bind a `127.0.0.1`;
+- validación de `Host`;
+- validación explícita de `Origin`;
+- rechazo de origen inválido con 403;
+- pruebas de resistencia a DNS rebinding;
+- límite explícito de body HTTP;
+- autenticación obligatoria si el endpoint deja de ser exclusivamente local.
 
-- validar `Origin`;
-- rechazar origen inválido con 403;
-- bind local a `127.0.0.1`;
-- implementar autenticación cuando el endpoint deje de ser exclusivamente local.
+En Go SDK v1.7.0, el proyecto documenta que la protección localhost/Host existe y que `CrossOriginProtection == nil` no activa por defecto la validación cross-origin. Por ello la validación de Origin se habilita y prueba explícitamente.
 
-En Go SDK v1.7.0:
+### 8.4 Versionado de contratos
 
-- la protección localhost/Host existe;
-- `CrossOriginProtection == nil` no activa por defecto la validación cross-origin.
-
-Phase 4D deberá activar/probar explícitamente ambas.
-
-### 11.4 Request body limits
-
-Mantener un límite explícito para requests MCP HTTP.
-
-No deshabilitarlo.
-
-## 12. Versionado de contratos
-
-Phase 4D debe introducir:
+Contratos versionados:
 
 ```text
 GATEWAY_VERSION
@@ -653,13 +700,13 @@ TOOL_CATALOG_VERSION
 REGISTRY_SCHEMA_VERSION
 ```
 
-Archivo:
+Archivo de compatibilidad:
 
 ```text
 compatibility.json
 ```
 
-Ejemplo:
+Ejemplo de contrato:
 
 ```json
 {
@@ -676,13 +723,11 @@ Ejemplo:
 }
 ```
 
-Regla:
+> **Regla:** el Adapter debe fallar cerrado si el Bridge API no es compatible.
 
-> El Adapter debe fallar cerrado si el Bridge API no es compatible.
+### 8.5 Health model
 
-## 13. Health model
-
-Introducir:
+Endpoints:
 
 ```text
 /live
@@ -690,17 +735,9 @@ Introducir:
 /health
 ```
 
-### `/live`
+`/live` indica si el proceso está vivo y no toca Targets.
 
-¿Está vivo el proceso?
-
-No toca targets.
-
-### `/ready`
-
-¿Está listo?
-
-Comprueba:
+`/ready` verifica:
 
 - Registry;
 - schema;
@@ -708,9 +745,7 @@ Comprueba:
 - Bridge contract;
 - MCP Adapter readiness.
 
-### `/health`
-
-Resumen operacional:
+`/health` resume:
 
 - version;
 - services;
@@ -719,15 +754,9 @@ Resumen operacional:
 - targets summary;
 - compatibility.
 
-## 14. Request IDs
+### 8.6 Request IDs
 
-Cada solicitud obtiene:
-
-```text
-request_id
-```
-
-Debe propagarse:
+Cada solicitud obtiene un `request_id`, propagado extremo a extremo:
 
 ```mermaid
 sequenceDiagram
@@ -736,7 +765,6 @@ sequenceDiagram
     participant B as Bridge
     participant P as Python Core
     participant S as SSH Target
-
     C->>G: request
     G->>B: request_id + tool
     B->>P: request_id + invocation
@@ -747,93 +775,11 @@ sequenceDiagram
     G-->>C: MCP response
 ```
 
-No instalar OpenTelemetry/Prometheus/Grafana en v1.
+No instalar OpenTelemetry, Prometheus ni Grafana en v1.
 
-## 15. Phase 4D — Compatibility, Security & Lifecycle Foundation
+## 9. Lifecycle y operación
 
-**Estado:** PASS (COMPLETADA)  
-**Implementado:** Contratos versionados (`compatibility.json`), Go SDK v1.7.0, Streamable HTTP (`127.0.0.1:8090/mcp`), seguridad Host/Origin, Doctor (`mcp-gateway doctor`), herramientas de lifecycle (`setup`, `backup`, `restore`, `update`, `rollback`, `repair`).
-
-### 15.1 Compatibility
-
-Implementar:
-
-- contract versions;
-- `compatibility.json`;
-- adapter/bridge startup gate;
-- MCP native conformance;
-- deterministic tool ordering;
-- list/call authorization seam.
-
-### 15.2 MCP HTTP security
-
-Probar:
-
-- bind = 127.0.0.1;
-- Host validation;
-- Origin validation;
-- DNS rebinding resistance;
-- request body limit;
-- malformed requests;
-- invalid Content-Type;
-- invalid Accept;
-- invalid protocol metadata.
-
-### 15.3 Doctor
-
-CLI:
-
-```bash
-mcp-gateway doctor
-mcp-gateway doctor --verbose
-```
-
-Comprueba:
-
-- installation;
-- version;
-- contracts;
-- DB;
-- schema;
-- SQLite integrity;
-- secret permissions;
-- systemd;
-- Admin;
-- MCP;
-- Bridge;
-- Core;
-- optional target connectivity;
-- tool catalog;
-- security gates.
-
-Doctor diagnostica.
-
-No modifica destructivamente.
-
-### 15.4 Repair
-
-```bash
-mcp-gateway repair
-```
-
-Sólo corrige:
-
-- known permissions;
-- release symlinks;
-- systemd definitions;
-- secret file modes;
-- known safe drift.
-
-Nunca:
-
-- OS upgrade;
-- Wi-Fi;
-- arbitrary package installation;
-- target modification.
-
-### 15.5 Lifecycle CLI
-
-Objetivo UX:
+### 9.1 CLI objetivo
 
 ```bash
 mcp-gateway status
@@ -848,11 +794,11 @@ mcp-gateway uninstall
 mcp-gateway uninstall --purge
 ```
 
-El usuario normal no debe tener que definir `PYTHONPATH`.
+El usuario normal no debe definir `PYTHONPATH` para operar el appliance.
 
-### 15.6 Release layout
+### 9.2 Release layout
 
-Preferido:
+Layout preferido:
 
 ```text
 /opt/mcp-gateway/
@@ -876,31 +822,23 @@ Persistencia:
 └── config
 ```
 
-Si `/opt` y `/var` complican innecesariamente Bullseye/ARMv6, puede usarse una estructura equivalente dentro de `/home/mcp-gateway`.
+Si `/opt` y `/var` complican innecesariamente Bullseye/ARMv6, se permite una estructura equivalente dentro de `/home/mcp-gateway`.
 
-Lo obligatorio es la separación:
+La separación obligatoria es:
 
 ```text
-APPLICATION
-!=
-DATA
-!=
-CONFIG
-!=
-SECRETS
-!=
-BACKUPS
+APPLICATION != DATA != CONFIG != SECRETS != BACKUPS
 ```
 
-### 15.7 Installer
+### 9.3 Installer
 
-`install.sh` idempotente:
+`install.sh` debe ser idempotente.
 
 ```mermaid
 flowchart TD
     P[Preflight] --> H[Hardware / OS / Architecture]
     H --> D[Dependencies]
-    D --> U[Create/validate service user]
+    D --> U[Create / validate service user]
     U --> R[Install release]
     R --> C[Initialize config / DB]
     C --> S[Install systemd]
@@ -908,7 +846,7 @@ flowchart TD
     START --> DOC[Doctor]
 ```
 
-### 15.8 Setup
+### 9.4 Setup
 
 ```bash
 mcp-gateway setup
@@ -919,15 +857,77 @@ Wizard corto:
 1. Admin password;
 2. Gateway name;
 3. SSH identity;
-4. first target;
-5. first project;
-6. doctor.
+4. first Target;
+5. first Project;
+6. Doctor.
 
-Permitir Skip.
+Debe permitir `Skip` cuando corresponda.
 
-### 15.9 Update
+### 9.5 Doctor
 
-No auto-update.
+```bash
+mcp-gateway doctor
+mcp-gateway doctor --verbose
+```
+
+Comprueba:
+
+- instalación;
+- versión;
+- contratos;
+- DB y schema;
+- integridad SQLite;
+- permisos de secretos;
+- systemd;
+- Admin;
+- MCP;
+- Bridge;
+- Core;
+- conectividad opcional a Targets;
+- Tool Catalog;
+- security gates.
+
+`doctor` diagnostica y no realiza modificaciones destructivas.
+
+### 9.6 Repair
+
+```bash
+mcp-gateway repair
+```
+
+Solo corrige drift conocido y seguro:
+
+- permisos conocidos;
+- symlinks de release;
+- definiciones systemd;
+- modos de archivos secretos;
+- safe drift reconocido.
+
+Nunca debe modificar:
+
+- versión del OS;
+- Wi-Fi;
+- paquetes arbitrarios;
+- Targets.
+
+### 9.7 Backup y restore
+
+Backup:
+
+- usa la API de backup de SQLite;
+- genera export saneado JSON.
+
+Restore:
+
+1. valida el backup;
+2. comprueba schema;
+3. detiene únicamente el servicio necesario;
+4. restaura;
+5. ejecuta `doctor`.
+
+### 9.8 Update
+
+No existe auto-update.
 
 ```mermaid
 flowchart TD
@@ -943,13 +943,13 @@ flowchart TD
     H -->|FAIL| RB
 ```
 
-### 15.10 Rollback
+### 9.9 Rollback
 
 ```bash
 mcp-gateway rollback
 ```
 
-Debe conocer:
+Debe conocer y validar:
 
 ```text
 current
@@ -957,21 +957,7 @@ previous
 schema compatibility
 ```
 
-### 15.11 Backup / Restore
-
-Backup SQLite mediante API de backup.
-
-Export saneado JSON.
-
-Restore:
-
-- validates backup;
-- checks schema;
-- stops only necessary service;
-- restores;
-- runs doctor.
-
-### 15.12 Uninstall
+### 9.10 Uninstall
 
 Normal:
 
@@ -998,18 +984,18 @@ Purga:
 mcp-gateway uninstall --purge
 ```
 
-requiere confirmación fuerte.
+La purga requiere confirmación fuerte.
 
-### 15.13 Release manifest
+### 9.11 Release manifest
 
-Cada release:
+Cada release incluye:
 
 ```text
 manifest.json
 SHA256SUMS
 ```
 
-Manifest:
+El manifest registra:
 
 - version;
 - architecture;
@@ -1022,13 +1008,11 @@ Manifest:
 - minimum Python;
 - checksums.
 
-SBOM:
+SBOM se recomienda más adelante en build, no en runtime.
 
-recomendado más adelante en build, no en runtime.
+### 9.12 Maintenance UI
 
-### 15.14 Maintenance UI
-
-Añadir sección:
+Sección:
 
 ```text
 Maintenance
@@ -1041,219 +1025,32 @@ Maintenance
 └── Diagnostics
 ```
 
-No agregar:
+No agregar una acción genérica tipo:
 
 ```text
 Update Everything
 ```
 
-### 15.15 HTMX
+HTMX está aprobado únicamente como mejora pequeña para acciones puntuales. Debe estar vendorizado localmente, sin CDN, sin SPA y sin Node runtime.
 
-Vendorear `htmx.min.js`.
-
-Usar sólo para mejorar acciones puntuales.
-
-## 16. Phase 4D — Definition of Done
-
-Debe cumplir:
-
-```text
-[x] Phase 4C regression PASS
-[x] Phase 5 regression PASS
-[x] `write_file` security E2E remains PASS
-[x] compatibility.json
-[x] contract versions
-[x] adapter/bridge mismatch FAIL-CLOSED
-[x] native MCP 2026-07-28 conformance
-[x] Streamable HTTP Stateless=true
-[x] Host validation tested
-[x] Origin validation explicitly enabled/tested
-[x] DNS rebinding regression tests
-[x] request size limit
-[x] deterministic tools/list
-[x] common authorization seam for list/call
-[x] /live
-[x] /ready
-[x] /health
-[x] request_id propagation
-[x] doctor
-[x] repair
-[x] backup
-[x] restore
-[x] release manifest
-[x] checksum verification
-[x] versioned release layout
-[x] update
-[x] rollback
-[x] uninstall
-[x] uninstall --purge
-[x] Maintenance page
-[x] HTMX local if useful
-[x] no auto-update
-[x] secrets outside Git
-[x] documentation/runbooks updated
-```
-
-## 17. Phase 5 — Controlled Write
-
-**Estado: PASS**
-
-Phase 5 fue completada antes de Phase 4D. No se rehace.  
-Phase 4D pasa a ser el hardening/lifecycle gate obligatorio antes de exponer el gateway a clientes externos en Phase 6.
-
-### 17.1 Política global
-
-Implementado:
-
-```text
-writes_enabled = false
-```
-
-Default:
-
-```text
-OFF
-```
-
-Una escritura requiere:
-
-```text
-gateway_enabled
-AND
-writes_enabled
-AND
-target.enabled
-AND
-project.enabled
-AND
-project.write
-AND
-path policy
-```
-
-La autorización por cliente/grant se añadirá en Phase 6.
-
-### 17.2 `write_file`
-
-**IMPLEMENTADO Y VALIDADO**
-
-Características:
-
-- relative path;
-- UTF-8 text only;
-- `max_write_bytes` default 256 KiB;
-- `expected_sha256` obligatorio para overwrite;
-- create/overwrite semantics explícitas;
-- dry-run;
-- unified diff preview;
-- canonical parent validation;
-- symlink destination/ancestor denial;
-- atomic replace;
-- POSIX mode preservation cuando aplica;
-- local rotating backup;
-- audit metadata;
-- recovery test.
-
-### 17.3 Optimistic concurrency
-
-Overwrite requiere:
-
-```text
-expected_sha256
-```
-
-Si cambió:
-
-```text
-WRITE_CONFLICT
-```
-
-Esto previene sobrescrituras obsoletas y pérdida silenciosa de cambios.
-
-### 17.4 Atomic write
-
-Implementado:
-
-```text
-temporary file in same directory
-→ write
-→ flush
-→ fsync
-→ preserve mode
-→ os.replace
-→ fsync directory
-→ cleanup
-```
-
-### 17.5 Backups
-
-Ubicación conceptual:
-
-```text
-~/.local/share/mcp-gateway/backups/
-```
-
-Retención:
-
-```text
-hasta 5 versiones históricas por archivo
-```
-
-Los backups permanecen fuera del Target Worker.
-
-### 17.6 Panic switch
-
-Admin Console:
-
-```text
-Disable Controlled Writes
-```
-
-Efecto:
-
-```text
-read_file → sigue funcionando
-write_file → WRITES_DISABLED
-```
-
-### 17.7 `apply_patch`
+## 10. Clientes de IA y grants
 
 Estado:
 
 ```text
-DEFERRED_FOR_SAFE_IMPLEMENTATION
+Phase 6A: PASS — Local Clients & Grants
+Phase 6B: GATED — Cloud AI Clients
 ```
 
-Decisión KISS:
+Implementado en 6A:
 
-`read_file` + SHA-256 + `write_file` seguro resuelven edición controlada sin introducir un parser de patch frágil.
+- `ai_clients` y `grants` en SQLite/JSON;
+- precedencia fail-closed;
+- host key pinning estricto con `StrictHostKeyChecking=yes`;
+- protocolo MCP unificado en el SDK Go oficial;
+- compatibilidad probada con Gemini CLI, Claude Desktop y Antigravity.
 
-### 17.8 Evidencia
-
-```text
-Python tests: 88 / 88 PASS
-Go tests: 4 / 4 PASS
-E2E Controlled Write: 19 / 19 PASS
-MCP tools: 9
-```
-
-### 17.9 Fuera de v1
-
-- delete;
-- arbitrary rename;
-- binary mutation;
-- chmod/chown;
-- symlink creation;
-- arbitrary shell.
-
-## 18. Phase 6 — AI Clients
-
-**Estado:** Phase 6A PASS (Local Clients & Grants) / Phase 6B GATED (Cloud AI Clients)  
-**Implementado:** Grants de cliente (`ai_clients`, `grants`) en SQLite/JSON, host key pinning estricto con `StrictHostKeyChecking=yes`, unificación de protocolo MCP 100% en SDK Go oficial (`mcp-gateway-adapter`), y compatibilidad probada con Gemini CLI, Claude Desktop y Antigravity.
-
-Objetivo completado en Phase 6A:
-
-convertir `ai_clients` y `grants` en autorización real con precedencia fail-closed.
+Modelo:
 
 ```mermaid
 flowchart TD
@@ -1264,20 +1061,7 @@ flowchart TD
     CAP --> CALL[tools/call authorization]
 ```
 
-### 18.1 Same decision for list/call
-
-La misma autorización controla:
-
-```text
-tools/list
-tools/call
-```
-
-Nunca confiar en que ocultar una tool equivale a protegerla.
-
-### 18.2 AI Client model
-
-Ejemplo:
+### 10.1 Ejemplo de autorización
 
 ```text
 ChatGPT Main
@@ -1289,35 +1073,27 @@ Gemini ReadOnly
 → read only
 ```
 
-### 18.3 No browser credentials
+### 10.2 Credenciales externas
 
 Nunca almacenar:
 
-- ChatGPT browser cookies;
-- Google cookies;
-- passwords externos.
+- cookies de navegador de ChatGPT;
+- cookies de Google;
+- contraseñas externas.
 
-### 18.4 ChatGPT
+### 10.3 ChatGPT y clientes cloud
 
-Estado actual externo:
+El documento de v1.0.1 registra que ChatGPT no conecta directamente a un MCP puramente local. Para infraestructura privada/on-premises debe revalidarse **Secure MCP Tunnel** al retomar Phase 6B.
 
-ChatGPT no conecta directamente a un MCP puramente local.
+La disponibilidad y los permisos dependen del producto/plan vigente y deben comprobarse de nuevo en esa fase.
 
-Para infraestructura privada/on-premises deberá revalidarse **Secure MCP Tunnel** al llegar a Phase 6.
+> **No exponer MCP-Pi públicamente como atajo para evitar esta restricción.**
 
-La disponibilidad y permisos dependen del producto/plan vigente y deben comprobarse de nuevo en esa fase.
+### 10.4 Otros clientes
 
-No exponer MCP-Pi públicamente para evitar esta restricción.
+Claude, Gemini, Cursor, VS Code u otros clientes deben integrarse mediante adaptadores/configuración de cliente sin modificar el Core.
 
-### 18.5 Otros clientes
-
-Claude, Gemini, Cursor, VS Code u otros:
-
-se integran mediante adaptadores/configuración de cliente sin cambiar el Core.
-
-### 18.6 Client onboarding
-
-Futuro CLI:
+CLI futuro de onboarding:
 
 ```bash
 mcp-gateway client configure <client>
@@ -1325,7 +1101,7 @@ mcp-gateway client configure <client> --dry-run
 mcp-gateway client rollback <client>
 ```
 
-Siempre:
+Secuencia obligatoria:
 
 ```text
 detect
@@ -1335,21 +1111,17 @@ detect
 → verify
 ```
 
-## 19. Phase 7 — Resiliencia y operación v1
+## 11. Resiliencia y estrategia de OS
 
-### 19.1 Debian 11
+### 11.1 Deuda técnica actual
 
-Debian 11 Bullseye llegó al final de LTS el 31 de agosto de 2026.
+El documento registra que Debian 11 Bullseye alcanzó el final de LTS el **31 de agosto de 2026**. Por tanto, el OS actual es deuda técnica prioritaria.
 
-Esto convierte el OS actual en deuda técnica prioritaria.
+No realizar un upgrade in-place improvisado.
 
-NO hacer upgrade in-place improvisado.
+### 11.2 Estrategia de migración
 
-### 19.2 Estrategia de migración
-
-Raspberry Pi OS Lite 32-bit actual está basado en Debian 13 y se declara compatible con todos los modelos Raspberry Pi.
-
-Ruta preferida:
+La ruta preferida es una migración física y reversible sobre una microSD nueva o clonada:
 
 ```mermaid
 flowchart TD
@@ -1364,31 +1136,25 @@ flowchart TD
     REG -->|FAIL| OLD
 ```
 
-La microSD actual permanece como rollback físico.
+La microSD actual se conserva como rollback físico.
 
-### 19.3 Operación estable
+Phase 7A está completada como preparación y resiliencia; la migración física de Phase 7B permanece postpuesta para post-v1.
 
-Cadencia:
+### 11.3 Cadencia operativa
 
 | Frecuencia | Actividad |
-|---|---|
-| Semanal | Doctor corto / backup |
-| Mensual | Revisar updates, logs, disk, RAM |
-| Trimestral | Claves, restore test, revocation |
-| Antes de update | Backup + compatibility |
+| --- | --- |
+| Semanal | Doctor corto + backup |
+| Mensual | Revisar updates, logs, disco y RAM |
+| Trimestral | Revisar claves, probar restore y revocación |
+| Antes de update | Backup + compatibility preflight |
 | Después de update | Full doctor + regression |
 
 No actualizar automáticamente.
 
-## 20. Services — extensión futura opcional
+## 12. Extensión futura: Services
 
-Después de v1 o si aparece necesidad real:
-
-```text
-Services
-```
-
-representará servidores MCP externos.
+Después de v1, y solo si aparece una necesidad real, `Services` representará servidores MCP externos.
 
 ```mermaid
 flowchart TD
@@ -1398,19 +1164,18 @@ flowchart TD
     S --> EXT[External MCP servers]
 ```
 
-Official MCP Registry puede usarse como catálogo de descubrimiento.
-
-No confundir:
+Regla conceptual:
 
 ```text
 Target != Service
 ```
 
-Un Target es una máquina/workspace.
+- Un **Target** es una máquina/workspace.
+- Un **Service** ya habla MCP.
 
-Un Service ya habla MCP.
+El Official MCP Registry puede evaluarse como catálogo de descubrimiento de Services, no como reemplazo del modelo de Targets.
 
-## 21. Qué NO integrar
+## 13. Integraciones deliberadamente excluidas
 
 No incorporar por ahora:
 
@@ -1432,119 +1197,91 @@ No incorporar por ahora:
 - Code Mode / meta-tools;
 - job system propio.
 
-Reconsiderar sólo cuando exista una necesidad medible.
+Reconsiderar únicamente ante una necesidad medible.
 
-## 22. Riesgos actuales
+### 13.1 Patrones del ecosistema que sí se reutilizan
 
-| Riesgo | Estado | Mitigación |
-|---|---|---|
-| Bullseye EOL | ALTO | Phase 7 migration |
-| ARMv6 | CONTROLADO | cross-build + pinned releases |
-| 176 MiB RAM | CONTROLADO | <25 MiB servicios actuales |
-| Wi-Fi USB único | CONTROLADO | no OS upgrades improvisados |
-| Prompt injection | CONTROLADO | narrow tools + Core policy |
-| MCP changes | CONTROLADO | official SDK + contract versions |
-| DB migration | PENDIENTE 4D | manifest + schema gate + backup |
-| Update incompatibility | PENDIENTE 4D | doctor + rollback |
-| Web/MCP HTTP origin attack | PENDIENTE 4D | explicit Origin/Host tests |
-| Concurrent writes | PENDIENTE 5 | expected SHA-256 |
-| Client impersonation | PENDIENTE 6 | authenticated upstream identity |
+Se reutilizan patrones maduros sin adoptar plataformas completas:
 
-## 23. ADR — decisiones consolidadas
+- Tool visibility + tool call enforcement con una misma decisión de autorización;
+- separación de Visibility y Capability;
+- HTMX local para interacciones puntuales;
+- Official MCP SDK para protocolo y transport;
+- Official MCP Registry, eventualmente, como fuente de descubrimiento para Services.
 
-### ADR-001 — Raspberry Pi A+ se mantiene
+El diferenciador de MCP-Pi se mantiene:
 
-**ACCEPTED**
+```text
+AI Client
+→ MCP-Pi
+→ Target
+→ Project
+→ SSH Worker
+```
 
-La carga real demuestra viabilidad.
+## 14. Riesgos y deuda técnica
 
-### ADR-002 — Pi-hole separado
+| Riesgo | Estado actual | Mitigación |
+| --- | --- | --- |
+| Bullseye EOL | **ALTO** | Migración física post-v1 con rollback por microSD |
+| ARMv6 | CONTROLADO | Cross-build + releases fijadas |
+| 176 MiB RAM | CONTROLADO | Servicios actuales por debajo de ~25 MiB según la evidencia del proyecto |
+| Wi-Fi USB único | CONTROLADO | Evitar upgrades de OS improvisados |
+| Prompt injection | CONTROLADO | Narrow tools + Core policy |
+| Cambios de MCP | CONTROLADO | SDK oficial + contratos versionados |
+| Migración de DB | CONTROLADO | Manifest + schema gate + backup |
+| Incompatibilidad de update | CONTROLADO | Doctor + rollback |
+| Ataques Host/Origin/DNS rebinding | CONTROLADO | Bind local + validaciones y regresión E2E |
+| Escrituras concurrentes | CONTROLADO | `expected_sha256` + atomic write |
+| Suplantación de cliente | CONTROLADO EN 6A / REVALIDAR EN 6B | Identidad autenticada + grants; revalidar auth cloud |
+| Conectividad con clientes cloud | GATED | Revalidar transporte autenticado específico por cliente |
 
-**ACCEPTED**
+## 15. ADR — decisiones consolidadas
 
-### ADR-003 — CLI/minimal OS
+| ADR | Decisión | Estado |
+| --- | --- | --- |
+| ADR-001 | Raspberry Pi A+ se mantiene | ACCEPTED |
+| ADR-002 | Pi-hole separado | ACCEPTED |
+| ADR-003 | CLI / minimal OS | ACCEPTED |
+| ADR-004 | No Docker inicialmente | ACCEPTED |
+| ADR-005 | Los Targets hacen el trabajo pesado | ACCEPTED |
+| ADR-006 | SSH como transporte principal a Targets | ACCEPTED |
+| ADR-007 | No arbitrary shell en v1 | ACCEPTED |
+| ADR-008 | AI-client agnostic | ACCEPTED |
+| ADR-009 | Multi-target | ACCEPTED |
+| ADR-010 | Multi-project | ACCEPTED |
+| ADR-011 | Admin Console local | ACCEPTED |
+| ADR-012 | SQLite principal / JSON fallback | ACCEPTED |
+| ADR-013 | Tailwind precompilado | ACCEPTED |
+| ADR-014 | Single Core | ACCEPTED |
+| ADR-015 | Localhost-first | ACCEPTED |
+| ADR-016 | Official MCP SDK | ACCEPTED |
+| ADR-017 | Go Adapter + Python Core | ACCEPTED |
+| ADR-018 | Compatibility before writes | ACCEPTED |
+| ADR-019 | Versioned lifecycle | ACCEPTED |
+| ADR-020 | No auto-update | ACCEPTED |
+| ADR-021 | Reuse-first ecosystem policy | ACCEPTED |
+| ADR-022 | Services opcionales y separados de Targets | ACCEPTED |
 
-**ACCEPTED**
+## 16. Evidencia y Definition of Done
 
-### ADR-004 — No Docker inicialmente
+### 16.1 Evidencia de Controlled Write
 
-**ACCEPTED**
+```text
+Phase 5 commit: 1147017
+Tag: phase-5-pass
+Python tests: 88 / 88 PASS
+Go tests: 4 / 4 PASS
+Controlled Write E2E: 19 / 19 PASS
+MCP tools: 9
+write_file: PASS
+apply_patch: DEFERRED_FOR_SAFE_IMPLEMENTATION
+Pi-hole: UNCHANGED
+```
 
-### ADR-005 — Targets hacen el trabajo pesado
+### 16.2 Definition of Done v1.0
 
-**ACCEPTED**
-
-### ADR-006 — SSH como transporte principal a Targets
-
-**ACCEPTED**
-
-### ADR-007 — No arbitrary shell v1
-
-**ACCEPTED**
-
-### ADR-008 — AI-client agnostic
-
-**ACCEPTED**
-
-### ADR-009 — Multi-target
-
-**ACCEPTED**
-
-### ADR-010 — Multi-project
-
-**ACCEPTED**
-
-### ADR-011 — Admin Console local
-
-**ACCEPTED**
-
-### ADR-012 — SQLite primary / JSON fallback
-
-**ACCEPTED**
-
-### ADR-013 — Tailwind precompiled
-
-**ACCEPTED**
-
-### ADR-014 — Single Core
-
-**ACCEPTED**
-
-### ADR-015 — localhost-first
-
-**ACCEPTED**
-
-### ADR-016 — Official MCP SDK
-
-**ACCEPTED**
-
-### ADR-017 — Go adapter + Python Core
-
-**ACCEPTED**
-
-### ADR-018 — Compatibility before writes
-
-**ACCEPTED**
-
-### ADR-019 — Versioned lifecycle
-
-**ACCEPTED**
-
-### ADR-020 — No auto-update
-
-**ACCEPTED**
-
-### ADR-021 — Reuse-first ecosystem policy
-
-**ACCEPTED**
-
-### ADR-022 — Services optional, separate from Targets
-
-**ACCEPTED**
-
-## 24. Definition of Done v1.0
-
-MCP-Pi v1.0 completado y verificado:
+MCP-Pi v1.0 se considera completado y verificado con:
 
 ```text
 [x] Phase 4D PASS
@@ -1554,112 +1291,126 @@ MCP-Pi v1.0 completado y verificado:
 [x] Update + rollback proven
 [x] Backup + restore proven
 [x] Uninstall + purge proven
-
-[x] Controlled write (`write_file`) implemented and validated
+[x] Controlled write (write_file) implemented and validated
 [x] expected SHA-256
 [x] atomic write
 [x] write kill switch
 [x] recovery test
-[x] `apply_patch` deferred by design for determinism and KISS
-
-[x] At least one authenticated AI/MCP client integrated (Gemini, Claude, Antigravity)
+[x] apply_patch deferred by design for determinism and KISS
+[x] At least one authenticated AI/MCP client integrated
 [x] Client grants enforce tools/list and tools/call
 [x] Client credentials not stored unsafely
-
-[x] At least one real Target Worker validated (`termux-main` @ 192.168.68.72:8022)
+[x] At least one real Target Worker validated
 [x] Multi-project validated
 [x] Target/project disable validated
 [x] Global kill switch validated
-
 [x] Origin / Host / DNS rebinding tests PASS
 [x] MCP native conformance PASS (MCP 2026-07-28 / Go SDK v1.7.0)
-[x] Negative security suite PASS (7/7 blocked fail-closed)
-
-[x] OS migration plan executed & verified (Phase 7A PASS; Phase 7B deferred post-v1)
+[x] Negative security suite PASS (8/8 denied fail-closed)
+[x] OS migration and rollback plan prepared and validated in Phase 7A
+[x] Physical OS migration deferred to Phase 7B post-v1
 [x] Recovery path documented and tested (microSD swap, vault backup, rollback)
 [x] Documentation current
 ```
 
-## 25. Estado oficial al cierre de v1.0.1
+### 16.3 Phase 4D — cierre consolidado
+
+Phase 4D quedó completada con:
+
+- `compatibility.json` y contratos versionados;
+- adapter/bridge mismatch fail-closed;
+- conformance nativa MCP 2026-07-28;
+- Streamable HTTP con `Stateless=true`;
+- validaciones Host y Origin;
+- regresión de DNS rebinding;
+- request size limit;
+- orden determinista de `tools/list`;
+- seam común de autorización para list/call;
+- `/live`, `/ready`, `/health`;
+- propagación de `request_id`;
+- `doctor`, `repair`, `backup`, `restore`;
+- release manifest y checksums;
+- layout versionado;
+- update, rollback, uninstall y purge;
+- Maintenance page;
+- HTMX local cuando aporta valor;
+- no auto-update;
+- secretos fuera de Git;
+- documentación y runbooks actualizados.
+
+## 17. Estado resumido al cierre de v1.0.1
 
 ```text
-PROJECT:
-MCP-Pi Gateway
-
-DOCUMENT:
-1.0.1
+PROJECT: MCP-Pi Gateway
+DOCUMENT: 1.0.1
 
 RELEASE:
-v1.0.1 (Hygiene Patch Release)
-v1.0.0 (Stable Release, immutable @ d52f848)
+  v1.0.1 — Hygiene Patch Release
+  v1.0.0 — Stable Release, immutable @ d52f848
 
-CURRENT STATE:
-OPERATIONAL_STABLE
+CURRENT STATE: OPERATIONAL_STABLE
 
 GATEWAY:
-MCP-Pi
-192.168.68.85
-Hardware: Raspberry Pi Model A+ Rev 1.1 (ARMv6, 176 MiB RAM)
+  MCP-Pi
+  192.168.68.85
+  Raspberry Pi Model A+ Rev 1.1
+  ARMv6 / 176 MiB RAM
 
 PI-HOLE:
-YorPi
-192.168.68.54
-DO NOT MODIFY
+  YorPi
+  192.168.68.54
+  DO NOT MODIFY
 
 ACTIVE TARGET:
-termux-main
-Host actual: 192.168.68.72:8022 (mutable runtime LAN IP)
-Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
-SSH Aliases: termux-local (principal), pc-local (compat)
+  termux-main
+  192.168.68.72:8022   # mutable runtime LAN IP
+  Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
+  SSH aliases: termux-local (principal), pc-local (compat)
 
 ADMIN:
-127.0.0.1:8080
-Flask + Jinja + Tailwind
-SSH tunnel only
+  127.0.0.1:8080
+  Flask + Jinja + Tailwind
+  SSH tunnel only
 
 MCP:
-Official Go SDK v1.7.0
-127.0.0.1:8090/mcp
-stdio + Streamable HTTP
-Protocol: 2026-07-28 (fallback 2025-11-25)
+  Official Go SDK v1.7.0
+  127.0.0.1:8090/mcp
+  stdio + Streamable HTTP
+  Protocol: 2026-07-28
+  Fallback: 2025-11-25
 
 CORE:
-Python 3.9 stdlib
-Single security authority
+  Python 3.9 stdlib
+  Single security authority
 
 REGISTRY:
-SQLite primary
-JSON fallback
+  SQLite primary
+  JSON fallback
 
 TOOLS:
-9 tools active deterministas
-file_stat, git_status, health, list_directory,
-list_targets, read_file, run_task, target_status, write_file
+  9 active deterministic tools
+  file_stat, git_status, health, list_directory,
+  list_targets, read_file, run_task, target_status, write_file
 
 WRITE:
-write_file IMPLEMENTED (atomic, expected_sha256, panic switch)
-apply_patch DEFERRED_FOR_SAFE_IMPLEMENTATION
+  write_file IMPLEMENTED
+  atomic + expected_sha256 + panic switch
+  apply_patch DEFERRED_FOR_SAFE_IMPLEMENTATION
 
-ARBITRARY SHELL:
-DISABLED / OUT OF V1
-
-AUTO UPDATE:
-NO
+ARBITRARY SHELL: DISABLED / OUT OF V1
+AUTO UPDATE: NO
 
 OS:
-Raspbian 11 Bullseye (ARMv6, verified hardware baseline)
-Trixie migration deferred post-v1
+  Raspbian 11 Bullseye — verified hardware baseline
+  Physical OS migration deferred post-v1
 
-KISS:
-MANDATORY
-
-REUSE-FIRST:
-MANDATORY
+KISS: MANDATORY
+REUSE-FIRST: MANDATORY
 ```
 
-## 26. Referencias externas verificadas para esta versión
+## 18. Referencias externas registradas para esta versión
 
-Estas fuentes deberán revisarse de nuevo cuando cambie una fase dependiente de ellas:
+Estas referencias forman parte de la base documental de v1.0.1 y deben revisarse de nuevo cuando cambie una fase que dependa de ellas:
 
 - Model Context Protocol — Specification 2026-07-28.
 - Official MCP Go SDK — compatibility matrix and v1.7.0 release notes.
@@ -1670,9 +1421,11 @@ Estas fuentes deberán revisarse de nuevo cuando cambie una fase dependiente de 
 - Debian Project — Debian 11 Bullseye LTS end-of-life, 31 Aug 2026.
 - Raspberry Pi — Raspberry Pi OS Lite 32-bit / Debian 13 compatibility.
 
-## 27. Regla para toda fase futura
+> Estas referencias se conservan tal como están registradas en la documentación fuente. Una futura revisión técnica debe volver a verificarlas antes de tomar decisiones dependientes de ellas.
 
-Antes de comenzar una nueva fase:
+## 19. Regla para toda fase futura
+
+Antes de iniciar una nueva fase:
 
 ```text
 1. Read this master document.
@@ -1689,65 +1442,33 @@ Antes de comenzar una nueva fase:
 
 > **MCP-Pi debe crecer por composición de piezas pequeñas y estables, no por acumulación de frameworks.**
 
+## 20. Corrección de roadmap consolidada
 
-## 28. Phase 5 completion record
-
-```text
-COMMIT:
-1147017
-
-TAG:
-phase-5-pass
-
-PYTHON:
-88 / 88 PASS
-
-GO:
-4 / 4 PASS
-
-CONTROLLED WRITE E2E:
-19 / 19 PASS
-
-MCP TOOLS:
-9
-
-WRITE_FILE:
-PASS
-
-APPLY_PATCH:
-DEFERRED_FOR_SAFE_IMPLEMENTATION
-
-PI-HOLE:
-UNCHANGED
-```
-
-### 28.1 Important roadmap correction
-
-The project must **not** proceed directly to generic public/reverse tunnels.
-
-For ChatGPT specifically, current OpenAI guidance requires revalidation of **Secure MCP Tunnel** for private/local MCP deployments rather than exposing MCP-Pi to the public internet.
-
-Therefore:
+La secuencia histórica relevante queda:
 
 ```text
 Phase 5 PASS
     ↓
-Phase 4D hardening / lifecycle catch-up
+Phase 4D hardening / lifecycle catch-up — PASS
     ↓
-Phase 6 client-specific integration gates
+Phase 6A local client integration — PASS
+    ↓
+Phase 6B cloud client integration — GATED
+    ↓
+Phase 7B physical OS migration — DEFERRED POST-V1
 ```
 
-Different clients may use different transports:
+No se adopta un túnel público genérico como parte de la arquitectura core.
+
+Transportes por tipo de cliente:
 
 ```text
 Claude Desktop / local clients
 → stdio or local/SSH-tunneled MCP
 
 ChatGPT
-→ Secure MCP Tunnel if supported/eligible
+→ Secure MCP Tunnel if supported/eligible; revalidate before use
 
 Other clients
 → individually validated transport/auth
 ```
-
-No generic tunnel becomes part of the core architecture.

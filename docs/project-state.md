@@ -103,8 +103,8 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 
 ## 3. Metadatos de Control
 
-- **LAST_VERIFIED**: 2026-09-09 21:15 CST (2026-09-10 03:15 UTC)
-- **CURRENT_PHASE**: V1.0.1 POST-V1 HYGIENE PATCH RELEASE
+- **LAST_VERIFIED**: 2026-09-10 13:20 CST (2026-09-10 19:20 UTC)
+- **CURRENT_PHASE**: PHASE 8 — OS MODERNIZATION (TRIXIE DEBIAN 13) — CLOSED / PASS
 - **ROADMAP**:
   - **Fase 5**: Controlled Write (COMPLETADA)
   - **Fase 6A**: Local AI Clients, Identity & Grants (COMPLETADA)
@@ -112,23 +112,58 @@ Documento de seguimiento continuo y estado de componentes del sistema.
   - **Fase 7A**: Resilience, Audit & Baseline Readiness (COMPLETADA)
   - **Fase 7B**: OS Migration to Debian 13 Trixie (DEFERRED_POST_V1)
   - **v1.0.0 Release**: RELEASED (commit `d52f848`)
-  - **v1.0.1 Release**: IN_PROGRESS (fix/v1.0.1-hygiene)
+  - **v1.0.1 Release**: RELEASED (commit `bcd8fe9`)
+  - **Fase 8**: OS Modernization (Trixie / Debian 13): CLOSED / PASS
+    - Base OS Boot & Validation: PASS
+    - Rescue Network (USB Tether): PASS
+    - RTL8188EUS Wi-Fi (rtl8xxxu): PASS
+    - Authoritative SSH Identity Restore: PASS (`AUTHORITATIVE_MCP_PI_IDENTITY`)
+    - Bootstrap Temporary SSH Key: RETIRED (`RETIRED_BOOTSTRAP_IDENTITY`)
+    - Direct USB Stability (37 MB Transfer): PASS
+    - Hub Diagnosis: `HUB_PATH_STRONGLY_IMPLICATED_BY_A_B_TESTING`
+    - Regulatory Domain: Configured MX, effective 98 (AP advertises US)
+    - v1.0.1 Application Restore: PASS
+    - Doctor: 19/19 HEALTHY
+    - Functional Smoke: PASS
+    - Full Regression: PASS
+      - Python Full Suite on Trixie: 107/107 PASS (113.61s)
+      - Go MCP Adapter Tests: 10/10 PASS (1.399s)
+      - Live Controlled Write (Phase 5): 19/19 PASS
+      - Authorization Precedence vs Operational Switch: PASS
+      - Local AI Clients & Grants (Phase 6A): 4/4 PASS (78.84s)
+      - Canonical Security Negative & Ingress Controls: 8/8 DENIED + 3/3 Ingress PASS (56.94s)
+      - MCP Protocol & Target Operations: 8/8 Tools PASS (40.35s)
+      - Post-Regression Doctor: 19/19 HEALTHY
+      - Service Survival: Admin PID 5297 (0 restarts), MCP PID 5298 (0 restarts)
+    - Post-Regression Hygiene Audit: PASS (0 local/deployed app drift, Termux temp DB removed, 0 temp grants, writes_enabled: false, Secret Gate PASS)
+    - Reboot Acceptance: PASS
+      - Host Reacquisition & Fingerprint Matching (`SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E`): PASS
+      - Base OS & ext4 Clean Mount: PASS (0 failed units)
+      - Wi-Fi Auto-Recovery (RTL8188EUS / wlan0): PASS (DHCP/DNS/Ping 1.1.1.1 0% loss)
+      - Systemd Services Auto-Start: PASS (Admin PID 845, MCP PID 846, loopback bound)
+      - SQLite DB Integrity & Security Posture: PASS (integrity ok, user_version 1, writes_enabled false, sudo NO)
+      - Target Worker Return (`termux-main`): PASS (4/4 ops ok: status, read, git, task)
+      - Post-Reboot Doctor: 19/19 HEALTHY
+      - Adapter HTTP Endpoints: 200 OK (/live, /ready, /health, /server/discover)
+      - Resource Fit: RAM available 73MB, zram 12MB used, Temp 34.2°C, throttled 0x0, 0 dmesg USB/OOM errors
+    - Formal 60-Minute Soak: PASS
+      - Continuous observation: 60 minutes (12/12 samples every 5 min)
+      - Service survival: Admin PID 845 (0 restarts), MCP PID 846 (0 restarts)
+      - Memory stability: MemAvailable 73MB -> 71MB, zram 27.7MB -> 27.2MB (0 OOM, 0 runaway RSS)
+      - Thermal & Power: Temp 33.6°C - 34.2°C, Throttled 0x0
+      - Network & USB: 0 drops, 0 resets, ping 1.1.1.1 0% loss
+      - Target worker (termux-main): T0, T30, T60 E2E probes 100% PASS
+      - End-of-soak Doctor: 19/19 HEALTHY
+      - End-of-soak DB integrity: ok, writes_enabled: false
+    - Production Baseline Promotion: PASS (TRIXIE_PROMOTED_TO_PRODUCTION_BASELINE)
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
 - **RELEASE_STATE**:
-  - RC_TAG: `v1.0.0-rc1` @ `1df371c`
-  - STABLE_TAG: `v1.0.0` @ `d52f848`
-  - PATCH_TAG: `v1.0.1` (pending merge)
-  - ROLLBACK_FAIL_CLOSED: PASS
-  - ROLLBACK_FUNCTIONAL_SANDBOX: PASS
-  - FORMAL_SOAK: PASS (60 min)
-  - TARGET_HOST_KEY_MATCH: PASS
-  - TARGET_RETURN: PASS (5/5 operaciones)
-  - PHASE5_LIVE_TARGET: PASS (19/19)
-  - FULL_PATH: PASS
-  - SECURITY_NEGATIVE_SUITE: PASS (7/7)
-  - REGRESSIONS: PASS (Python 107/107 local, 107/107 Pi, Go 10/10, Phase 6A 4/4, Doctor HEALTHY)
-  - v1.0.0: RELEASED
-  - v1.0.1: RELEASE_AUTHORIZED
-- **NEXT_ACTION**: MERGE_AND_TAG_V1.0.1
-
+  - STABLE_TAG: `v1.0.1` @ `bcd8fe9`
+  - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`
+  - BULLSEYE_MICROSD: PRESERVED / KNOWN_GOOD_PHYSICAL_ROLLBACK
+  - TRIXIE_PRODUCTION_STATUS: PROMOTED_TO_PRODUCTION_BASELINE
+  - APPLICATION_BASELINE: MCP-Pi Gateway v1.0.1 (Commit `bcd8fe907f9e305733896f1d286d04d57a8b1f5e`)
+  - PHASE_8_STATUS: CLOSED / PASS
+  - ALL_GATES: PASS (10/10 migration gates satisfied)
+- **NEXT_ACTION**: POST_V1_OPERATION_AND_MAINTENANCE
 

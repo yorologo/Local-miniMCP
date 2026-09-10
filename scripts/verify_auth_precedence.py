@@ -18,7 +18,7 @@ import json
 import os
 import sys
 import time
-import subprocess
+import paramiko
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from scripts.pi_ssh import run_remote
@@ -26,50 +26,62 @@ from scripts.pi_ssh import run_remote
 HOST = os.environ.get("MCP_PI_HOST", "192.168.68.85")
 USER = "mcp-gateway"
 KEY = os.path.expanduser("~/.ssh/mcp_gemini_ed25519")
-KH = os.path.expanduser("~/.ssh/mcp_known_hosts").replace("\\", "/")
+KH = os.path.expanduser("~/.ssh/mcp_known_hosts")
 
 
 def run_mcp_session():
-    cmd = [
-        "ssh",
-        "-i", KEY,
-        "-o", "BatchMode=yes",
-        "-o", "StrictHostKeyChecking=yes",
-        "-o", f"UserKnownHostsFile={KH}",
-        "-T",
-        f"{USER}@{HOST}"
-    ]
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    ssh = paramiko.SSHClient()
+    if os.path.isfile(KH):
+        ssh.load_host_keys(KH)
+    else:
+        ssh.load_host_keys(os.path.expanduser("~/.ssh/known_hosts"))
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+    ssh.connect(HOST, username=USER, key_filename=KEY, timeout=25, banner_timeout=50)
+    stdin, stdout, stderr = ssh.exec_command("mcp", timeout=30)
     
+    t = ssh.get_transport()
+    if t:
+        t.set_keepalive(5)
+
+    def send(msg):
+        time.sleep(0.3)
+        stdin.write(json.dumps(msg) + "\n")
+        stdin.flush()
+
+    def recv():
+        line = stdout.readline()
+        if not line:
+            err = stderr.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"EOF from stdio server. Stderr: {err}")
+        return json.loads(line.strip())
+
     # Initialize
-    p.stdin.write(json.dumps({
+    send({
         "jsonrpc": "2.0",
         "id": 1,
         "method": "initialize",
         "params": {"protocolVersion": "2026-07-28", "capabilities": {}, "clientInfo": {"name": "test-precedence", "version": "1.0"}}
-    }) + "\n")
-    p.stdin.flush()
-    init_resp = json.loads(p.stdout.readline())
-    
+    })
+    init_resp = recv()
+
     # Initialized notification
-    p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
-    p.stdin.flush()
-    
+    send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
     def list_tools():
-        p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}) + "\n")
-        p.stdin.flush()
-        resp = json.loads(p.stdout.readline())
+        send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        resp = recv()
         return [t["name"] for t in resp.get("result", {}).get("tools", [])]
-        
+
     def call_tool(name, arguments):
-        p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": name, "arguments": arguments}}) + "\n")
-        p.stdin.flush()
-        return json.loads(p.stdout.readline())
-        
+        send({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": name, "arguments": arguments}})
+        return recv()
+
     def close():
-        p.stdin.close()
-        p.wait(timeout=5)
-        
+        try:
+            ssh.close()
+        except Exception:
+            pass
+
     return list_tools, call_tool, close
 
 
