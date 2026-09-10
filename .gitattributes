@@ -1,0 +1,6 @@
+# Ensure LF line endings for files tracked in SHA256SUMS across all platforms
+manifest.json text eol=lf
+compatibility.json text eol=lf
+install.sh text eol=lf
+bin/* text eol=lf
+SHA256SUMS text eol=lf
