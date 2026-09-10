@@ -34,7 +34,7 @@ Tras cualquier reinicio o restablecimiento de energía:
 La Raspberry Pi Model A+ tarda aproximadamente 45 segundos en:
 1. Cargar el kernel Linux desde la microSD.
 2. Inicializar el bus USB e identificar el dongle Realtek RTL8188EUS (`0bda:8179`).
-3. Cargar el módulo `r8188eu` y asociarse al SSID Wi-Fi.
+3. Cargar el módulo `rtl8xxxu` (en Trixie) o `r8188eu` (en Bullseye) y asociarse al SSID Wi-Fi.
 4. Solicitar y recibir la concesión DHCP (`192.168.68.85`).
 
 ### Paso 2: Verificación de Conectividad de Red
@@ -46,7 +46,7 @@ ping 192.168.68.85 -n 4
 
 ### Paso 3: Verificación de Servicios
 ```bash
-ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts Yorologo@192.168.68.85 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
+ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts yorologo@192.168.68.85 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
 ```
 **Resultado esperado**:
 ```text
@@ -56,7 +56,7 @@ active
 
 ### Paso 4: Verificación Integral con Doctor
 ```bash
-ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
 ```
 **Resultado esperado**:
 ```text
@@ -84,9 +84,9 @@ Todos los chequeos en `[PASS]`, incluyendo integridad de SQLite, catálogo de he
 ### Problema C: Uno de los Servicios está en estado `failed`
 1. Consultar el log del servicio:
    ```bash
-   ssh Yorologo@192.168.68.85 "sudo journalctl -u mcp-gateway-admin -n 50 --no-pager"
+   ssh yorologo@192.168.68.85 "sudo journalctl -u mcp-gateway-admin -n 50 --no-pager"
    ```
 2. Ejecutar la auto-reparación no destructiva:
    ```bash
-   ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
+   ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
    ```

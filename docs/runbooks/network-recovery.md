@@ -7,7 +7,7 @@ Este runbook detalla las directrices de diagnóstico, mitigación y recuperació
 ## 1. Perfil del Hardware Inalámbrico y Limitaciones Físicas
 
 - **Dispositivo USB**: `Bus 001 Device 002: ID 0bda:8179 Realtek Semiconductor Corp. RTL8188EUS 802.11n Wireless Network Adapter`
-- **Módulo del Kernel**: `r8188eu` (driver nativo de kernel Linux para ARMv6)
+- **Módulo del Kernel**: `rtl8xxxu` (driver in-tree nativo en Debian 13 Trixie; `r8188eu` en Bullseye)
 - **Dirección MAC Inmutable**: `8c:90:2d:ac:e5:c0`
 - **Topología de Bus**: La Raspberry Pi Model A+ cuenta con un único canal USB 2.0 compartido directamente por el SoC BCM2835. Cargas excesivas de I/O de red concurrentes con ráfagas no limitadas pueden provocar interrupciones en el bus USB.
 - **Regla Operativa de Transferencia**: Toda transferencia de archivos por SSH/SCP hacia MCP-Pi debe moderarse (e.g. `scp -l 600`) para evitar desbordes de búfer en el controlador Realtek.
@@ -58,9 +58,10 @@ Si el enlace Wi-Fi se congela o el módulo del kernel entra en un estado inconsi
 sudo ip link set wlan0 down
 
 # Descargar y recargar el módulo r8188eu
-sudo modprobe -r r8188eu
-sleep 2
-sudo modprobe r8188eu
+# En Trixie:
+sudo modprobe -r rtl8xxxu && sleep 2 && sudo modprobe rtl8xxxu
+# En Bullseye:
+# sudo modprobe -r r8188eu && sleep 2 && sudo modprobe r8188eu
 
 # Levantar interfaz y solicitar DHCP
 sudo ip link set wlan0 up

@@ -12,7 +12,7 @@
 | Hardware | Raspberry Pi Model A+ Rev 1.1 — ARMv6 |
 | Baseline histórico validado | Bullseye / Debian 11 — **preservado como physical rollback** |
 | OS de producción actual | **Raspbian GNU/Linux 13 / Debian 13 Trixie — armv6l** |
-| Fase operativa actual | **Phase 8 — OS Modernization — CLOSED / PASS** |
+| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (Phase 8 CLOSED / PASS) |
 | Principios rectores | **KISS + Reuse First + Least Privilege + Deny by Default + Fail Closed** |
 
 Documentación relacionada:
