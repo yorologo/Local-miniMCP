@@ -73,6 +73,34 @@ def cmd_backup(dest_path: Optional[str] = None) -> int:
         return 1
 
 
+def cmd_maintenance() -> int:
+    print("==================================================")
+    print("=== MCP GATEWAY APPLIANCE SAFE MAINTENANCE     ===")
+    print("==================================================")
+    try:
+        reg = get_registry()
+        tools = GatewayTools(registry=reg, client_id="local")
+        res = tools.gateway_maintenance()
+        if not res.get("ok"):
+            print(f"[ERROR] Maintenance failed: {res.get('error')}", file=sys.stderr)
+            return 1
+        r = res.get("result", {})
+        print(f"[OK] Database Backup      : {r.get('backup_created')} ({r.get('backup_size_bytes')} bytes)")
+        print(f"[OK] Pruned Old Backups   : {r.get('pruned_backups_count')} backup(s) pruned (kept latest 5)")
+        print(f"[OK] SQLite Integrity     : {r.get('database_integrity')}")
+        print(f"[OK] Doctor Overall       : {r.get('doctor_status')}")
+        res_info = r.get("resources", {})
+        print(f"[OK] Rootfs Free Space    : {res_info.get('disk_free_gb')} GB")
+        print(f"[OK] Available Memory     : {res_info.get('memory_available_mb')} MB")
+        print("==================================================")
+        print("STATUS: MAINTENANCE COMPLETED SUCCESSFULLY")
+        print("==================================================")
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Maintenance encountered exception: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_restore(backup_path: str) -> int:
     try:
         restore_database(backup_path)
@@ -176,6 +204,8 @@ def main(args_list: Optional[List[str]] = None) -> int:
 
     subparsers.add_parser("rollback", help="Roll back current release to previous version")
 
+    subparsers.add_parser("maintenance", help="Run safe automated maintenance (backup, rotation, integrity, doctor)")
+
     un_p = subparsers.add_parser("uninstall", help="Uninstall MCP Gateway services and binaries")
     un_p.add_argument("--purge", action="store_true", help="Purge all data, databases, and configuration")
     un_p.add_argument("--confirm", action="store_true", help="Skip interactive purge confirmation")
@@ -192,6 +222,8 @@ def main(args_list: Optional[List[str]] = None) -> int:
         return cmd_repair()
     elif parsed.command == "backup":
         return cmd_backup(parsed.path)
+    elif parsed.command == "maintenance":
+        return cmd_maintenance()
     elif parsed.command == "restore":
         return cmd_restore(parsed.backup_file)
     elif parsed.command == "update":

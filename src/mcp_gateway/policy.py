@@ -162,6 +162,11 @@ TOOL_CAPABILITIES = {
     "git_status": {"read", "git_status", "*"},
     "run_task": {"execute", "run_task", "tasks", "*"},
     "write_file": {"write", "write_file", "*"},
+    "gateway_status": {"admin", "status", "*"},
+    "gateway_doctor": {"admin", "doctor", "*"},
+    "gateway_backup": {"admin", "backup", "*"},
+    "gateway_maintenance": {"admin", "maintenance", "*"},
+    "gateway_reboot": {"admin", "reboot", "*"},
 }
 
 

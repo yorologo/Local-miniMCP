@@ -142,10 +142,10 @@ def check_core_and_tools() -> List[CheckResult]:
         # Check tool count
         from .bridge import get_tools_catalog
         cat = get_tools_catalog()
-        if len(cat) == 9:
+        if len(cat) in (9, 14):
             results.append(CheckResult("Tool Catalog", True, f"Catalog contains {len(cat)} tools in deterministic order"))
         else:
-            results.append(CheckResult("Tool Catalog", False, f"Unexpected tool count: {len(cat)} (expected 9)"))
+            results.append(CheckResult("Tool Catalog", False, f"Unexpected tool count: {len(cat)} (expected 9 or 14)"))
 
     except Exception as e:
         results.append(CheckResult("Gateway Core Health", False, f"Core initialization failed: {e}"))

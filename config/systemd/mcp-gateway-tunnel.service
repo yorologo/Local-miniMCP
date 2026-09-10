@@ -1,0 +1,21 @@
+[Unit]
+Description=MCP-Pi Secure MCP Tunnel to OpenAI
+Documentation=https://github.com/openai/tunnel-client
+After=network-online.target mcp-gateway-mcp.service
+Wants=network-online.target
+Requires=mcp-gateway-mcp.service
+
+[Service]
+Type=simple
+User=mcp-gateway
+Group=mcp-gateway
+EnvironmentFile=/home/mcp-gateway/.config/mcp-gateway/tunnel.env
+ExecCondition=/usr/local/bin/mcp-gateway-tunnel-check
+ExecStart=/usr/local/bin/openai-tunnel-client run
+Restart=on-failure
+RestartSec=15s
+RestartPreventExitStatus=2
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

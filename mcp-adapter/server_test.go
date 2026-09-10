@@ -60,6 +60,11 @@ func TestServerToolDiscovery(t *testing.T) {
 
 	expectedTools := []string{
 		"file_stat",
+		"gateway_backup",
+		"gateway_doctor",
+		"gateway_maintenance",
+		"gateway_reboot",
+		"gateway_status",
 		"git_status",
 		"health",
 		"list_directory",

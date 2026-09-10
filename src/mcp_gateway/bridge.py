@@ -25,6 +25,11 @@ ALLOWED_TOOLS = {
     "git_status",
     "run_task",
     "write_file",
+    "gateway_status",
+    "gateway_doctor",
+    "gateway_backup",
+    "gateway_maintenance",
+    "gateway_reboot",
 }
 
 
@@ -229,6 +234,22 @@ def invoke_tool(
                 dry_run=dry_run,
                 create=create,
             )
+
+        elif tool_name == "gateway_status":
+            return gateway.gateway_status()
+
+        elif tool_name == "gateway_doctor":
+            return gateway.gateway_doctor()
+
+        elif tool_name == "gateway_backup":
+            return gateway.gateway_backup()
+
+        elif tool_name == "gateway_maintenance":
+            return gateway.gateway_maintenance()
+
+        elif tool_name == "gateway_reboot":
+            confirm = bool(args.get("confirm", False))
+            return gateway.gateway_reboot(confirm=confirm)
 
         return {
             "ok": False,

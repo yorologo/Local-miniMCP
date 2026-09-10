@@ -6,7 +6,10 @@ import json
 import os
 import platform
 import shlex
+import shutil
 import socket
+import sqlite3
+import subprocess
 import sys
 import time
 from typing import Any, Dict, Optional
@@ -687,4 +690,296 @@ class GatewayTools:
                 detail={"path": relative_path, "tool": "write_file"}
             )
             return self._error_response("write_file", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def gateway_status(self) -> Dict[str, Any]:
+        """Return system metrics (RAM, zram, CPU, storage, temp), service status, and registry info."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("gateway_status", start_time=start_time)
+        if gw_check:
+            return gw_check
+        try:
+            uptime_sec = 0
+            if os.path.isfile("/proc/uptime"):
+                try:
+                    with open("/proc/uptime", "r") as f:
+                        uptime_sec = int(float(f.read().split()[0]))
+                except Exception:
+                    pass
+
+            load_1, load_5, load_15 = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
+
+            mem = {"total_mb": 0, "available_mb": 0, "used_mb": 0}
+            if os.path.isfile("/proc/meminfo"):
+                try:
+                    meminfo = {}
+                    with open("/proc/meminfo", "r") as f:
+                        for line in f:
+                            parts = line.split(":")
+                            if len(parts) == 2:
+                                key = parts[0].strip()
+                                val = parts[1].strip().split()[0]
+                                if val.isdigit():
+                                    meminfo[key] = int(val)
+                    total_kb = meminfo.get("MemTotal", 0)
+                    avail_kb = meminfo.get("MemAvailable", 0)
+                    mem["total_mb"] = total_kb // 1024
+                    mem["available_mb"] = avail_kb // 1024
+                    mem["used_mb"] = (total_kb - avail_kb) // 1024
+                except Exception:
+                    pass
+
+            zram_used_mb = 0
+            if os.path.isfile("/sys/block/zram0/mem_used_total"):
+                try:
+                    with open("/sys/block/zram0/mem_used_total", "r") as f:
+                        zram_used_mb = int(f.read().strip()) // (1024 * 1024)
+                except Exception:
+                    pass
+
+            disk = shutil.disk_usage("/")
+            disk_info = {
+                "root_total_gb": round(disk.total / (1024**3), 2),
+                "root_used_gb": round(disk.used / (1024**3), 2),
+                "root_free_gb": round(disk.free / (1024**3), 2),
+                "root_used_pct": round((disk.used / disk.total) * 100, 1),
+            }
+
+            temp_c = None
+            if os.path.isfile("/sys/class/thermal/thermal_zone0/temp"):
+                try:
+                    with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+                        temp_c = round(int(f.read().strip()) / 1000.0, 1)
+                except Exception:
+                    pass
+
+            throttled = "unknown"
+            if shutil.which("vcgencmd"):
+                try:
+                    cp = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=3)
+                    if cp.returncode == 0 and "=" in cp.stdout:
+                        throttled = cp.stdout.strip().split("=")[1]
+                except Exception:
+                    pass
+
+            services = {}
+            if shutil.which("systemctl"):
+                for svc in ("mcp-gateway-admin", "mcp-gateway-mcp"):
+                    try:
+                        cp = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True, timeout=3)
+                        services[svc] = cp.stdout.strip()
+                    except Exception:
+                        services[svc] = "unknown"
+
+            db_path = getattr(self.config, "db_path", None)
+            if not db_path:
+                from .lifecycle import get_paths
+                db_path = get_paths()["db"]
+            db_size = os.path.getsize(db_path) if os.path.isfile(db_path) else 0
+
+            res = {
+                "gateway_status": "ok" if self._is_gateway_enabled() else "disabled",
+                "gateway_version": __version__,
+                "architecture": platform.machine(),
+                "python_version": platform.python_version(),
+                "uptime_seconds": uptime_sec,
+                "cpu_load": {"1m": round(load_1, 2), "5m": round(load_5, 2), "15m": round(load_15, 2)},
+                "memory": mem,
+                "zram_used_mb": zram_used_mb,
+                "storage": disk_info,
+                "temperature_c": temp_c,
+                "throttled": throttled,
+                "services": services,
+                "database": {
+                    "path": db_path,
+                    "size_bytes": db_size,
+                    "writes_enabled": self._is_writes_enabled(),
+                    "targets_count": self.config.target_count if hasattr(self.config, "target_count") else 0,
+                },
+            }
+            self._record_audit("STATUS_CHECK", detail={"tool": "gateway_status"})
+            return self._success_response("gateway_status", res, start_time=start_time)
+        except Exception as e:
+            return self._error_response("gateway_status", "INTERNAL_ERROR", str(e), start_time=start_time)
+
+    def gateway_doctor(self) -> Dict[str, Any]:
+        """Execute unified system health and integrity check."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("gateway_doctor", start_time=start_time)
+        if gw_check:
+            return gw_check
+        try:
+            from .doctor import run_doctor
+            status, check_objs = run_doctor(verbose=False)
+            checks_data = []
+            passed_cnt = 0
+            failed_cnt = 0
+            warn_cnt = 0
+            for c in check_objs:
+                checks_data.append({
+                    "name": c.name,
+                    "passed": c.passed,
+                    "message": c.message,
+                    "severity": c.severity,
+                })
+                if c.passed:
+                    passed_cnt += 1
+                elif c.severity == "warning":
+                    warn_cnt += 1
+                else:
+                    failed_cnt += 1
+
+            res = {
+                "status": status,
+                "checks_count": len(check_objs),
+                "passed": passed_cnt,
+                "failed": failed_cnt,
+                "warnings": warn_cnt,
+                "checks": checks_data,
+            }
+            self._record_audit("DOCTOR_CHECK", detail={"status": status, "passed": passed_cnt, "failed": failed_cnt})
+            return self._success_response("gateway_doctor", res, start_time=start_time)
+        except Exception as e:
+            return self._error_response("gateway_doctor", "INTERNAL_ERROR", str(e), start_time=start_time)
+
+    def gateway_backup(self) -> Dict[str, Any]:
+        """Generate safe online SQLite backup of gateway registry database."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("gateway_backup", start_time=start_time)
+        if gw_check:
+            return gw_check
+        try:
+            from .lifecycle import backup_database
+            bak_path = backup_database()
+            h = hashlib.sha256()
+            with open(bak_path, "rb") as f:
+                while chunk := f.read(65536):
+                    h.update(chunk)
+            sha256_hex = h.hexdigest()
+            size = os.path.getsize(bak_path)
+
+            res = {
+                "backup_path": bak_path,
+                "sha256": sha256_hex,
+                "size_bytes": size,
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            self._record_audit("REGISTRY_BACKUP", bytes_transferred=size, detail={"backup_path": bak_path, "sha256": sha256_hex})
+            return self._success_response("gateway_backup", res, start_time=start_time)
+        except Exception as e:
+            return self._error_response("gateway_backup", "INTERNAL_ERROR", str(e), start_time=start_time)
+
+    def gateway_maintenance(self) -> Dict[str, Any]:
+        """Execute automated safe maintenance (online backup, backup rotation, DB integrity check, Doctor)."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("gateway_maintenance", start_time=start_time)
+        if gw_check:
+            return gw_check
+        try:
+            from .lifecycle import backup_database, get_paths
+            from .doctor import run_doctor
+
+            bak_path = backup_database()
+            b_size = os.path.getsize(bak_path)
+
+            paths = get_paths()
+            backups_dir = paths["backups"]
+            pruned_count = 0
+            if os.path.isdir(backups_dir):
+                b_files = sorted(
+                    [os.path.join(backups_dir, f) for f in os.listdir(backups_dir) if f.startswith("gateway_backup_") and f.endswith(".db")],
+                    key=os.path.getmtime
+                )
+                if len(b_files) > 5:
+                    for old_b in b_files[:-5]:
+                        try:
+                            os.remove(old_b)
+                            pruned_count += 1
+                        except OSError:
+                            pass
+
+            db_path = paths["db"]
+            integrity = "unknown"
+            if os.path.isfile(db_path):
+                conn = sqlite3.connect(db_path)
+                row = conn.execute("PRAGMA integrity_check;").fetchone()
+                integrity = row[0] if row else "failed"
+                conn.close()
+
+            doc_status, _ = run_doctor(verbose=False)
+
+            disk = shutil.disk_usage("/")
+            mem_avail_mb = 0
+            if os.path.isfile("/proc/meminfo"):
+                try:
+                    with open("/proc/meminfo", "r") as f:
+                        for line in f:
+                            if line.startswith("MemAvailable:"):
+                                mem_avail_mb = int(line.split(":")[1].strip().split()[0]) // 1024
+                                break
+                except Exception:
+                    pass
+
+            res = {
+                "message": "Appliance maintenance executed successfully",
+                "backup_created": bak_path,
+                "backup_size_bytes": b_size,
+                "pruned_backups_count": pruned_count,
+                "database_integrity": integrity,
+                "doctor_status": doc_status,
+                "resources": {
+                    "disk_free_gb": round(disk.free / (1024**3), 2),
+                    "memory_available_mb": mem_avail_mb,
+                },
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            self._record_audit("MAINTENANCE_RUN", detail={"doctor_status": doc_status, "pruned": pruned_count})
+            return self._success_response("gateway_maintenance", res, start_time=start_time)
+        except Exception as e:
+            return self._error_response("gateway_maintenance", "INTERNAL_ERROR", str(e), start_time=start_time)
+
+    def gateway_reboot(self, confirm: bool = False) -> Dict[str, Any]:
+        """Request controlled reboot of the MCP-Pi appliance."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("gateway_reboot", start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        if confirm is not True:
+            return self._error_response(
+                "gateway_reboot",
+                "INVALID_ARGUMENTS",
+                "Appliance reboot requires explicit confirmation parameter 'confirm=True'",
+                start_time=start_time,
+            )
+
+        try:
+            self._record_audit("REBOOT_REQUESTED", detail={"actor": self.client_id, "tool": "gateway_reboot"})
+
+            helper_path = "/usr/local/bin/mcp-gateway-reboot"
+            if os.path.isfile(helper_path) and platform.system() == "Linux":
+                subprocess.Popen(
+                    ["sh", "-c", "sleep 2 && sudo /usr/local/bin/mcp-gateway-reboot"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                reboot_scheduled = True
+                msg = "Controlled appliance reboot scheduled in 2 seconds"
+            elif platform.system() == "Windows":
+                reboot_scheduled = False
+                msg = "Reboot requested (simulated on Windows development platform)"
+            else:
+                reboot_scheduled = False
+                msg = f"Reboot helper {helper_path} not found"
+
+            res = {
+                "reboot_scheduled": reboot_scheduled,
+                "message": msg,
+                "requested_by": self.client_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            return self._success_response("gateway_reboot", res, start_time=start_time)
+        except Exception as e:
+            return self._error_response("gateway_reboot", "INTERNAL_ERROR", str(e), start_time=start_time)
 

@@ -85,3 +85,21 @@ Para evitar ataques Man-in-the-Middle y spoofing de red:
 - **Gemini CLI**: `NOT_INSTALLED` (binario CLI `gemini` no instalado localmente). Cliente operativo real en esta sesión: `ANTIGRAVITY`. Archivo de configuración generado y listo en `~/.gemini/config/mcp_config.json`.
 - **Claude Desktop**: `NOT_INSTALLED` (aplicación de escritorio `Claude` no instalada en Windows). Archivo de configuración generado y listo en `%APPDATA%\Claude\claude_desktop_config.json`.
 - **Canal de Protocolo MCP**: Verificado al 100% sobre sesiones de protocolo reales vía SSH Stdio con las claves e identidades dedicadas `gemini-main` y `claude-desktop`.
+
+---
+
+## 6. Cliente Cloud OpenAI / ChatGPT (Secure MCP Tunnel)
+
+- **Identidad Registrada**: `chatgpt-main`
+- **Transporte**: Outbound-only Secure MCP Tunnel (`openai-tunnel-client` ARMv6) conectando a `http://127.0.0.1:8090/mcp`. Cero puertos entrantes expuestos.
+- **Grants Asignados**:
+  - `termux-main:MCP_Local` (capacidad `read`)
+  - `*.*` (capacidad `admin` para herramientas de administración segura del appliance)
+- **Herramientas de Administración Expuestas**:
+  - `gateway_status`: Telemetría del appliance y métricas del sistema.
+  - `gateway_doctor`: Chequeo de integridad en 19 puntos.
+  - `gateway_backup`: Respaldos SQLite en caliente.
+  - `gateway_maintenance`: Verificación y rotación de backups.
+  - `gateway_reboot`: Reinicio controlado mediado por script con confirmación estricta.
+- **Estado de Integración**: `LOCAL_SIDE_READY / OPENAI_PRODUCT_GATE_PENDING` (Ver `docs/chatgpt-gate.md`).
+

@@ -331,6 +331,11 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 
 var allKnownTools = []string{
 	"file_stat",
+	"gateway_backup",
+	"gateway_doctor",
+	"gateway_maintenance",
+	"gateway_reboot",
+	"gateway_status",
 	"git_status",
 	"health",
 	"list_directory",
@@ -394,6 +399,53 @@ func makeToolHandler(toolName string, bridge *BridgeConfig, state *AdapterState)
 func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfig, state *AdapterState) {
 	handler := makeToolHandler(toolName, bridge, state)
 	switch toolName {
+	case "gateway_backup":
+		server.AddTool(&mcp.Tool{
+			Name:        "gateway_backup",
+			Description: "Generate safe online SQLite backup of gateway registry database",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
+	case "gateway_doctor":
+		server.AddTool(&mcp.Tool{
+			Name:        "gateway_doctor",
+			Description: "Execute unified 19-point system health and integrity check",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
+	case "gateway_maintenance":
+		server.AddTool(&mcp.Tool{
+			Name:        "gateway_maintenance",
+			Description: "Perform safe automated maintenance (disk check, backup rotation, registry integrity, update preview)",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
+	case "gateway_reboot":
+		server.AddTool(&mcp.Tool{
+			Name:        "gateway_reboot",
+			Description: "Request controlled reboot of the MCP-Pi appliance",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"confirm": map[string]any{
+						"type":        "boolean",
+						"description": "Explicit confirmation to reboot appliance (must be true)",
+					},
+				},
+				"required": []string{"confirm"},
+			},
+		}, handler)
+	case "gateway_status":
+		server.AddTool(&mcp.Tool{
+			Name:        "gateway_status",
+			Description: "Check appliance health, system metrics (RAM, zram, CPU, temp, storage), and service status",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+		}, handler)
 	case "file_stat":
 		server.AddTool(&mcp.Tool{
 			Name:        "file_stat",
