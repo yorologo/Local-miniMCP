@@ -31,12 +31,13 @@ Este documento detalla la arquitectura técnica, configuración y procedimientos
 En `MCP-Pi`, el archivo `/home/mcp-gateway/.ssh/config` (permisos 600) define el alias:
 
 ```sshconfig
-Host pc-local
-    HostName 192.168.68.84
+Host termux-local pc-local
+    HostName 192.168.68.72
     Port 8022
     User u0_a435
     IdentityFile ~/.ssh/mcp_gateway_ed25519
     IdentitiesOnly yes
+    StrictHostKeyChecking yes
     ConnectTimeout 10
 ```
 
