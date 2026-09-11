@@ -89,6 +89,7 @@ def cmd_maintenance() -> int:
         print(f"[OK] Pruned Old Backups   : {r.get('pruned_backups_count')} backup(s) pruned (kept latest 5)")
         print(f"[OK] SQLite Integrity     : {r.get('database_integrity')}")
         print(f"[OK] Doctor Overall       : {r.get('doctor_status')}")
+        print(f"[OK] Security Updates     : {r.get('security_updates', 'unknown')}")
         res_info = r.get("resources", {})
         print(f"[OK] Rootfs Free Space    : {res_info.get('disk_free_gb')} GB")
         print(f"[OK] Available Memory     : {res_info.get('memory_available_mb')} MB")

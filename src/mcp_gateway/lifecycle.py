@@ -33,12 +33,12 @@ def get_paths() -> Dict[str, str]:
 def create_manifest(version: Optional[str] = None, output_path: Optional[str] = None) -> Dict[str, Any]:
     compat = compatibility.get_compatibility()
     manifest = {
-        "version": version or compat.get("gateway_version", "1.0.1"),
+        "version": version or compat.get("gateway_version", "1.1.0"),
         "architecture": "armv6l",
         "architectures": ["armv6l", "aarch64", "x86_64"],
         "core_api": compat.get("core_api_version", 1),
         "bridge_api": compat.get("bridge_api_version", 1),
-        "tool_catalog": compat.get("tool_catalog_version", 2),
+        "tool_catalog": compat.get("tool_catalog_version", 3),
         "registry_schema_range": f">={compat.get('registry_schema_version', 1)}",
         "mcp_sdk": compat.get("mcp", {}).get("sdk", "go-sdk"),
         "mcp_sdk_version": compat.get("mcp", {}).get("version", "1.7.0"),

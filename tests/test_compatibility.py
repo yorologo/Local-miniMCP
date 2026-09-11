@@ -17,7 +17,7 @@ class TestCompatibility(unittest.TestCase):
         self.assertIn("registry_schema_version", compat)
         self.assertEqual(compatibility.get_core_api_version(), 1)
         self.assertEqual(compatibility.get_bridge_api_version(), 1)
-        self.assertEqual(compatibility.get_tool_catalog_version(), 2)
+        self.assertEqual(compatibility.get_tool_catalog_version(), 3)
         self.assertEqual(compatibility.get_registry_schema_version(), 1)
 
     def test_verify_compatibility_success(self):

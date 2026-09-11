@@ -7,13 +7,14 @@
 | Campo | Valor |
 | --- | --- |
 | Rol del documento | Contrato operativo para agentes |
-| Software baseline | **MCP-Pi Gateway v1.0.1** |
-| Release estable | `v1.0.1` — commit `bcd8fe907f9e305733896f1d286d04d57a8b1f5e` |
+| Software baseline | **MCP-Pi Gateway v1.1.0** |
+| Release estable | `v1.1.0` |
 | Hardware | Raspberry Pi Model A+ Rev 1.1 — ARMv6 |
 | Baseline histórico validado | Bullseye / Debian 11 — **preservado como physical rollback** |
 | OS de producción actual | **Raspbian GNU/Linux 13 / Debian 13 Trixie — armv6l** |
-| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (Phase 8 CLOSED / PASS) |
+| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (v1.1.0 Released) |
 | Principios rectores | **KISS + Reuse First + Least Privilege + Deny by Default + Fail Closed** |
+
 
 Documentación relacionada:
 
@@ -430,26 +431,24 @@ grpck -r
 ### 9.1 Release actual
 
 ```text
-MCP-Pi Gateway: v1.0.1
-Tag: v1.0.1
-Commit: bcd8fe907f9e305733896f1d286d04d57a8b1f5e
-GitHub Release: FORMAL / VERIFIED
+MCP-Pi Gateway: v1.1.0
+Tag: v1.1.0
 Artifact: mcp-gateway-adapter-linux-armv6
-SHA256: bcaea3d542ce0593ca54547f0ab1e8ad4438340ae7418c686f1bcf4d37f66eba
 ```
 
 Contratos congelados:
 
 ```text
-Gateway: 1.0.1
+Gateway: 1.1.0
 Core API: 1
 Bridge API: 1
-Tool Catalog: 2
+Tool Catalog: 3
 Registry Schema: 1
 MCP: 2026-07-28
 Legacy MCP: 2025-11-25
 Go SDK: 1.7.0
 ```
+
 
 Durante Phase 8:
 

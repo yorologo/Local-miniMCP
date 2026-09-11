@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,6 +81,7 @@ type BridgeConfig struct {
 	PythonPath string
 	DBPath     string
 	ClientID   string
+	AuthToken  string
 	Timeout    time.Duration
 }
 
@@ -125,7 +128,7 @@ func (b *BridgeConfig) buildEnv() []string {
 
 // CheckBridgeCompatibility queries the Python bridge for its version contract.
 func (b *BridgeConfig) CheckBridgeCompatibility(ctx context.Context) (*BridgeVersionInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, b.PythonBin, "-m", "mcp_gateway.bridge", "version")
@@ -217,7 +220,7 @@ func (b *BridgeConfig) GetAllowedTools(ctx context.Context) (map[string]bool, er
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, b.PythonBin, "-m", "mcp_gateway.bridge", "tools", "--client-id", b.ClientID)
@@ -297,7 +300,7 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-gateway-adapter",
 		Title:   "MCP Raspberry Pi Gateway Official Adapter",
-		Version: "1.0.1",
+		Version: "1.1.0",
 	}, nil)
 
 	var allowedTools map[string]bool
@@ -357,6 +360,23 @@ func syncServerTools(server *mcp.Server, bridge *BridgeConfig, state *AdapterSta
 
 func makeToolHandler(toolName string, bridge *BridgeConfig, state *AdapterState) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if bridge != nil && bridge.ClientID == "NONE" {
+			errJSON, _ := json.Marshal(map[string]any{
+				"ok":   false,
+				"tool": toolName,
+				"error": map[string]any{
+					"code":    "ANONYMOUS_CLIENT_DENIED",
+					"message": "Anonymous callers are not authorized to call tools",
+				},
+			})
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: string(errJSON)},
+				},
+			}, nil
+		}
+
 		if state != nil && !state.IsReady() {
 			_, notReadyMsg, _ := state.GetStatus()
 			errJSON, _ := json.Marshal(map[string]any{
@@ -637,7 +657,24 @@ func RunStdio(ctx context.Context, server *mcp.Server) error {
 
 // RunHTTP starts the Streamable HTTP server on the specified bind address.
 func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *AdapterState, bridge *BridgeConfig) error {
+	var anonServer *mcp.Server
+	if bridge != nil && bridge.AuthToken != "" {
+		anonBridge := *bridge
+		anonBridge.ClientID = "NONE"
+		anonServer = NewGatewayServer(&anonBridge, state)
+	}
+
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		if bridge != nil && bridge.AuthToken != "" {
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				tok := strings.TrimPrefix(authHeader, "Bearer ")
+				if subtle.ConstantTimeCompare([]byte(tok), []byte(bridge.AuthToken)) == 1 {
+					return server
+				}
+			}
+			return anonServer
+		}
 		return server
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                    true,
@@ -645,8 +682,56 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		MaxRequestBodyBytes:          1048576,
 	})
 
+	mcpAuthHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claimedID := r.Header.Get("X-MCP-Client-ID")
+		authHeader := r.Header.Get("Authorization")
+
+		var hasValidToken bool
+		if bridge != nil && bridge.AuthToken != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			tok := strings.TrimPrefix(authHeader, "Bearer ")
+			if subtle.ConstantTimeCompare([]byte(tok), []byte(bridge.AuthToken)) == 1 {
+				hasValidToken = true
+			}
+		}
+
+		// 1. Anti-Spoofing: Reject X-MCP-Client-ID without valid Bearer authentication
+		if claimedID != "" {
+			if !hasValidToken {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error":   "CLIENT_ID_SPOOFING_DENIED",
+					"message": "X-MCP-Client-ID cannot be asserted without valid Bearer authentication",
+				})
+				return
+			}
+			if bridge != nil && claimedID != bridge.ClientID {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error":   "CLIENT_ID_SPOOFING_DENIED",
+					"message": fmt.Sprintf("Token does not authorize client ID %q", claimedID),
+				})
+				return
+			}
+		}
+
+		// 2. If Authorization header was supplied but is invalid
+		if authHeader != "" && !hasValidToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error":   "INVALID_AUTH_TOKEN",
+				"message": "Bearer authentication token is invalid",
+			})
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", mcpAuthHandler)
 
 	// /live endpoint: only indicates process is alive, no DB, no SSH
 	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
@@ -658,6 +743,11 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 	// /ready endpoint: checks Adapter, Bridge API, and Registry
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if state != nil && !state.IsReady() && bridge != nil {
+			if info, err := bridge.CheckBridgeCompatibility(r.Context()); err == nil {
+				state.SetReady(true, "ready", info)
+			}
+		}
 		if state == nil || !state.IsReady() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			msg := "ADAPTER_NOT_READY"
@@ -731,7 +821,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		resp, _ := json.Marshal(map[string]any{
 			"server": map[string]any{
 				"name":    "mcp-gateway-adapter",
-				"version": "1.0.1",
+				"version": "1.1.0",
 			},
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{

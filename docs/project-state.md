@@ -79,9 +79,10 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 | **Network Interruption Gate** | **WAIVED_WITH_RATIONALE** | Reconexión Wi-Fi completamente demostrada por reboot real de hardware. Corte deliberado de interfaz inalámbrica dispensado para evitar bloqueo remoto sin consola física. |
 | **Backup / Restore Sandbox** | **PASS** | Copia sandbox validada: integridad `ok`, `user_version = 1`, paridad exacta con base de datos de producción (1 target, 2 proyectos, 2 clientes AI, 2 grants, 8 settings) |
 | **Security Negative Suite** | **PASS** | 7/7 vectores de seguridad bloqueados fail-closed en vivo (acceso anónimo 0 tools, tool desconocida, path traversal, escrituras deshabilitadas, Host rebinding 403, Origin 403, cliente no autorizado) |
-| **Full Client Path** | **PASS** | Cadena completa validada: Cliente AI (gemini-main) -> SSH forced command -> Go MCP -> Python Core -> Target SSH -> termux-main |
 | **Release Status v1.0.0** | **RELEASED** | Release formal v1.0.0 completado y publicado (commit `d52f848`, tag `v1.0.0`) |
-| **Release Status v1.0.1** | **RELEASE_AUTHORIZED** | Patch release de higiene de metadata, targets genéricos y documentación post-v1 |
+| **Release Status v1.0.1** | **RELEASED** | Patch release de higiene de metadata, targets genéricos y documentación post-v1 (commit `bcd8fe9`, tag `v1.0.1`) |
+| **Release Status v1.1.0** | **RELEASE_AUTHORIZED** | Minor feature & hardening release: anti-spoofing trust boundary, appliance management tools, controlled reboot helper, tool catalog v3 (tag `v1.1.0`) |
+
 
 ---
 
@@ -162,13 +163,14 @@ Documento de seguimiento continuo y estado de componentes del sistema.
     - Production Baseline Promotion: PASS (TRIXIE_PROMOTED_TO_PRODUCTION_BASELINE)
   - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
 - **RELEASE_STATE**:
-  - STABLE_TAG: `v1.0.1` @ `bcd8fe9`
+  - STABLE_TAG: `v1.1.0`
   - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`
   - CURRENT_SERVICE_USER: `mcp-gateway` (UID: 102, GID: 105, sudo: NO)
   - BULLSEYE_MICROSD: PRESERVED AS KNOWN_GOOD_PHYSICAL_ROLLBACK UNTIL EXPLICIT DECOMMISSION DECISION
   - TRIXIE_PRODUCTION_STATUS: PROMOTED_TO_PRODUCTION_BASELINE
-  - APPLICATION_BASELINE: MCP-Pi Gateway v1.0.1 (Commit `bcd8fe907f9e305733896f1d286d04d57a8b1f5e`)
+  - APPLICATION_BASELINE: MCP-Pi Gateway v1.1.0
   - PHASE_8_STATUS: CLOSED / PASS
-  - ALL_GATES: PASS (10/10 migration gates satisfied)
+  - ALL_GATES: PASS
 - **NEXT_ACTION**: NORMAL_OPERATION
+
 

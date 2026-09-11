@@ -5,10 +5,10 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 _DEFAULT_COMPATIBILITY: Dict[str, Any] = {
-    "gateway_version": "1.0.1",
+    "gateway_version": "1.1.0",
     "core_api_version": 1,
     "bridge_api_version": 1,
-    "tool_catalog_version": 2,
+    "tool_catalog_version": 3,
     "registry_schema_version": 1,
     "mcp": {
         "sdk": "go-sdk",
@@ -66,7 +66,7 @@ def get_compatibility() -> Dict[str, Any]:
 
 
 def get_gateway_version() -> str:
-    return str(get_compatibility().get("gateway_version", "1.0.1"))
+    return str(get_compatibility().get("gateway_version", "1.1.0"))
 
 
 def get_core_api_version() -> int:
@@ -78,7 +78,7 @@ def get_bridge_api_version() -> int:
 
 
 def get_tool_catalog_version() -> int:
-    return int(get_compatibility().get("tool_catalog_version", 2))
+    return int(get_compatibility().get("tool_catalog_version", 3))
 
 
 def get_registry_schema_version() -> int:

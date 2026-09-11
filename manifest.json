@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.1.0",
   "architecture": "armv6l",
   "architectures": [
     "armv6l",
@@ -8,7 +8,7 @@
   ],
   "core_api": 1,
   "bridge_api": 1,
-  "tool_catalog": 2,
+  "tool_catalog": 3,
   "registry_schema_range": ">=1",
   "mcp_sdk": "go-sdk",
   "mcp_sdk_version": "1.7.0",

@@ -919,6 +919,19 @@ class GatewayTools:
                 except Exception:
                     pass
 
+            sec_status = "unattended-upgrades not installed"
+            log_path = "/var/log/unattended-upgrades/unattended-upgrades.log"
+            conf_path = "/etc/apt/apt.conf.d/50unattended-upgrades"
+            if os.path.isfile(log_path):
+                try:
+                    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                        lines = [l.strip() for l in f if l.strip()]
+                        sec_status = lines[-1] if lines else "active (idle)"
+                except Exception:
+                    sec_status = "active"
+            elif os.path.isfile(conf_path):
+                sec_status = "configured (security-only, no reboot)"
+
             res = {
                 "message": "Appliance maintenance executed successfully",
                 "backup_created": bak_path,
@@ -926,6 +939,7 @@ class GatewayTools:
                 "pruned_backups_count": pruned_count,
                 "database_integrity": integrity,
                 "doctor_status": doc_status,
+                "security_updates": sec_status,
                 "resources": {
                     "disk_free_gb": round(disk.free / (1024**3), 2),
                     "memory_available_mb": mem_avail_mb,

@@ -117,11 +117,12 @@ class TestApplianceTools(unittest.TestCase):
         self.assertFalse(res1["ok"])
         self.assertEqual(res1["error"]["code"], "INVALID_ARGUMENTS")
 
-        # Explicit True confirm
-        res2 = tools.gateway_reboot(confirm=True)
-        self.assertTrue(res2["ok"])
-        self.assertEqual(res2["tool"], "gateway_reboot")
-        self.assertIn("message", res2["result"])
+        # Explicit True confirm (mock subprocess.Popen to prevent hardware reboot during test suite)
+        with patch("subprocess.Popen") as mock_popen:
+            res2 = tools.gateway_reboot(confirm=True)
+            self.assertTrue(res2["ok"])
+            self.assertEqual(res2["tool"], "gateway_reboot")
+            self.assertIn("message", res2["result"])
 
 
 if __name__ == "__main__":

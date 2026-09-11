@@ -1,0 +1,37 @@
+From: Local-miniMCP Engineering <engineering@local-minimcp.internal>
+Date: Thu, 10 Sep 2026 14:30:00 -0700
+Subject: [PATCH] Fix 32-bit integer overflow in nanosecond duration assertions
+
+On 32-bit architectures (armv6l, armhf, i386), `uint` is 32-bit (max 4,294,967,295),
+which causes compile-time overflow when asserting nanosecond constants such as
+`maxControlPlanePollDeadline` (e.g. 5 minutes = 300,000,000,000 ns).
+Changing `uint(...)` assertions to `uint64(...)` ensures safe compilation
+across both 32-bit and 64-bit platforms without altering runtime semantics.
+---
+ pkg/runtimeconfig/config.go | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/pkg/runtimeconfig/config.go b/pkg/runtimeconfig/config.go
+index 06e40a7..d6aadaf 100644
+--- a/pkg/runtimeconfig/config.go
++++ b/pkg/runtimeconfig/config.go
+@@ -78,12 +78,12 @@ const (
+ // runtime and full-client administrative commands.
+ const DefaultControlPlaneBaseURL = defaultControlPlaneBaseURL
+ 
+-const _ = uint(maxControlPlaneMaxInFlight - defaultControlPlaneMaxInFlight)
+-const _ = uint(defaultControlPlanePollTimeout - 1)
+-const _ = uint(defaultControlPlaneInitialPollTimeout - 1)
+-const _ = uint(maxControlPlanePollDeadline - defaultControlPlanePollTimeout - defaultControlPlanePollDeadlineGuardrail)
+-const _ = uint(defaultControlPlanePollDeadlineGuardrail - 1)
+-const _ = uint(maxControlPlanePollDeadlineGuardrail - defaultControlPlanePollDeadlineGuardrail - 1)
++const _ = uint64(maxControlPlaneMaxInFlight - defaultControlPlaneMaxInFlight)
++const _ = uint64(defaultControlPlanePollTimeout - 1)
++const _ = uint64(defaultControlPlaneInitialPollTimeout - 1)
++const _ = uint64(maxControlPlanePollDeadline - defaultControlPlanePollTimeout - defaultControlPlanePollDeadlineGuardrail)
++const _ = uint64(defaultControlPlanePollDeadlineGuardrail - 1)
++const _ = uint64(maxControlPlanePollDeadlineGuardrail - defaultControlPlanePollDeadlineGuardrail - 1)
+ 
+ var harpoonLabelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+ 
+-- 

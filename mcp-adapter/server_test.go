@@ -187,7 +187,7 @@ func TestHealthEndpoints(t *testing.T) {
 	state.SetReady(true, "ready", &BridgeVersionInfo{
 		BridgeAPIVersion: 1,
 		CoreAPIVersion:   1,
-		GatewayVersion:   "1.0.1",
+		GatewayVersion:   "1.1.0",
 		MCPProtocol:      "2026-07-28",
 	})
 	server := NewGatewayServer(bridge, state)
@@ -223,7 +223,7 @@ func TestHealthEndpoints(t *testing.T) {
 	mux.HandleFunc("/server/discover", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"1.0.1"},"protocol":"2026-07-28"}`)
+		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"1.1.0"},"protocol":"2026-07-28"}`)
 	})
 
 	ts := httptest.NewServer(SecurityMiddleware(mux))
@@ -534,5 +534,149 @@ func TestStdioTransportSimulation(t *testing.T) {
 		t.Fatalf("Expected tools for gemini-main over simulated stdio transport")
 	}
 }
+
+func TestTokenAuthenticationAndAntiSpoofing(t *testing.T) {
+	bridge := getTestBridgeConfig()
+	bridge.ClientID = "chatgpt-main"
+	bridge.AuthToken = "secret-token-xyz-12345"
+	state := NewAdapterState()
+	state.SetReady(true, "ready", nil)
+	server := NewGatewayServer(bridge, state)
+
+	var anonServer *mcp.Server
+	anonBridge := *bridge
+	anonBridge.ClientID = "NONE"
+	anonServer = NewGatewayServer(&anonBridge, state)
+
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tok := strings.TrimPrefix(authHeader, "Bearer ")
+			if tok == bridge.AuthToken {
+				return server
+			}
+		}
+		return anonServer
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true,
+	})
+
+	mcpAuthHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claimedID := r.Header.Get("X-MCP-Client-ID")
+		authHeader := r.Header.Get("Authorization")
+
+		var hasValidToken bool
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tok := strings.TrimPrefix(authHeader, "Bearer ")
+			if tok == bridge.AuthToken {
+				hasValidToken = true
+			}
+		}
+
+		if claimedID != "" {
+			if !hasValidToken {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error":   "CLIENT_ID_SPOOFING_DENIED",
+					"message": "X-MCP-Client-ID cannot be asserted without valid Bearer authentication",
+				})
+				return
+			}
+			if claimedID != bridge.ClientID {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error":   "CLIENT_ID_SPOOFING_DENIED",
+					"message": fmt.Sprintf("Token does not authorize client ID %q", claimedID),
+				})
+				return
+			}
+		}
+
+		if authHeader != "" && !hasValidToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error":   "INVALID_AUTH_TOKEN",
+				"message": "Bearer authentication token is invalid",
+			})
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", mcpAuthHandler)
+	ts := httptest.NewServer(SecurityMiddleware(mux))
+	defer ts.Close()
+
+	// 1. Negative Test: Client ID spoofing attempt without Bearer token -> MUST BE 401 CLIENT_ID_SPOOFING_DENIED
+	reqSpoof, _ := http.NewRequest("POST", ts.URL+"/mcp", bytes.NewReader([]byte("{}")))
+	reqSpoof.Host = "127.0.0.1"
+	reqSpoof.Header.Set("X-MCP-Client-ID", "chatgpt-main")
+	respSpoof, err := http.DefaultClient.Do(reqSpoof)
+	if err != nil {
+		t.Fatalf("Spoof request failed: %v", err)
+	}
+	defer respSpoof.Body.Close()
+	if respSpoof.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected 401 for client ID spoofing, got %d", respSpoof.StatusCode)
+	}
+	bodySpoof, _ := io.ReadAll(respSpoof.Body)
+	if !strings.Contains(string(bodySpoof), "CLIENT_ID_SPOOFING_DENIED") {
+		t.Errorf("Expected CLIENT_ID_SPOOFING_DENIED error in body, got: %s", string(bodySpoof))
+	}
+
+	// 2. Negative Test: Invalid Bearer token -> MUST BE 401 INVALID_AUTH_TOKEN
+	reqBadToken, _ := http.NewRequest("POST", ts.URL+"/mcp", bytes.NewReader([]byte("{}")))
+	reqBadToken.Host = "127.0.0.1"
+	reqBadToken.Header.Set("Authorization", "Bearer wrong-token-999")
+	respBadToken, err := http.DefaultClient.Do(reqBadToken)
+	if err != nil {
+		t.Fatalf("Bad token request failed: %v", err)
+	}
+	defer respBadToken.Body.Close()
+	if respBadToken.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected 401 for bad token, got %d", respBadToken.StatusCode)
+	}
+	bodyBadToken, _ := io.ReadAll(respBadToken.Body)
+	if !strings.Contains(string(bodyBadToken), "INVALID_AUTH_TOKEN") {
+		t.Errorf("Expected INVALID_AUTH_TOKEN error in body, got: %s", string(bodyBadToken))
+	}
+
+	// 3. Negative Test: Valid Bearer token but asserting unauthorized client ID -> MUST BE 401 CLIENT_ID_SPOOFING_DENIED
+	reqMismatch, _ := http.NewRequest("POST", ts.URL+"/mcp", bytes.NewReader([]byte("{}")))
+	reqMismatch.Host = "127.0.0.1"
+	reqMismatch.Header.Set("Authorization", "Bearer secret-token-xyz-12345")
+	reqMismatch.Header.Set("X-MCP-Client-ID", "admin")
+	respMismatch, err := http.DefaultClient.Do(reqMismatch)
+	if err != nil {
+		t.Fatalf("Mismatch request failed: %v", err)
+	}
+	defer respMismatch.Body.Close()
+	if respMismatch.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected 401 for mismatched client ID, got %d", respMismatch.StatusCode)
+	}
+
+	// 4. Positive Test: Valid Bearer token reaches MCP Streamable handler
+	reqValid, _ := http.NewRequest("GET", ts.URL+"/mcp", nil)
+	reqValid.Host = "127.0.0.1"
+	reqValid.Header.Set("Authorization", "Bearer secret-token-xyz-12345")
+	respValid, err := http.DefaultClient.Do(reqValid)
+	if err != nil {
+		t.Fatalf("Valid token request failed: %v", err)
+	}
+	defer respValid.Body.Close()
+	// In stateless mode, GET reaches handler and returns 405 Method Not Allowed (NOT 401 Unauthorized)
+	if respValid.StatusCode == http.StatusUnauthorized {
+		t.Errorf("Valid token must not be unauthorized, got 401")
+	}
+	if respValid.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405 Method Not Allowed from MCP handler, got %d", respValid.StatusCode)
+	}
+}
+
 
 
