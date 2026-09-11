@@ -5,8 +5,9 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 _DEFAULT_COMPATIBILITY: Dict[str, Any] = {
-    "gateway_version": "1.1.0",
+    "gateway_version": "1.1.1",
     "core_api_version": 1,
+
     "bridge_api_version": 1,
     "tool_catalog_version": 3,
     "registry_schema_version": 1,
@@ -66,7 +67,8 @@ def get_compatibility() -> Dict[str, Any]:
 
 
 def get_gateway_version() -> str:
-    return str(get_compatibility().get("gateway_version", "1.1.0"))
+    return str(get_compatibility().get("gateway_version", "1.1.1"))
+
 
 
 def get_core_api_version() -> int:

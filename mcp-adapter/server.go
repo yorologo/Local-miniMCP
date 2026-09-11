@@ -655,6 +655,39 @@ func RunStdio(ctx context.Context, server *mcp.Server) error {
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
+// ValidateToken checks authentication tokens from either the dedicated internal
+// header X-MCP-Gateway-Auth or the standard Authorization header.
+func ValidateToken(r *http.Request, expectedToken string) (hasToken bool, isValid bool) {
+	if expectedToken == "" {
+		return false, false
+	}
+	// 1. Check dedicated internal header X-MCP-Gateway-Auth (set by tunnel-client via extra-headers)
+	if gwAuth := r.Header.Get("X-MCP-Gateway-Auth"); gwAuth != "" {
+		hasToken = true
+		tok := strings.TrimSpace(gwAuth)
+		if strings.HasPrefix(tok, "Bearer ") {
+			tok = strings.TrimSpace(strings.TrimPrefix(tok, "Bearer "))
+		}
+		if subtle.ConstantTimeCompare([]byte(tok), []byte(expectedToken)) == 1 {
+			return true, true
+		}
+		return true, false
+	}
+	// 2. Check standard Authorization header (Bearer <token> or direct token)
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+		hasToken = true
+		tok := strings.TrimSpace(authHeader)
+		if strings.HasPrefix(tok, "Bearer ") {
+			tok = strings.TrimSpace(strings.TrimPrefix(tok, "Bearer "))
+		}
+		if subtle.ConstantTimeCompare([]byte(tok), []byte(expectedToken)) == 1 {
+			return true, true
+		}
+		return true, false
+	}
+	return false, false
+}
+
 // RunHTTP starts the Streamable HTTP server on the specified bind address.
 func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *AdapterState, bridge *BridgeConfig) error {
 	var anonServer *mcp.Server
@@ -666,12 +699,9 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		if bridge != nil && bridge.AuthToken != "" {
-			authHeader := r.Header.Get("Authorization")
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				tok := strings.TrimPrefix(authHeader, "Bearer ")
-				if subtle.ConstantTimeCompare([]byte(tok), []byte(bridge.AuthToken)) == 1 {
-					return server
-				}
+			_, isValid := ValidateToken(r, bridge.AuthToken)
+			if isValid {
+				return server
 			}
 			return anonServer
 		}
@@ -684,24 +714,20 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 
 	mcpAuthHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claimedID := r.Header.Get("X-MCP-Client-ID")
-		authHeader := r.Header.Get("Authorization")
 
-		var hasValidToken bool
-		if bridge != nil && bridge.AuthToken != "" && strings.HasPrefix(authHeader, "Bearer ") {
-			tok := strings.TrimPrefix(authHeader, "Bearer ")
-			if subtle.ConstantTimeCompare([]byte(tok), []byte(bridge.AuthToken)) == 1 {
-				hasValidToken = true
-			}
+		var hasToken, isValid bool
+		if bridge != nil && bridge.AuthToken != "" {
+			hasToken, isValid = ValidateToken(r, bridge.AuthToken)
 		}
 
-		// 1. Anti-Spoofing: Reject X-MCP-Client-ID without valid Bearer authentication
+		// 1. Anti-Spoofing: Reject X-MCP-Client-ID without valid authentication
 		if claimedID != "" {
-			if !hasValidToken {
+			if !isValid {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				json.NewEncoder(w).Encode(map[string]any{
 					"error":   "CLIENT_ID_SPOOFING_DENIED",
-					"message": "X-MCP-Client-ID cannot be asserted without valid Bearer authentication",
+					"message": "X-MCP-Client-ID cannot be asserted without valid authentication",
 				})
 				return
 			}
@@ -716,13 +742,13 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 			}
 		}
 
-		// 2. If Authorization header was supplied but is invalid
-		if authHeader != "" && !hasValidToken {
+		// 2. If an authentication token was supplied but is invalid
+		if hasToken && !isValid {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]any{
 				"error":   "INVALID_AUTH_TOKEN",
-				"message": "Bearer authentication token is invalid",
+				"message": "Authentication token is invalid",
 			})
 			return
 		}
@@ -732,6 +758,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcpAuthHandler)
+
 
 	// /live endpoint: only indicates process is alive, no DB, no SSH
 	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
@@ -821,7 +848,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		resp, _ := json.Marshal(map[string]any{
 			"server": map[string]any{
 				"name":    "mcp-gateway-adapter",
-				"version": "1.1.0",
+				"version": "1.1.1",
 			},
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{

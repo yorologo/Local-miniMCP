@@ -161,14 +161,25 @@ Documento de seguimiento continuo y estado de componentes del sistema.
       - End-of-soak Doctor: 19/19 HEALTHY
       - End-of-soak DB integrity: ok, writes_enabled: false
     - Production Baseline Promotion: PASS (TRIXIE_PROMOTED_TO_PRODUCTION_BASELINE)
-  - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Bloqueada hasta túnel autenticado formal)
+  - **Fase 6B**: ChatGPT & Cloud AI Ingress Gate (Túnel integrado con auth anti-spoofing; credentials pendientes)
+  - **v1.1.0 Release**: RELEASED (commit `b2f35d3`)
+  - **v1.1.1 Patch Release**: RELEASED (Tunnel Auth Wiring & Trust Boundary Alignment)
+    - Upstream `openai/tunnel-client` header resolution rules resolved: dedicated `X-MCP-Gateway-Auth: file:...`
+    - Dual-header authentication (`X-MCP-Gateway-Auth` + `Authorization` backward compat)
+    - Anti-spoofing protection and safe header coexistence
+    - Real hardware acceptance on Raspberry Pi Model A+:
+      - Python unit tests: 114/114 PASS (100% test pass rate)
+      - Go adapter tests: 11/11 PASS
+      - Real hardware auth tests: 7/7 PASS
+      - Unified Doctor: 19/19 HEALTHY
+      - Controlled appliance reboot: PASS
 - **RELEASE_STATE**:
-  - STABLE_TAG: `v1.1.0`
+  - STABLE_TAG: `v1.1.1`
   - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`
   - CURRENT_SERVICE_USER: `mcp-gateway` (UID: 102, GID: 105, sudo: NO)
   - BULLSEYE_MICROSD: PRESERVED AS KNOWN_GOOD_PHYSICAL_ROLLBACK UNTIL EXPLICIT DECOMMISSION DECISION
   - TRIXIE_PRODUCTION_STATUS: PROMOTED_TO_PRODUCTION_BASELINE
-  - APPLICATION_BASELINE: MCP-Pi Gateway v1.1.0
+  - APPLICATION_BASELINE: MCP-Pi Gateway v1.1.1
   - PHASE_8_STATUS: CLOSED / PASS
   - ALL_GATES: PASS
 - **NEXT_ACTION**: NORMAL_OPERATION
