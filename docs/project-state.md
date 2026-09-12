@@ -266,6 +266,17 @@ CHATGPT_AUTONOMOUS_E2E:             NOT_YET_PROVEN
 
 Las capacidades y límites de producto de OpenAI cambian; revalidar documentación oficial al ejecutar este frente y no congelar supuestos de plan en la arquitectura.
 
+### 8.1 Spike de Contención Kernel y Delegación a Antigravity en termux-main
+
+Se auditó empíricamente la viabilidad de delegar objetivos de alto nivel a Antigravity en `termux-main` dentro de una frontera técnica de kernel que impida mutaciones sobre el proyecto original cuando `writes_enabled=false`:
+
+- **Antigravity CLI (v1.2.2)**: Dispone de herramientas mutadoras nativas (`write_to_file`, `replace_file_content`, `run_command`). En pruebas empíricas no interactivas (`--print`), `--mode plan` y `--sandbox` no impidieron la mutación física de archivos ante instrucciones de edición.
+- **Landlock LSM**: Invocación oficial de syscall 444 (`landlock_create_ruleset`) probada directamente en C sobre el kernel Android 16 (`6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k`), retornando `ENOSYS` (errno 38; `CONFIG_SECURITY_LANDLOCK=n` en el kernel stock/OEM).
+- **Namespaces de usuario / Aislamiento**: `unshare(CLONE_NEWUSER)` retorna `EINVAL` (`CONFIG_USER_NS=n`); `unshare(CLONE_NEWNS)` retorna `EPERM` (sin `CAP_SYS_ADMIN`). Bubblewrap no es viable sin user namespaces o root.
+- **PRoot**: Rechazado por contrato operativo como frontera de seguridad válida.
+- **Resolución KISS**: `NO_SAFE_CONTAINMENT_AVAILABLE` / `DO_NOT_INTEGRATE_YET`.
+- **Invariante de seguridad preservada**: No se implementa `delegate_task` en MCP-Pi para evitar un bypass semántico del control maestro `writes_enabled=false`.
+
 ---
 
 ## 9. Próximo acceptance test estratégico
