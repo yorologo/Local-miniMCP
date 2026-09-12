@@ -117,15 +117,39 @@ class TestDiscovery(unittest.TestCase):
         self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: Host is down"))
         self.assertTrue(is_network_connectivity_error(-1, "", timed_out=True))
 
-    def test_is_network_connectivity_error_security_fail_closed(self):
-        # Host key verification failure must NEVER trigger discovery
-        self.assertFalse(is_network_connectivity_error(255, "Host key verification failed."))
-        self.assertFalse(is_network_connectivity_error(255, "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! Host key verification failed."))
-        # Permission denied must NEVER trigger discovery
-        self.assertFalse(is_network_connectivity_error(255, "Permission denied (publickey)."))
-        self.assertFalse(is_network_connectivity_error(255, "Authentication failed."))
+    def test_classify_ssh_transport_failure(self):
+        from mcp_gateway.ssh_transport import classify_ssh_transport_failure
+        # Auth failures: strictly FAIL-CLOSED, NO discovery
+        should_disc, cat = classify_ssh_transport_failure(255, "Permission denied (publickey).")
+        self.assertFalse(should_disc)
+        self.assertEqual(cat, "AUTH_FAILURE")
+
+        should_disc, cat = classify_ssh_transport_failure(255, "Authentication failed.")
+        self.assertFalse(should_disc)
+        self.assertEqual(cat, "AUTH_FAILURE")
+
+        # Endpoint identity mismatch (DHCP IP reuse): discovery permitted to find canonical key elsewhere
+        should_disc, cat = classify_ssh_transport_failure(255, "Host key verification failed.")
+        self.assertTrue(should_disc)
+        self.assertEqual(cat, "ENDPOINT_IDENTITY_MISMATCH")
+
+        should_disc, cat = classify_ssh_transport_failure(255, "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!")
+        self.assertTrue(should_disc)
+        self.assertEqual(cat, "ENDPOINT_IDENTITY_MISMATCH")
+
+        # Network connectivity errors
+        should_disc, cat = classify_ssh_transport_failure(255, "ssh: connect to host 192.168.68.84 port 8022: Connection refused")
+        self.assertTrue(should_disc)
+        self.assertEqual(cat, "NETWORK_CONNECTIVITY_ERROR")
+
+        should_disc, cat = classify_ssh_transport_failure(-1, "", timed_out=True)
+        self.assertTrue(should_disc)
+        self.assertEqual(cat, "NETWORK_CONNECTIVITY_ERROR")
+
         # Exit code 0 is never an error
-        self.assertFalse(is_network_connectivity_error(0, ""))
+        should_disc, cat = classify_ssh_transport_failure(0, "")
+        self.assertFalse(should_disc)
+        self.assertEqual(cat, "NONE")
 
     # --- 3. Command Line Argument Construction ---
 
@@ -294,22 +318,148 @@ class TestDiscovery(unittest.TestCase):
         self.assertFalse(res.ok)
         mock_discovery.discover_target.assert_not_called()
 
+    # --- 9. DHCP IP Reuse Edge Cases (B, C, D, E) ---
+
     @patch("subprocess.run")
-    def test_host_key_mismatch_no_discovery(self, mock_run):
-        fail_proc = MagicMock()
-        fail_proc.returncode = 255
-        fail_proc.stdout = b""
-        fail_proc.stderr = b"Host key for termux-main has changed and you have requested strict checking.\nHost key verification failed."
-        mock_run.return_value = fail_proc
+    def test_dhcp_reuse_foreign_host_recovery_success(self, mock_run):
+        """Edge Case B: Stale IP occupied by foreign host (wrong key).
+        Foreign endpoint is rejected, discovery finds canonical target on new IP,
+        Registry is updated, retry succeeds.
+        """
+        foreign_proc = MagicMock()
+        foreign_proc.returncode = 255
+        foreign_proc.stdout = b""
+        foreign_proc.stderr = b"Host key for termux-main has changed and you have requested strict checking.\nHost key verification failed."
+
+        success_proc = MagicMock()
+        success_proc.returncode = 0
+        success_proc.stdout = b"termux-main-live\n"
+        success_proc.stderr = b""
+
+        mock_run.side_effect = [foreign_proc, success_proc]
 
         mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="IDENTITY_MATCH",
+            new_host="192.168.68.73",
+            new_port=8022,
+            method="fast_kernel_neighbors",
+            fingerprint=SAMPLE_FINGERPRINT,
+        )
+
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+        self.assertEqual(target["host"], "192.168.68.84")
+
+        res = transport.run_command(target, "hostname")
+
+        self.assertTrue(res.ok)
+        self.assertEqual(res.stdout.strip(), "termux-main-live")
+        self.assertEqual(mock_run.call_count, 2)
+        mock_discovery.discover_target.assert_called_once()
+
+        # Registry updated to new IP
+        updated_target = self.registry.get_target("termux-main")
+        self.assertEqual(updated_target["host"], "192.168.68.73")
+
+        # Verify activity was logged with trigger_reason=ENDPOINT_IDENTITY_MISMATCH
+        activities = self.registry.list_activity(limit=10)
+        migration_acts = [a for a in activities if a.get("action") == "target_endpoint_updated"]
+        self.assertEqual(len(migration_acts), 1)
+        import json
+        detail = json.loads(migration_acts[0]["detail"])
+        self.assertEqual(detail["trigger_reason"], "ENDPOINT_IDENTITY_MISMATCH")
+
+    @patch("subprocess.run")
+    def test_dhcp_reuse_foreign_host_canonical_not_found(self, mock_run):
+        """Edge Case C: Stale IP occupied by foreign host, canonical target not on network.
+        Foreign endpoint rejected, discovery returns TARGET_NOT_FOUND, no registry mutation, fail-closed.
+        """
+        foreign_proc = MagicMock()
+        foreign_proc.returncode = 255
+        foreign_proc.stdout = b""
+        foreign_proc.stderr = b"Host key verification failed."
+        mock_run.return_value = foreign_proc
+
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="TARGET_NOT_FOUND",
+            error="Canonical target not found on any network candidate",
+        )
+
         transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
         target = self.registry.get_target("termux-main")
 
         res = transport.run_command(target, "hostname")
+
         self.assertFalse(res.ok)
-        # Strictly fail closed! Never search other hosts when host key fails verification!
-        mock_discovery.discover_target.assert_not_called()
+        self.assertEqual(mock_run.call_count, 1)  # No retry because discovery returned no match
+        mock_discovery.discover_target.assert_called_once()
+
+        # Registry NOT mutated
+        current_target = self.registry.get_target("termux-main")
+        self.assertEqual(current_target["host"], "192.168.68.84")
+
+    @patch("subprocess.run")
+    def test_dhcp_reuse_foreign_host_ambiguous_matches(self, mock_run):
+        """Edge Case D: Stale IP occupied by foreign host, multiple canonical matches found.
+        Foreign endpoint rejected, discovery returns AMBIGUOUS_TARGET_IDENTITY, no mutation, fail-closed.
+        """
+        foreign_proc = MagicMock()
+        foreign_proc.returncode = 255
+        foreign_proc.stdout = b""
+        foreign_proc.stderr = b"Host key verification failed."
+        mock_run.return_value = foreign_proc
+
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="AMBIGUOUS_TARGET_IDENTITY",
+            error="Multiple candidates matched target identity",
+        )
+
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+
+        res = transport.run_command(target, "hostname")
+
+        self.assertFalse(res.ok)
+        self.assertEqual(mock_run.call_count, 1)
+
+        # Registry NOT mutated
+        current_target = self.registry.get_target("termux-main")
+        self.assertEqual(current_target["host"], "192.168.68.84")
+
+    @patch("subprocess.run")
+    def test_target_changed_own_key_no_silent_rotation(self, mock_run):
+        """Edge Case E: Target changed its own key on its IP.
+        The gateway MUST NOT silently accept or rotate identity. Discovery fails closed.
+        """
+        mismatch_proc = MagicMock()
+        mismatch_proc.returncode = 255
+        mismatch_proc.stdout = b""
+        mismatch_proc.stderr = b"Host key verification failed."
+        mock_run.return_value = mismatch_proc
+
+        # Real discovery engine instance: probes the host which offers WRONG/NEW key
+        with patch.object(self.discovery, "get_kernel_neighbors", return_value=[]):
+            with patch.object(self.discovery, "get_active_subnets", return_value=[]):
+                target = self.registry.get_target("termux-main")
+                disc_res = self.discovery.discover_target(target)
+                self.assertEqual(disc_res.status, "TARGET_NOT_FOUND")
+
+        # Transport run:
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="TARGET_NOT_FOUND",
+            error="Key does not match canonical pinning",
+        )
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        res = transport.run_command(target, "hostname")
+
+        self.assertFalse(res.ok)
+        # Verify Registry retains old host, never accepted new key or mutated
+        current_target = self.registry.get_target("termux-main")
+        self.assertEqual(current_target["host"], "192.168.68.84")
 
     # --- 10. Discovery Cooldown Prevents Storms ---
 

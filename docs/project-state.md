@@ -174,24 +174,32 @@ Documento de seguimiento continuo y estado de componentes del sistema.
       - Real hardware auth tests: 7/7 PASS
       - Unified Doctor: 19/19 HEALTHY
       - Controlled appliance reboot: PASS
-  - **Dynamic Target Endpoint Resolution & Cryptographic Discovery**: INTEGRATED_ON_DEVELOP / PRODUCTION_VALIDATED
+  - **v1.2.0 Minor Feature Release**: RELEASED
+    - Autonomous Dynamic Target Endpoint Resolution & Cryptographic Discovery
     - Paradigm: `TARGET_ID + SSH HOST KEY = IDENTITY`, `IP + PORT = MUTABLE ENDPOINT`
     - Single source of truth in SQLite (`targets.host`), overriding static `~/.ssh/config`
     - Host Key Pinning via `-o HostKeyAlias={target_id}` with `StrictHostKeyChecking=yes`
     - Tiered discovery: Fast Path (direct connect) -> Fast Discovery (`/proc/net/arp`) -> Fallback Discovery (dynamic active LAN scan)
     - Cryptographic validation: Multi-key `ssh-keyscan` verified against `known_hosts`
+    - DHCP IP reuse edge case resolution: `ENDPOINT_IDENTITY_MISMATCH` classification (foreign host rejected, discovery finds canonical target on new endpoint)
+    - Auth failures remain strictly fail-closed (`AUTH_FAILURE` -> no discovery)
     - Atomic DB update + `activity` audit logging + single automatic retry
     - Zero external tools/daemons (no avahi, no arp-scan, no nmap)
     - Zero schema changes (SQLite Schema v1 preserved)
-    - Test Suite: 128/128 PASS (14 dedicated unit tests in `tests/test_discovery.py`)
-    - Real Hardware Acceptance on MCP-Pi: Injected stale IP (`192.168.68.249`) successfully re-discovered live endpoint (`192.168.68.84`) in 5.47s and updated registry atomically.
+    - Python Unit Tests: 131/131 PASS (100% test pass rate)
+    - Go Adapter Tests: 11/11 PASS
+    - Unified Doctor: 19/19 HEALTHY
+    - Real Hardware Acceptance on MCP-Pi:
+      - Live Stale Endpoint Recovery: PASS (5.47 s)
+      - Real Network Interruption Test (81.9s outage): PASS (fast path restoration in 1.17 s, 0 corruptions, 0 storms)
+      - Controlled MCP-Pi Reboot Test: PASS (Doctor 19/19, target_status PASS, read_file PASS)
 - **RELEASE_STATE**:
-  - STABLE_TAG: `v1.1.1`
+  - STABLE_TAG: `v1.2.0`
   - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`
   - CURRENT_SERVICE_USER: `mcp-gateway` (UID: 102, GID: 105, sudo: NO)
   - BULLSEYE_MICROSD: PRESERVED AS KNOWN_GOOD_PHYSICAL_ROLLBACK UNTIL EXPLICIT DECOMMISSION DECISION
   - TRIXIE_PRODUCTION_STATUS: PROMOTED_TO_PRODUCTION_BASELINE
-  - APPLICATION_BASELINE: MCP-Pi Gateway v1.1.1
+  - APPLICATION_BASELINE: MCP-Pi Gateway v1.2.0
   - PHASE_8_STATUS: CLOSED / PASS
   - ALL_GATES: PASS
 - **NEXT_ACTION**: NORMAL_OPERATION

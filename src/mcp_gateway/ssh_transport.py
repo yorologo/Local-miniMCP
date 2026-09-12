@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class SSHError(Exception):
@@ -32,30 +32,43 @@ class SSHTransportResult:
         return self.exit_code == 0
 
 
-def is_network_connectivity_error(exit_code: int, stderr: str, timed_out: bool = False) -> bool:
-    """Return True ONLY if the failure is unambiguously a network connectivity / unreachable error.
+def classify_ssh_transport_failure(
+    exit_code: int, stderr: Optional[str], timed_out: bool = False
+) -> Tuple[bool, str]:
+    """Classify SSH transport failure into actionable categories.
     
-    CRITICAL SECURITY INVARIANT:
-    Returns False for host-key mismatch, auth failure, permission denied, etc.
-    Host key mismatch MUST remain FAIL-CLOSED.
+    Returns:
+        (should_trigger_discovery: bool, failure_classification: str)
+        
+    Categories:
+        - "NETWORK_CONNECTIVITY_ERROR": Timeout, connection refused, no route, network unreachable.
+        - "ENDPOINT_IDENTITY_MISMATCH": Host key verification failed or identification changed.
+          The stored endpoint answered with a key differing from the target's pinned canonical key.
+          The stored endpoint is rejected (never accepted, never saved to known_hosts).
+          Discovery is permitted to locate the canonical pinned key on another network endpoint.
+        - "AUTH_FAILURE": Permission denied, authentication failed. Strict fail-closed, NO discovery.
+        - "NONE": Success (exit code 0).
+        - "OTHER_ERROR": Unclassified error. Fail-closed, NO discovery.
     """
     if not timed_out and exit_code == 0:
-        return False
+        return False, "NONE"
 
     err = (stderr or "").lower()
 
-    # Fail-closed security gates: NEVER trigger discovery on security/auth errors
-    if "host key verification failed" in err:
-        return False
-    if "identification has changed" in err:
-        return False
-    if "permission denied" in err:
-        return False
-    if "authentication failed" in err:
-        return False
+    # 1. Auth failure: Strict Fail-Closed. NEVER trigger discovery.
+    if "permission denied" in err or "authentication failed" in err:
+        return False, "AUTH_FAILURE"
 
+    # 2. Endpoint Identity Mismatch: Host key verification failed on stored endpoint.
+    # The stored endpoint responded, but its key did not match the pinned key for this target.
+    # e.g., DHCP IP reuse by a foreign host.
+    # Stored endpoint is rejected. Discovery is triggered to search for the canonical key elsewhere.
+    if "host key verification failed" in err or "identification has changed" in err:
+        return True, "ENDPOINT_IDENTITY_MISMATCH"
+
+    # 3. Network timeout or connectivity errors
     if timed_out:
-        return True
+        return True, "NETWORK_CONNECTIVITY_ERROR"
 
     network_patterns = [
         "connection refused",
@@ -67,7 +80,16 @@ def is_network_connectivity_error(exit_code: int, stderr: str, timed_out: bool =
         "could not resolve hostname",
         "connect to host",
     ]
-    return any(p in err for p in network_patterns)
+    if any(p in err for p in network_patterns):
+        return True, "NETWORK_CONNECTIVITY_ERROR"
+
+    return False, "OTHER_ERROR"
+
+
+def is_network_connectivity_error(exit_code: int, stderr: Optional[str], timed_out: bool = False) -> bool:
+    """Helper returning True if discovery should be triggered (network error or endpoint mismatch)."""
+    should_discover, _ = classify_ssh_transport_failure(exit_code, stderr, timed_out=timed_out)
+    return should_discover
 
 
 class SSHTransport:
@@ -132,6 +154,7 @@ class SSHTransport:
         cwd: Optional[str],
         input_data: Optional[bytes],
         request_id: Optional[str],
+        trigger_reason: str = "NETWORK_CONNECTIVITY_ERROR",
     ) -> Optional[SSHTransportResult]:
         """Attempt on-demand cryptographic discovery and retry the SSH command exactly once."""
         if not self.discovery or not self.registry:
@@ -148,9 +171,10 @@ class SSHTransport:
             port = target.get("port", 22)
 
             if old_host != new_host:
-                # Atomically update registry
+                # Update endpoint in registry (atomic single SQL statement on targets table)
                 if hasattr(self.registry, "update_target"):
                     self.registry.update_target(target_id, {"host": new_host})
+                # Record audit event in activity table
                 if hasattr(self.registry, "record_activity"):
                     self.registry.record_activity({
                         "actor": "system",
@@ -162,6 +186,7 @@ class SSHTransport:
                             "old_endpoint": f"{old_host}:{port}",
                             "new_endpoint": f"{new_host}:{port}",
                             "discovery_method": disc_res.method,
+                            "trigger_reason": trigger_reason,
                             "identity_verified": True,
                         }),
                     })
@@ -214,9 +239,16 @@ class SSHTransport:
 
         except subprocess.TimeoutExpired:
             duration_ms = int((time.monotonic() - start_time) * 1000)
-            if not is_retry and is_network_connectivity_error(-1, "", timed_out=True):
+            should_discover, failure_class = classify_ssh_transport_failure(-1, "", timed_out=True)
+            if not is_retry and should_discover:
                 retry_res = self._attempt_discovery_and_retry(
-                    target, remote_cmd, timeout, cwd, input_data, request_id
+                    target,
+                    remote_cmd,
+                    timeout,
+                    cwd,
+                    input_data,
+                    request_id,
+                    trigger_reason=failure_class,
                 )
                 if retry_res is not None:
                     return retry_res
@@ -236,12 +268,20 @@ class SSHTransport:
         stderr_str = stderr_raw[:self.max_output_bytes].decode("utf-8", errors="replace")
 
         # Fast Path: success returns immediately
-        if proc.returncode != 0 and not is_retry and is_network_connectivity_error(proc.returncode, stderr_str):
-            retry_res = self._attempt_discovery_and_retry(
-                target, remote_cmd, timeout, cwd, input_data, request_id
-            )
-            if retry_res is not None:
-                return retry_res
+        if proc.returncode != 0 and not is_retry:
+            should_discover, failure_class = classify_ssh_transport_failure(proc.returncode, stderr_str)
+            if should_discover:
+                retry_res = self._attempt_discovery_and_retry(
+                    target,
+                    remote_cmd,
+                    timeout,
+                    cwd,
+                    input_data,
+                    request_id,
+                    trigger_reason=failure_class,
+                )
+                if retry_res is not None:
+                    return retry_res
 
         return SSHTransportResult(
             exit_code=proc.returncode,

@@ -13,8 +13,8 @@ class TestLifecycle(unittest.TestCase):
     def test_create_and_verify_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             m_path = os.path.join(tmpdir, "manifest.json")
-            m = lifecycle.create_manifest(version="1.1.1", output_path=m_path)
-            self.assertEqual(m["version"], "1.1.1")
+            m = lifecycle.create_manifest(version="1.2.0", output_path=m_path)
+            self.assertEqual(m["version"], "1.2.0")
 
             self.assertTrue(os.path.isfile(m_path))
 
