@@ -306,21 +306,23 @@ Se examinó la arquitectura oficial del Secure MCP Tunnel (`openai/tunnel-client
 
 ### 8.3 Validación de Recuperación Real de Producción Post-Reboot
 
-Se ejecutó una prueba de reboot físico real (`sudo reboot`) sobre MCP-Pi con credenciales de producción del Secure MCP Tunnel instaladas:
+Se auditó, resolvió y validó la recuperación física post-reboot (`sudo reboot`) sobre MCP-Pi con credenciales de producción del Secure MCP Tunnel instaladas:
 
-- **Recuperación Base**:
-  - `REBOOT_TO_SSH`: 3m 33s (primer handshake SSH tras boot e inicialización de radio Wi-Fi RTL8188EUS).
-  - `Admin Console (8080)`: Activo automáticamente tras boot.
-  - `MCP Adapter (8090)`: Activo automáticamente tras boot (`/live` 200, `/ready` 200).
-  - `Doctor`: 19/19 HEALTHY, DB integrity `ok`, schema `1`, `writes_enabled=false`.
-  - `Target Worker (termux-main)`: 100% alcanzable desde Gateway Core; `target_status`, `git_status`, y `read_file` validados con éxito.
-- **Defecto Identificado (`BOOT_ORDER_DEFECT` / `SERVICE_DEPENDENCY_DEFECT`)**:
-  - En boot frío sobre ARMv6 (700 MHz), el inicializador de `mcp-gateway-adapter` tardó ~1m 55s en enlazar el socket `127.0.0.1:8090`.
-  - Como `mcp-gateway-mcp.service` es `Type=simple`, systemd consideró el servicio iniciado inmediatamente e inició `mcp-gateway-tunnel.service` a las 16:37:58 CST (8 segundos antes de que el puerto 8090 estuviese escuchando a las 16:38:06 CST).
-  - `openai-tunnel-client run` falló el hook de conexión inicial con `connect: connection refused`, enclavando `/readyz` en `503 Service Unavailable (oauth discovery failed)`.
-  - Una vez reiniciado el servicio tunnel con el puerto 8090 activo, `/readyz` retornó inmediatamente `200 ready`, `/healthz` retornó `200 live`, la sesión MCP se inicializó bajo protocolo `2026-07-28`, y el poller del control plane completó 19 ciclos de sondeo largos (HTTP 204).
-- **Acción Correctiva Mínima Recomendada**:
-  - Añadir espera activa de socket (`curl -s -f http://127.0.0.1:8090/live`) en `/usr/local/bin/mcp-gateway-tunnel-check` antes de permitir que systemd ejecute `openai-tunnel-client run`.
+1. **Defecto Inicial (`BOOT_ORDER_DEFECT` / `SERVICE_DEPENDENCY_DEFECT`)**:
+   - En el primer boot frío, el inicializador de `mcp-gateway-adapter` tardó ~1m 55s en enlazar el socket `127.0.0.1:8090`.
+   - Como `mcp-gateway-mcp.service` es `Type=simple`, systemd inició `mcp-gateway-tunnel.service` 8 segundos antes de que el puerto 8090 estuviese listo, causando `connect: connection refused` en el hook `OnStart` y enclavando `/readyz` en HTTP 503.
+2. **Fix Aplicado (Source of Truth en Repo, Zero Runtime Drift)**:
+   - Se actualizó el guard `ExecCondition` (`config/systemd/mcp-gateway-tunnel-check` / `/usr/local/bin/mcp-gateway-tunnel-check`) para esperar activamente a que `http://127.0.0.1:8090/live` retorne HTTP 200 (timeout conservador de 120s, poll cada 1s).
+   - Se añadió `TimeoutStartSec=180s` en `config/systemd/mcp-gateway-tunnel.service` para dar margen a systemd.
+   - Casos unitarios A (fast ready), B (delayed ready), C (timeout fail-closed `MCP_BACKEND_NOT_READY_TIMEOUT`), y D (credentials missing `OPENAI_PRODUCT_GATE_PENDING`) validados aisladamente con 100% de éxito.
+3. **Revalidación Post-Reboot Real**:
+   - `REBOOT_TO_SSH`: 3m 32s.
+   - `REBOOT_TO_GATEWAY_READY`: 4m 33s.
+   - `REBOOT_TO_TUNNEL_READY`: 5m 16s (espera activa hasta readiness de backend).
+   - `REBOOT_TO_CONTROL_PLANE_POLLING`: 5m 16s.
+   - `MANUAL_TUNNEL_RESTART_REQUIRED`: NO (0 intervenciones).
+   - `BOOT_RACE_DETECTED_AFTER_FIX`: NO.
+   - `CONTROLLED_REBOOT_RECOVERY`: **PASS**.
 
 ---
 

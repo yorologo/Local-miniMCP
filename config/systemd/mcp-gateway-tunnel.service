@@ -15,6 +15,7 @@ ExecStart=/usr/local/bin/openai-tunnel-client run
 Restart=on-failure
 RestartSec=15s
 RestartPreventExitStatus=2
+TimeoutStartSec=180s
 LimitNOFILE=4096
 
 [Install]
