@@ -276,6 +276,30 @@ Se auditó empíricamente la viabilidad de delegar objetivos de alto nivel a Ant
 - **PRoot**: Rechazado por contrato operativo como frontera de seguridad válida.
 - **Resolución KISS**: `NO_SAFE_CONTAINMENT_AVAILABLE` / `DO_NOT_INTEGRATE_YET`.
 - **Invariante de seguridad preservada**: No se implementa `delegate_task` en MCP-Pi para evitar un bypass semántico del control maestro `writes_enabled=false`.
+- **Estado del Gate**: `ANTIGRAVITY_DYNAMIC_DELEGATION: BLOCKED_BY_NO_SAFE_CONTAINMENT`. Cerrado formalmente; no reabrir sin soporte real de aislamiento en kernel o CLI con flag `--read-only` técnicamente estricto.
+
+### 8.2 Auditoría Oficial de Superficies Consumidoras de OpenAI Secure MCP Tunnel
+
+Se examinó la arquitectura oficial del Secure MCP Tunnel (`openai/tunnel-client`, `onboarding.md`, `connectors.md`, `architecture.md`) y las superficies del ecosistema OpenAI para determinar qué productos pueden consumir un túnel remoto existente:
+
+#### 1. Distinción canónica de roles: Producer vs Consumer
+- **Producer / Runtime Manager**: Conecta un MCP privado hacia el control plane de OpenAI (`tunnel-client run`, `tunnel-client runtimes connect`). El plugin `tunnel-mcp` para Codex CLI opera estrictamente como gestor del ciclo de vida del runtime local (`install_or_select_tunnel_client`, `create_tunnel_runtime`, etc.). **No es un consumidor de túneles remotos.**
+- **Consumer**: Producto en la nube de OpenAI que envía llamadas JSON-RPC al túnel a través del endpoint virtual `<OPENAI_MCP_TUNNEL_BASE_URL>/v1/mcp/<tunnel_id>`.
+
+#### 2. Matriz de Superficies Consumidoras
+
+| Consumidor | Soportado por Túnel | Disponible en Cuenta Actual | Requiere Facturación Extra | Custom MCP Tooling Completo | Alcanza MCP-Pi Hoy | Blocker Principal |
+|---|---|---|---|---|---|---|
+| **ChatGPT Plus** | SÍ | NO | NO (Suscripción Plus activa) | `PRODUCT_GATED` | NO | `CHATGPT_CUSTOM_MCP_PRODUCT_GATED` (Conectores MCP personalizados restringidos a Team/Enterprise o rollout privado) |
+| **Codex CLI (Plus)** | NO | SÍ | NO | SÍ (vía local MCP stdio SSH) | NO vía túnel remoto / SÍ vía stdio local SSH (`CODEX_LOCAL_MCP_E2E`) | `CODEX_TUNNEL_ATTACH_NOT_SUPPORTED` (Codex CLI solo soporta servidores stdio locales o HTTP directos; no tiene cliente consumidor para el control plane de túneles) |
+| **Codex Cloud / App** | NO | N/A | SÍ (en API) | NO | NO | `NO_SEPARATE_CODEX_CLOUD_CONSUMER` (No existe superficie Cloud independiente de ChatGPT o Responses API) |
+| **Responses API** | SÍ | NO | SÍ (Créditos Platform prepagos) | SÍ | NO | `API_BILLING_REQUIRED` (`HTTP 429 credit_balance_exhausted`) |
+| **Agents SDK / AgentKit** | SÍ | NO | SÍ (Requiere API Key con saldo) | SÍ | NO | `API_BILLING_REQUIRED` |
+
+#### 3. Conclusión Operativa KISS
+- **Recomendación Operativa**: `D. NO_SUPPORTED_REMOTE_CONSUMER_FOR_CURRENT_ACCOUNT`.
+- El Secure MCP Tunnel en MCP-Pi (`mcp-pi`) está 100% operativo (`HEALTHZ 200 live`, `READYZ 200 ready`, polling saludable), pero no existe hoy una superficie oficial consumidora disponible para la cuenta actual que no requiera recarga de créditos en API o cambio de plan a ChatGPT Team/Enterprise.
+- La ruta disponible y validada hoy con la suscripción ChatGPT Plus es **`CODEX_LOCAL_MCP_E2E`** (Codex CLI consumiendo MCP-Pi directamente vía MCP stdio sobre SSH con pinning criptográfico), donde se comprobó ejecución autónoma completa de 10 herramientas.
 
 ---
 
