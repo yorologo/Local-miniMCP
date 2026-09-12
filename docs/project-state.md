@@ -101,6 +101,7 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 - **Consola de Administración**: `http://127.0.0.1:8080` (accesible exclusivamente mediante túnel SSH `ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`)
 - **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service` vía `mcp-gateway-adapter`)
 - **Servidor MCP (Stdio sobre SSH)**: Invocación vía clave dedicada por cliente a `mcp-gateway@192.168.68.85` ejecutando `mcp-gateway-client-stdio <client_id>` con el adaptador Go oficial (`mcp-gateway-adapter --transport stdio --client-id <id>`)
+- **Entorno SSH del Target**: `sshd_config.d/termux-environment.conf` exporta `TERMUX_VERSION=0.118.3`; evita el falso aviso de Termux Play Store y permite iniciar el port nativo de Antigravity desde sesiones SSH.
 - **Backups Locales de Escritura**: `~/.local/share/mcp-gateway/backups/...` (almacenados en la Raspberry Pi Gateway, hasta 5 versiones por archivo)
 - **Bóveda Fuera de Git**: `C:\Users\esaud\.mcp_migration_backup` (almacenada en la estación de trabajo fuera del repositorio)
 
@@ -203,5 +204,4 @@ Documento de seguimiento continuo y estado de componentes del sistema.
   - PHASE_8_STATUS: CLOSED / PASS
   - ALL_GATES: PASS
 - **NEXT_ACTION**: NORMAL_OPERATION
-
 
