@@ -89,14 +89,15 @@ Documento de seguimiento continuo y estado de componentes del sistema.
 ## 2. Parámetros del Canal Seguro Pi → Target Worker y Gateway
 
 - **Origen**: `mcp-gateway@MCP-Pi` (`192.168.68.85`, UID: 102, GID: 105 en Trixie; histórico Bullseye: UID 1001, no sudo)
-- **Destino (Target actual)**: `u0_a435@192.168.68.72:8022` (Alias: `pc-local` / `termux-local`, target ID: `termux-main`)
+- **Destino (Target actual)**: `u0_a435@<dynamic_endpoint>:8022` (Alias: `termux-local`, Target ID: `termux-main`)
+- **Resolución Dinámica de IP**: Activa y validada en producción (Descubrimiento criptográfico multinivel, fail-closed, single source of truth en SQLite)
 - **Autenticación**: Clave pública Ed25519 exclusiva (`mcp_gateway_ed25519`)
 - **Host Key Alias**: `termux-main` (identidad fijada en `~/.ssh/known_hosts`, desacoplada de la IP)
 - **Host Fingerprint**: `SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0`
 - **Proyectos Autorizados**:
   - `MCP_Local` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local` (read: true, write: false)
   - `write_smoke` -> `/data/data/com.termux/files/home/Projects/test/MCP_Local/mcp-write-smoke` (read: true, write: configurable)
-- **DHCP_RESERVATION**: `RECOMMENDED_FOR_STABILITY` (Recomendación: fijar IP para termux-main en router/Deco cuando la MAC sea provista por Android)
+- **DHCP_RESERVATION**: Opcional / no requerida para continuidad operativa (Resuelta vía descubrimiento criptográfico automático ante rotación de IP)
 - **Consola de Administración**: `http://127.0.0.1:8080` (accesible exclusivamente mediante túnel SSH `ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85`)
 - **Servidor MCP (Streamable HTTP)**: `http://127.0.0.1:8090/mcp` (confinado a loopback, servicio `mcp-gateway-mcp.service` vía `mcp-gateway-adapter`)
 - **Servidor MCP (Stdio sobre SSH)**: Invocación vía clave dedicada por cliente a `mcp-gateway@192.168.68.85` ejecutando `mcp-gateway-client-stdio <client_id>` con el adaptador Go oficial (`mcp-gateway-adapter --transport stdio --client-id <id>`)
@@ -173,6 +174,17 @@ Documento de seguimiento continuo y estado de componentes del sistema.
       - Real hardware auth tests: 7/7 PASS
       - Unified Doctor: 19/19 HEALTHY
       - Controlled appliance reboot: PASS
+  - **Dynamic Target Endpoint Resolution & Cryptographic Discovery**: INTEGRATED_ON_DEVELOP / PRODUCTION_VALIDATED
+    - Paradigm: `TARGET_ID + SSH HOST KEY = IDENTITY`, `IP + PORT = MUTABLE ENDPOINT`
+    - Single source of truth in SQLite (`targets.host`), overriding static `~/.ssh/config`
+    - Host Key Pinning via `-o HostKeyAlias={target_id}` with `StrictHostKeyChecking=yes`
+    - Tiered discovery: Fast Path (direct connect) -> Fast Discovery (`/proc/net/arp`) -> Fallback Discovery (dynamic active LAN scan)
+    - Cryptographic validation: Multi-key `ssh-keyscan` verified against `known_hosts`
+    - Atomic DB update + `activity` audit logging + single automatic retry
+    - Zero external tools/daemons (no avahi, no arp-scan, no nmap)
+    - Zero schema changes (SQLite Schema v1 preserved)
+    - Test Suite: 128/128 PASS (14 dedicated unit tests in `tests/test_discovery.py`)
+    - Real Hardware Acceptance on MCP-Pi: Injected stale IP (`192.168.68.249`) successfully re-discovered live endpoint (`192.168.68.84`) in 5.47s and updated registry atomically.
 - **RELEASE_STATE**:
   - STABLE_TAG: `v1.1.1`
   - PRODUCTION_OS_BASELINE: `Raspberry Pi OS Lite 32-bit (Debian 13 Trixie / armv6l)`

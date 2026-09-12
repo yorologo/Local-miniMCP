@@ -28,6 +28,7 @@ from .policy import (
     validate_write_size,
 )
 from .ssh_transport import SSHError, SSHTransport
+from .discovery import TargetDiscovery
 
 
 class GatewayTools:
@@ -42,7 +43,15 @@ class GatewayTools:
         client_id: Optional[str] = None,
     ):
         self.config = registry or config or GatewayConfig.load()
-        self.transport = transport or SSHTransport()
+        if transport:
+            self.transport = transport
+            if getattr(self.transport, "registry", None) is None:
+                self.transport.registry = self.config
+        else:
+            self.transport = SSHTransport(
+                discovery=TargetDiscovery(),
+                registry=self.config,
+            )
         self.request_id = request_id
         self.client_id = client_id or "local"
 

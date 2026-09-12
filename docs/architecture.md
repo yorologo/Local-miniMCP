@@ -129,6 +129,22 @@ Alias: pc-local / termux-local                   Allowed Root: .../MCP_Local
 - **Entorno del Worker en PC**: Ejecutado en un sandbox Linux/Android sin privilegios de root (`u:r:untrusted_app_27`), con OpenSSH Server en el puerto 8022.
 - **Alcance acotado**: Delimitado al root del proyecto para impedir modificaciones o lecturas imprevistas fuera del espacio asignado.
 
+### 5.1 Resolución Dinámica de Endpoints y Descubrimiento Criptográfico
+
+Para garantizar resiliencia operativa ante rotación de IPs por DHCP o reinicios del router sin requerir reservas DHCP ni intervención manual:
+
+- **Paradigma de Identidad**:
+  $$\text{Target ID} + \text{SSH Host Key Pinning} = \text{Identidad Criptográfica}$$
+  $$\text{IP} + \text{Port} = \text{Endpoint Mutable}$$
+- **Autoridad Única en SQLite**: La tabla `targets` (`host`, `port`) es la única fuente autoritativa. En tiempo de ejecución, `SSHTransport` inyecta explícitamente `-o HostName={host} -o Port={port} -o HostKeyAlias={target_id}` antes del alias OpenSSH, garantizando que `~/.ssh/config` no actúe como fuente paralela no autorizada y forzando la validación estricta de la clave contra el alias del target.
+- **Fail-Closed Ante Errores de Seguridad**: Cualquier discrepancia de claves (`Host key verification failed`, `REMOTE HOST IDENTIFICATION HAS CHANGED`) o fallo de autenticación rechaza la operación inmediatamente (fail-closed) sin disparar búsquedas ni modificaciones.
+- **Descubrimiento Multinivel Bajo Demanda**: Disparado únicamente ante errores de conectividad de red (`Connection refused`, `No route to host`, etc.):
+  1. *Fast Path*: Conexión directa al endpoint registrado (0 sobrecarga).
+  2. *Fast Discovery*: Lectura de vecinos ARP en `/proc/net/arp` y comprobación rápida del puerto de SSH mediante sondeo concurrente.
+  3. *Fallback Discovery*: Barrido dinámico de la subred activa local (detectada sin prefijos fijos) en caso de que la tabla ARP no contenga candidatos.
+  4. *Verificación Criptográfica*: Extracción de claves del host (`ssh-keyscan`) y verificación contra la clave fijada en `known_hosts` para `target_id`.
+  5. *Actualización y Reintento*: Si existe coincidencia criptográfica inequívoca, `targets.host` se actualiza atómicamente, se registra el evento en `activity` y el comando SSH se reintenta exactamente una vez. Cooldown per-target previene tormentas de escaneo.
+
 ---
 
 ## 6. Registro Persistente y Consola de Administración (Fase 4B)

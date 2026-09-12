@@ -32,6 +32,44 @@ class SSHTransportResult:
         return self.exit_code == 0
 
 
+def is_network_connectivity_error(exit_code: int, stderr: str, timed_out: bool = False) -> bool:
+    """Return True ONLY if the failure is unambiguously a network connectivity / unreachable error.
+    
+    CRITICAL SECURITY INVARIANT:
+    Returns False for host-key mismatch, auth failure, permission denied, etc.
+    Host key mismatch MUST remain FAIL-CLOSED.
+    """
+    if not timed_out and exit_code == 0:
+        return False
+
+    err = (stderr or "").lower()
+
+    # Fail-closed security gates: NEVER trigger discovery on security/auth errors
+    if "host key verification failed" in err:
+        return False
+    if "identification has changed" in err:
+        return False
+    if "permission denied" in err:
+        return False
+    if "authentication failed" in err:
+        return False
+
+    if timed_out:
+        return True
+
+    network_patterns = [
+        "connection refused",
+        "connection timed out",
+        "no route to host",
+        "network is unreachable",
+        "host is down",
+        "operation timed out",
+        "could not resolve hostname",
+        "connect to host",
+    ]
+    return any(p in err for p in network_patterns)
+
+
 class SSHTransport:
     """Invokes system OpenSSH via subprocess for target operations."""
 
@@ -45,15 +83,23 @@ class SSHTransport:
         max_output_bytes: int = MAX_OUTPUT_BYTES,
         max_file_read_bytes: int = MAX_FILE_READ_BYTES,
         ssh_binary: str = "ssh",
+        discovery: Optional[Any] = None,
+        registry: Optional[Any] = None,
     ):
         self.default_timeout = default_timeout
         self.max_output_bytes = max_output_bytes
         self.max_file_read_bytes = max_file_read_bytes
         self.ssh_binary = ssh_binary
+        self.discovery = discovery
+        self.registry = registry
 
     def _build_ssh_args(self, target: Dict[str, Any], timeout: int) -> List[str]:
-        """Construct SSH argument list using alias or host parameters."""
+        """Construct SSH argument list ensuring Registry is single source of truth for endpoints."""
         alias = target.get("ssh_alias")
+        host = target.get("host")
+        port = str(target.get("port", 22))
+        target_id = target.get("id") or alias
+
         base_cmd = [
             self.ssh_binary,
             "-o", "BatchMode=yes",
@@ -61,14 +107,77 @@ class SSHTransport:
         ]
 
         if alias:
+            # Command-line -o HostName and -o Port override ~/.ssh/config, making Registry the single authority,
+            # while inheriting User, IdentityFile, IdentitiesOnly, StrictHostKeyChecking from the SSH alias.
+            if host:
+                base_cmd.extend(["-o", f"HostName={host}"])
+            if port:
+                base_cmd.extend(["-o", f"Port={port}"])
+            if target_id:
+                base_cmd.extend(["-o", f"HostKeyAlias={target_id}"])
             base_cmd.append(alias)
         else:
-            host = target["host"]
-            port = str(target.get("port", 22))
+            if target_id:
+                base_cmd.extend(["-o", f"HostKeyAlias={target_id}"])
             user = target["user"]
             base_cmd.extend(["-p", port, f"{user}@{host}"])
 
         return base_cmd
+
+    def _attempt_discovery_and_retry(
+        self,
+        target: Dict[str, Any],
+        remote_cmd: str,
+        timeout: Optional[int],
+        cwd: Optional[str],
+        input_data: Optional[bytes],
+        request_id: Optional[str],
+    ) -> Optional[SSHTransportResult]:
+        """Attempt on-demand cryptographic discovery and retry the SSH command exactly once."""
+        if not self.discovery or not self.registry:
+            return None
+
+        target_id = target.get("id") or target.get("ssh_alias")
+        if not target_id:
+            return None
+
+        disc_res = self.discovery.discover_target(target)
+        if disc_res.status == "IDENTITY_MATCH" and disc_res.new_host:
+            old_host = target.get("host")
+            new_host = disc_res.new_host
+            port = target.get("port", 22)
+
+            if old_host != new_host:
+                # Atomically update registry
+                if hasattr(self.registry, "update_target"):
+                    self.registry.update_target(target_id, {"host": new_host})
+                if hasattr(self.registry, "record_activity"):
+                    self.registry.record_activity({
+                        "actor": "system",
+                        "action": "target_endpoint_updated",
+                        "target_id": target_id,
+                        "duration_ms": disc_res.duration_ms,
+                        "success": True,
+                        "detail": json.dumps({
+                            "old_endpoint": f"{old_host}:{port}",
+                            "new_endpoint": f"{new_host}:{port}",
+                            "discovery_method": disc_res.method,
+                            "identity_verified": True,
+                        }),
+                    })
+                target["host"] = new_host
+
+            # Retry original command EXACTLY ONCE
+            return self.run_command(
+                target,
+                remote_cmd,
+                timeout=timeout,
+                cwd=cwd,
+                input_data=input_data,
+                request_id=request_id,
+                is_retry=True,
+            )
+        return None
 
     def run_command(
         self,
@@ -78,6 +187,7 @@ class SSHTransport:
         cwd: Optional[str] = None,
         input_data: Optional[bytes] = None,
         request_id: Optional[str] = None,
+        is_retry: bool = False,
     ) -> SSHTransportResult:
         """Execute a remote shell command string safely constructed by the gateway."""
         effective_timeout = timeout or self.default_timeout
@@ -102,8 +212,15 @@ class SSHTransport:
             )
             duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            if not is_retry and is_network_connectivity_error(-1, "", timed_out=True):
+                retry_res = self._attempt_discovery_and_retry(
+                    target, remote_cmd, timeout, cwd, input_data, request_id
+                )
+                if retry_res is not None:
+                    return retry_res
+
             raise SSHError(
                 f"SSH command timed out after {effective_timeout}s",
                 code="SSH_TIMEOUT",
@@ -117,6 +234,14 @@ class SSHTransport:
 
         stdout_str = stdout_raw[:self.max_output_bytes].decode("utf-8", errors="replace")
         stderr_str = stderr_raw[:self.max_output_bytes].decode("utf-8", errors="replace")
+
+        # Fast Path: success returns immediately
+        if proc.returncode != 0 and not is_retry and is_network_connectivity_error(proc.returncode, stderr_str):
+            retry_res = self._attempt_discovery_and_retry(
+                target, remote_cmd, timeout, cwd, input_data, request_id
+            )
+            if retry_res is not None:
+                return retry_res
 
         return SSHTransportResult(
             exit_code=proc.returncode,

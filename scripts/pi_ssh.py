@@ -5,7 +5,7 @@ import time
 import paramiko
 
 def run_remote(cmd, as_user=None, timeout=180):
-    host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
+    host = os.environ.get("MCP_PI_HOST", "192.168.68.55")
     user = os.environ.get("MCP_PI_USER", "yorologo")
     key_path = os.path.expanduser("~/.ssh/id_ed25519")
     
@@ -33,7 +33,7 @@ def run_remote(cmd, as_user=None, timeout=180):
             time.sleep(attempt * 3.0)
 
 def copy_to_remote(local_path, remote_path):
-    host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
+    host = os.environ.get("MCP_PI_HOST", "192.168.68.55")
     user = os.environ.get("MCP_PI_USER", "yorologo")
     key_path = os.path.expanduser("~/.ssh/id_ed25519")
     

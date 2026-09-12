@@ -1,0 +1,372 @@
+"""Unit tests for Dynamic IP Target Resolution and Cryptographic Discovery.
+
+Tests verify:
+- Fast path: correct endpoint performs 0 discovery calls
+- Stale endpoint triggers discovery, updates registry atomically, and retries exactly once
+- Wrong fingerprint is strictly rejected
+- Multiple matches fail-closed (AMBIGUOUS_TARGET_IDENTITY)
+- No matches results in no registry mutation and fails gracefully
+- Auth failure (Permission denied) never triggers discovery
+- Host key mismatch (Host key verification failed) never triggers discovery (FAIL-CLOSED)
+- Discovery storm cooldown prevents concurrent/rapid duplicate scans
+- Multi-target isolation: discovering target A does not alter target B
+- OpenSSH argument generation: command line -o HostName and -o Port override ~/.ssh/config
+"""
+
+import os
+import sys
+import time
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from mcp_gateway.registry import SQLiteRegistry
+from mcp_gateway.discovery import (
+    TargetDiscovery,
+    DiscoveryResult,
+    compute_sha256_fingerprint,
+    parse_known_hosts_line,
+)
+from mcp_gateway.ssh_transport import (
+    SSHTransport,
+    SSHTransportResult,
+    SSHError,
+    is_network_connectivity_error,
+)
+from mcp_gateway.tools import GatewayTools
+
+
+SAMPLE_ED25519_KEY_B64 = "AAAAC3NzaC1lZDI1NTE5AAAAIO558VBc3DlRhK/vRg5CPZV4kTD0DaY5GXoEEvjyCLmR"
+SAMPLE_FINGERPRINT = "SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0"
+
+WRONG_ED25519_KEY_B64 = "AAAAC3NzaC1lZDI1NTE5AAAAIP999VBc3DlRhK/vRg5CPZV4kTD0DaY5GXoEEvjyCLmR"
+WRONG_FINGERPRINT = "SHA256:wrongFingerprintXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+
+
+class TestDiscovery(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.tmp_dir.name, "test_gateway.db")
+        self.kh_path = os.path.join(self.tmp_dir.name, "test_known_hosts")
+
+        # Create known_hosts with canonical entries
+        with open(self.kh_path, "w", encoding="utf-8") as f:
+            f.write(f"termux-main,termux-local ssh-ed25519 {SAMPLE_ED25519_KEY_B64}\n")
+            f.write(f"target-b,alias-b ssh-ed25519 {SAMPLE_ED25519_KEY_B64}\n")
+
+        # Initialize SQLite Registry
+        self.registry = SQLiteRegistry(self.db_path)
+        self.registry.add_target({
+            "id": "termux-main",
+            "display_name": "Termux Main",
+            "platform": "android",
+            "host": "192.168.68.84",
+            "port": 8022,
+            "user": "u0_a435",
+            "ssh_alias": "termux-local",
+            "enabled": True,
+        })
+        self.registry.add_target({
+            "id": "target-b",
+            "display_name": "Target B",
+            "platform": "linux",
+            "host": "192.168.68.90",
+            "port": 22,
+            "user": "worker",
+            "ssh_alias": "alias-b",
+            "enabled": True,
+        })
+
+        self.discovery = TargetDiscovery(
+            known_hosts_path=self.kh_path,
+            cooldown_sec=1.0,
+            scan_timeout=0.1,
+            max_workers=10,
+        )
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    # --- 1. Fingerprint & Known Hosts Parsing ---
+
+    def test_parse_known_hosts_line(self):
+        line = f"termux-main,termux-local ssh-ed25519 {SAMPLE_ED25519_KEY_B64}"
+        parsed = parse_known_hosts_line(line)
+        self.assertIsNotNone(parsed)
+        self.assertIn("termux-main", parsed["patterns"])
+        self.assertIn("termux-local", parsed["patterns"])
+        self.assertEqual(parsed["key_type"], "ssh-ed25519")
+        self.assertEqual(parsed["fingerprint"], SAMPLE_FINGERPRINT)
+
+    def test_get_canonical_keys(self):
+        keys = self.discovery.get_canonical_keys("termux-main", "termux-local")
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(keys[0]["fingerprint"], SAMPLE_FINGERPRINT)
+
+    # --- 2. Failure Classification (Network vs Security Fail-Closed) ---
+
+    def test_is_network_connectivity_error_positive(self):
+        self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: Connection refused"))
+        self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: Connection timed out"))
+        self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: No route to host"))
+        self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: Network is unreachable"))
+        self.assertTrue(is_network_connectivity_error(255, "ssh: connect to host 192.168.68.84 port 8022: Host is down"))
+        self.assertTrue(is_network_connectivity_error(-1, "", timed_out=True))
+
+    def test_is_network_connectivity_error_security_fail_closed(self):
+        # Host key verification failure must NEVER trigger discovery
+        self.assertFalse(is_network_connectivity_error(255, "Host key verification failed."))
+        self.assertFalse(is_network_connectivity_error(255, "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! Host key verification failed."))
+        # Permission denied must NEVER trigger discovery
+        self.assertFalse(is_network_connectivity_error(255, "Permission denied (publickey)."))
+        self.assertFalse(is_network_connectivity_error(255, "Authentication failed."))
+        # Exit code 0 is never an error
+        self.assertFalse(is_network_connectivity_error(0, ""))
+
+    # --- 3. Command Line Argument Construction ---
+
+    def test_build_ssh_args_single_source_of_truth(self):
+        transport = SSHTransport()
+        target = {
+            "id": "termux-main",
+            "host": "192.168.68.71",
+            "port": 8022,
+            "ssh_alias": "termux-local",
+            "user": "u0_a435",
+        }
+        args = transport._build_ssh_args(target, 10)
+        # Verify -o HostName and -o Port are present before the alias to override ~/.ssh/config
+        self.assertIn("-o", args)
+        self.assertIn("HostName=192.168.68.71", args)
+        self.assertIn("Port=8022", args)
+        self.assertIn("HostKeyAlias=termux-main", args)
+        self.assertEqual(args[-1], "termux-local")
+
+    # --- 4. Fast Path: Correct Endpoint Performs No Discovery ---
+
+    @patch("subprocess.run")
+    def test_fast_path_no_discovery(self, mock_run):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = b"MCP-Pi-Worker\n"
+        mock_proc.stderr = b""
+        mock_run.return_value = mock_proc
+
+        mock_discovery = MagicMock()
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+
+        target = self.registry.get_target("termux-main")
+        res = transport.run_command(target, "hostname")
+
+        self.assertTrue(res.ok)
+        self.assertEqual(res.stdout.strip(), "MCP-Pi-Worker")
+        # Ensure discovery was never called
+        mock_discovery.discover_target.assert_not_called()
+
+    # --- 5. Stale Endpoint: Triggers Discovery, Updates Registry, Retries Once ---
+
+    @patch("subprocess.run")
+    def test_stale_endpoint_recovery(self, mock_run):
+        # 1st call fails with Connection refused; 2nd call (retry) succeeds
+        fail_proc = MagicMock()
+        fail_proc.returncode = 255
+        fail_proc.stdout = b""
+        fail_proc.stderr = b"ssh: connect to host 192.168.68.84 port 8022: Connection refused"
+
+        success_proc = MagicMock()
+        success_proc.returncode = 0
+        success_proc.stdout = b"recovered-hostname\n"
+        success_proc.stderr = b""
+
+        mock_run.side_effect = [fail_proc, success_proc]
+
+        # Discovery returns matching new IP 192.168.68.75
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="IDENTITY_MATCH",
+            new_host="192.168.68.75",
+            new_port=8022,
+            method="fast_kernel_neighbors",
+            fingerprint=SAMPLE_FINGERPRINT,
+        )
+
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+        self.assertEqual(target["host"], "192.168.68.84")
+
+        res = transport.run_command(target, "hostname")
+
+        # Verified result
+        self.assertTrue(res.ok)
+        self.assertEqual(res.stdout.strip(), "recovered-hostname")
+        self.assertEqual(mock_run.call_count, 2)
+        mock_discovery.discover_target.assert_called_once()
+
+        # Verify Registry updated atomically
+        updated_target = self.registry.get_target("termux-main")
+        self.assertEqual(updated_target["host"], "192.168.68.75")
+
+        # Verify activity was logged
+        activities = self.registry.list_activity(limit=10)
+        migration_acts = [a for a in activities if a.get("action") == "target_endpoint_updated"]
+        self.assertEqual(len(migration_acts), 1)
+        import json
+        detail = json.loads(migration_acts[0]["detail"])
+        self.assertEqual(detail["old_endpoint"], "192.168.68.84:8022")
+        self.assertEqual(detail["new_endpoint"], "192.168.68.75:8022")
+
+    # --- 6. Candidate Wrong Fingerprint Rejected ---
+
+    def test_candidate_wrong_fingerprint_rejected(self):
+        # Mock scan finding candidate IP with wrong host key
+        with patch.object(self.discovery, "get_kernel_neighbors", return_value=["192.168.68.99"]):
+            with patch.object(self.discovery, "scan_ips_for_port", return_value=["192.168.68.99"]):
+                with patch.object(self.discovery, "get_remote_host_keys", return_value=[{
+                    "fingerprint": WRONG_FINGERPRINT,
+                    "raw_key": b"wrong_key_bytes",
+                    "key_b64": WRONG_ED25519_KEY_B64,
+                }]):
+                    with patch.object(self.discovery, "get_active_subnets", return_value=[]):
+                        target = self.registry.get_target("termux-main")
+                        res = self.discovery.discover_target(target)
+                        self.assertEqual(res.status, "TARGET_NOT_FOUND")
+
+    # --- 7. Multiple Matches Fail-Closed (AMBIGUOUS_TARGET_IDENTITY) ---
+
+    def test_multiple_matches_fail_closed(self):
+        # Two different machines presenting identical key
+        with patch.object(self.discovery, "get_kernel_neighbors", return_value=["192.168.68.101", "192.168.68.102"]):
+            with patch.object(self.discovery, "scan_ips_for_port", return_value=["192.168.68.101", "192.168.68.102"]):
+                with patch.object(self.discovery, "get_remote_host_keys", return_value=[{
+                    "fingerprint": SAMPLE_FINGERPRINT,
+                    "raw_key": b"sample_raw_bytes",
+                    "key_b64": SAMPLE_ED25519_KEY_B64,
+                }]):
+                    target = self.registry.get_target("termux-main")
+                    res = self.discovery.discover_target(target)
+                    self.assertEqual(res.status, "AMBIGUOUS_TARGET_IDENTITY")
+
+    # --- 8. No Matches Results in No Mutation ---
+
+    @patch("subprocess.run")
+    def test_no_matches_no_mutation(self, mock_run):
+        fail_proc = MagicMock()
+        fail_proc.returncode = 255
+        fail_proc.stdout = b""
+        fail_proc.stderr = b"ssh: connect to host 192.168.68.84 port 8022: Connection timed out"
+        mock_run.return_value = fail_proc
+
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="TARGET_NOT_FOUND",
+            error="Target not found across active subnets",
+        )
+
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+        res = transport.run_command(target, "hostname")
+
+        self.assertFalse(res.ok)
+        self.assertEqual(mock_run.call_count, 1)  # No retry because discovery failed
+        # Verify Registry was NOT mutated
+        current_target = self.registry.get_target("termux-main")
+        self.assertEqual(current_target["host"], "192.168.68.84")
+
+    # --- 9. Security Errors Never Trigger Discovery (FAIL-CLOSED) ---
+
+    @patch("subprocess.run")
+    def test_auth_failure_no_discovery(self, mock_run):
+        fail_proc = MagicMock()
+        fail_proc.returncode = 255
+        fail_proc.stdout = b""
+        fail_proc.stderr = b"Permission denied (publickey)."
+        mock_run.return_value = fail_proc
+
+        mock_discovery = MagicMock()
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+
+        res = transport.run_command(target, "hostname")
+        self.assertFalse(res.ok)
+        mock_discovery.discover_target.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_host_key_mismatch_no_discovery(self, mock_run):
+        fail_proc = MagicMock()
+        fail_proc.returncode = 255
+        fail_proc.stdout = b""
+        fail_proc.stderr = b"Host key for termux-main has changed and you have requested strict checking.\nHost key verification failed."
+        mock_run.return_value = fail_proc
+
+        mock_discovery = MagicMock()
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target = self.registry.get_target("termux-main")
+
+        res = transport.run_command(target, "hostname")
+        self.assertFalse(res.ok)
+        # Strictly fail closed! Never search other hosts when host key fails verification!
+        mock_discovery.discover_target.assert_not_called()
+
+    # --- 10. Discovery Cooldown Prevents Storms ---
+
+    def test_cooldown_prevents_discovery_storms(self):
+        target = self.registry.get_target("termux-main")
+        with patch.object(self.discovery, "get_kernel_neighbors", return_value=[]):
+            with patch.object(self.discovery, "get_active_subnets", return_value=[]):
+                # 1st discovery
+                res1 = self.discovery.discover_target(target)
+                self.assertEqual(res1.status, "TARGET_NOT_FOUND")
+
+                # Immediate 2nd discovery within cooldown window
+                res2 = self.discovery.discover_target(target)
+                self.assertEqual(res2.status, "TARGET_NOT_FOUND")
+                self.assertEqual(res2.method, "cached")
+
+    # --- 11. Multi-Target Isolation ---
+
+    @patch("subprocess.run")
+    def test_multi_target_isolation(self, mock_run):
+        fail_proc = MagicMock()
+        fail_proc.returncode = 255
+        fail_proc.stdout = b""
+        fail_proc.stderr = b"ssh: connect to host 192.168.68.84 port 8022: Connection refused"
+
+        success_proc = MagicMock()
+        success_proc.returncode = 0
+        success_proc.stdout = b"target-a-ok\n"
+        success_proc.stderr = b""
+
+        mock_run.side_effect = [fail_proc, success_proc]
+
+        mock_discovery = MagicMock()
+        mock_discovery.discover_target.return_value = DiscoveryResult(
+            status="IDENTITY_MATCH",
+            new_host="192.168.68.77",
+            new_port=8022,
+            method="fast_kernel_neighbors",
+            fingerprint=SAMPLE_FINGERPRINT,
+        )
+
+        transport = SSHTransport(discovery=mock_discovery, registry=self.registry)
+        target_a = self.registry.get_target("termux-main")
+        target_b_before = self.registry.get_target("target-b")
+
+        res = transport.run_command(target_a, "hostname")
+        self.assertTrue(res.ok)
+
+        # Target A was updated
+        target_a_after = self.registry.get_target("termux-main")
+        self.assertEqual(target_a_after["host"], "192.168.68.77")
+
+        # Target B was untouched
+        target_b_after = self.registry.get_target("target-b")
+        self.assertEqual(target_b_after["host"], target_b_before["host"])
+        self.assertEqual(target_b_after["host"], "192.168.68.90")
+
+
+if __name__ == "__main__":
+    unittest.main()

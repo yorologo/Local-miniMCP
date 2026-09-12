@@ -307,8 +307,8 @@ class SQLiteRegistry(RegistryBase):
             if not target["enabled"]:
                 raise ConfigError(f"Target '{target_id}' is disabled", code="TARGET_DISABLED")
 
-            # Remove db-only fields
-            target.pop("id", None)
+            # Remove db-only fields (retain id for cryptographic and transport identity)
+            target["id"] = target_id
             target.pop("created_at", None)
             target.pop("updated_at", None)
             target.pop("display_name", None)

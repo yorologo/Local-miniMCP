@@ -168,7 +168,8 @@ class GatewayConfig:
         targets = self._data.get("targets", {})
         if target_id not in targets:
             raise ConfigError(f"Target '{target_id}' is not configured", code="UNKNOWN_TARGET")
-        target = targets[target_id]
+        target = dict(targets[target_id])
+        target.setdefault("id", target_id)
         if not target.get("enabled", True):
             raise ConfigError(f"Target '{target_id}' is disabled", code="TARGET_DISABLED")
         return target
