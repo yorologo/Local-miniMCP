@@ -20,10 +20,10 @@ Documentación relacionada:
 
 - `docs/project-state.md` — estado dinámico y cronología;
 - `docs/v1-acceptance.md` — aceptación de v1;
-- `docs/releases/v1.0.1.md` — release actual;
+- `docs/releases/v1.2.1.md` — release actual (y `docs/releases/` para releases históricas);
 - `docs/os-migration.md` — modernización de OS;
 - `docs/runbooks/` — procedimientos operativos;
-- Documentación Maestra — arquitectura, decisiones consolidadas y baseline general de v1.0.1.
+- Documentación Maestra — arquitectura, decisiones consolidadas y baseline general de v1.2.1.
 
 ---
 
@@ -491,7 +491,7 @@ rewrite historical release
 
 ---
 
-## 10. Runtime esperado de v1.0.1
+## 10. Runtime esperado de v1.2.1
 
 En la línea base de producción Trixie este runtime está formalmente validado y activo:
 
@@ -499,9 +499,10 @@ En la línea base de producción Trixie este runtime está formalmente validado 
 Service user: mcp-gateway
 UID: 102 (histórico Bullseye: 1001)
 GID: 105 (histórico Bullseye: 1001)
-Privilege: NO sudo
+Privilege: NO sudo (salvo helper específico /usr/local/bin/mcp-gateway-reboot)
 Admin: 127.0.0.1:8080
 MCP: 127.0.0.1:8090/mcp
+Tunnel client: 127.0.0.1:8091 (metrics/health)
 Writes default: disabled
 Registry: SQLite schema v1
 ```
@@ -716,7 +717,7 @@ POST_V1_OPERATION_AND_MAINTENANCE
 Objetivo:
 
 ```text
-operación estable v1.0.1 sobre producción Trixie
+operación estable v1.2.1 sobre producción Trixie
 + retención de rollback físico Bullseye
 + monitoreo y mantenimiento preventivo
 ```
@@ -931,12 +932,15 @@ Nunca inventar progreso ni afirmar que existe un monitor que no fue realmente cr
 | 4D | PASS |
 | 5 | PASS |
 | 6A | PASS |
-| 6B | GATED / OPTIONAL / PRODUCT_GATED |
+| 6B | PASS — Secure MCP Tunnel validado end-to-end con ChatGPT |
 | 7A | PASS — resiliencia y preparación de migración |
 | 7B | DEFERRED_POST_V1 en el cierre de v1 |
 | v1.0.0 | RELEASED / IMMUTABLE |
-| v1.0.1 | RELEASED / CURRENT SOFTWARE BASELINE |
+| v1.0.1 | RELEASED / HISTORICAL |
 | 8 | **CLOSED / PASS — OS Modernization post-v1 (Trixie promovido a producción)** |
+| v1.1.0 / v1.1.1 | RELEASED / HISTORICAL |
+| v1.2.0 | RELEASED / HISTORICAL |
+| v1.2.1 | **RELEASED / CURRENT SOFTWARE BASELINE** |
 
 > Phase 8 es la ejecución operativa posterior del trabajo de modernización física que quedó diferido al cerrar v1. No reescribe el estado histórico de Phase 7B en la release v1.0.1.
 

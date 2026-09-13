@@ -38,13 +38,22 @@ Targets
 → ejecutan el trabajo real
 ```
 
-El siguiente objetivo estratégico es:
+Objetivo estratégico alcanzado:
 
 ```text
-OPENAI → MCP-PI REMOTE AUTONOMOUS E2E
+OPENAI → MCP-PI REMOTE AUTONOMOUS E2E: ACHIEVED
+MISSION_V1: ACHIEVED
 ```
 
-No basta con demostrar conectividad. Debemos demostrar un ciclo real donde un producto OpenAI pueda usar MCP-Pi para observar un target, ejecutar una tarea autorizada, leer el resultado y continuar sin que el usuario copie comandos manualmente.
+Se demostró exitosamente un ciclo real donde un producto OpenAI en la nube (ChatGPT Plus en espacio personal con Developer Mode y custom MCP app "MCP-Pi" vía Secure MCP Tunnel) usó MCP-Pi para observar el target (`termux-main`), consultar `MCP_Local`, leer el resultado e identificar drift documental de forma completamente autónoma, sin que el usuario actúe como relevo manual de comandos (`HUMAN_COMMAND_RELAY: NOT_REQUIRED`).
+
+Siguiente modo operativo:
+
+```text
+POST_V1_OPERATION_AND_MAINTENANCE
+```
+
+No inventar V2. No abrir nuevas features.
 
 ---
 
@@ -335,10 +344,13 @@ Estado actual:
 
 ```text
 LOCAL_SIDE:                         READY
-OPENAI_PLATFORM_AUTH:               AUTH_REQUIRED / TO_VERIFY
-SECURE_MCP_TUNNEL_ENTITLEMENT:      TO_VERIFY WITH OFFICIAL AUTH
-OPENAI_REMOTE_MCP_E2E:              NOT_YET_PROVEN
-CHATGPT_AUTONOMOUS_E2E:             NOT_YET_PROVEN
+OPENAI_PLATFORM_AUTH:               VERIFIED (ChatGPT Plus / Developer Mode)
+SECURE_MCP_TUNNEL_ENTITLEMENT:      VERIFIED (openai/tunnel-client ARMv6 active)
+OPENAI_REMOTE_MCP_E2E:              PASS
+CHATGPT_PLUS_CUSTOM_MCP:            PASS
+REMOTE_AUTONOMOUS_TOOL_LOOP:        PASS
+HUMAN_COMMAND_RELAY:                NOT_REQUIRED
+MISSION_V1:                         ACHIEVED
 ```
 
 Las capacidades y límites de producto de OpenAI cambian; revalidar documentación oficial al ejecutar este frente y no congelar supuestos de plan en la arquitectura.
@@ -367,19 +379,16 @@ Se examinó la arquitectura oficial del Secure MCP Tunnel (`openai/tunnel-client
 
 | Consumidor | Soportado por Túnel | Disponible en Cuenta Actual | Requiere Facturación Extra | Custom MCP Tooling Completo | Alcanza MCP-Pi Hoy | Blocker Principal |
 |---|---|---|---|---|---|---|
-| **ChatGPT Plus** | SÍ | NO | NO (Suscripción Plus activa) | `PRODUCT_GATED` | NO | `CHATGPT_CUSTOM_MCP_PRODUCT_GATED` (Full MCP / Developer Mode restringido a planes Business / Enterprise / Edu; Plus no dispone de Custom MCP) |
+| **ChatGPT Plus** | SÍ | SÍ (Developer Mode) | NO (Suscripción Plus activa) | SÍ (Custom MCP vía Tunnel) | SÍ | NINGUNO — Validado exitosamente E2E (`PASS`) |
 | **Codex CLI (Plus)** | COMPATIBLE (Producer) / NO CONSUMIDOR REMOTO | SÍ | NO | SÍ (vía local MCP stdio SSH) | NO vía túnel remoto / SÍ vía stdio local SSH (`CODEX_LOCAL_MCP_E2E`) | `CODEX_CLI_REMOTE_TUNNEL_CONSUMER: NO_SUPPORTED_ATTACH_SURFACE_FOUND` (Codex CLI 0.153.3 no expone una interfaz documentada para engancharse como consumidor a un `tunnel_id` remoto ya corriendo en MCP-Pi; su plugin `tunnel-mcp` gestiona runtimes/producers locales. No se extrapola a futuras o internas superficies Codex) |
 | **Codex Cloud / App** | NO IDENTIFICADO | N/A | SÍ (en API) | NO | NO | `CODEX_CLOUD_REMOTE_TUNNEL_CONSUMER: NO_DOCUMENTED_STANDALONE_SURFACE` (No se identificó superficie Cloud autónoma documentada para consumir túneles fuera de ChatGPT o Responses API; no extrapolar a capacidades internas) |
 | **Responses API** | SÍ | NO | SÍ (Créditos Platform prepagos) | SÍ | NO | `API_BILLING_REQUIRED` (`HTTP 429 credit_balance_exhausted`) |
 | **Agents SDK / AgentKit** | SÍ | NO | SÍ (Requiere API Key con saldo) | SÍ | NO | `API_BILLING_REQUIRED` |
 
 #### 3. Conclusión Operativa KISS
-- **CURRENT_ACCOUNT_BEST_REMOTE_PATH**: `NONE_WITHOUT_BILLING_OR_ELIGIBLE_CHATGPT_WORKSPACE`.
-- **Recomendación Operativa**: `D. NO_SUPPORTED_REMOTE_CONSUMER_FOR_CURRENT_ACCOUNT`.
-- El Secure MCP Tunnel en MCP-Pi (`mcp-pi`) está 100% operativo (`HEALTHZ 200 live`, `READYZ 200 ready`, polling saludable), pero no existe hoy una superficie oficial consumidora disponible para la cuenta actual que no requiera recarga de créditos en API o workspace en planes Business / Enterprise / Edu.
-- La ruta disponible y validada hoy con la suscripción ChatGPT Plus es **`CODEX_LOCAL_MCP_E2E`** (Codex CLI consumiendo MCP-Pi directamente vía MCP stdio sobre SSH con pinning criptográfico), donde se comprobó ejecución autónoma completa de 10 herramientas.
-
-> **Nota:** Las capacidades de OpenAI son product-dependent y cambian; revalidar fuentes oficiales antes de reabrir OPENAI_REMOTE_MCP_E2E.
+- **CURRENT_ACCOUNT_BEST_REMOTE_PATH**: `CHATGPT_PLUS_DEVELOPER_MODE_VIA_SECURE_MCP_TUNNEL` (Validado y operativo).
+- Se confirmó y validó que las cuentas ChatGPT Plus en espacio de trabajo personal disponen de acceso a `Settings → Plugins/Complementos → Create Connection → Tunnel` (Developer Mode), permitiendo registrar el complemento `MCP-Pi` conectado directamente al Secure MCP Tunnel oficial (`mcp-pi`) en producción.
+- Tanto la ruta local (`CODEX_LOCAL_MCP_E2E`) como la ruta remota en nube (`CHATGPT_PLUS_CUSTOM_MCP` / `OPENAI_REMOTE_MCP_E2E`) quedan 100% validadas y operativas sin requerir facturación adicional ni gateways públicos.
 
 ### 8.3 Validación de Recuperación Real de Producción Post-Reboot
 
@@ -401,32 +410,58 @@ Se auditó, resolvió y validó la recuperación física post-reboot (`sudo rebo
    - `BOOT_RACE_DETECTED_AFTER_FIX`: NO.
    - `CONTROLLED_REBOOT_RECOVERY`: **PASS**.
 
----
-
-## 9. Próximo acceptance test estratégico
-
-El objetivo se considera avanzado de forma material cuando podamos demostrar:
+### 8.4 Aceptación Final: ChatGPT Plus Remote Autonomous E2E (Mission V1 Achieved)
 
 ```text
-Desde un producto OpenAI autorizado
-→ sin copiar comandos manualmente
-→ conectar de forma segura a MCP-Pi
-→ consultar estado de termux-main
-→ inspeccionar MCP_Local
-→ ejecutar una tarea autorizada
-→ obtener el resultado directamente
-→ tomar y ejecutar el siguiente paso seguro
-→ verificar el resultado
+OPENAI_REMOTE_MCP_E2E:       PASS
+CHATGPT_PLUS_CUSTOM_MCP:     PASS
+REMOTE_AUTONOMOUS_TOOL_LOOP: PASS
+HUMAN_COMMAND_RELAY:         NOT_REQUIRED
+MISSION_V1:                  ACHIEVED
 ```
 
-Debe mantenerse:
+Evidencia resumida:
+
+- ChatGPT Plus personal workspace;
+- Developer Mode;
+- custom MCP app MCP-Pi;
+- Secure MCP Tunnel;
+- autonomous read-only evaluation;
+- ChatGPT eligió autónomamente herramientas;
+- 9 tools utilizadas;
+- target termux-main;
+- proyecto MCP_Local;
+- documentación drift detectada autónomamente;
+- ninguna intervención humana como command relay;
+- writes_enabled=false.
+
+---
+
+## 9. Acceptance test estratégico completado
+
+El ciclo estratégico de autonomía remota fue demostrado y aceptado formalmente:
+
+```text
+Desde un producto OpenAI autorizado (ChatGPT Plus vía Secure MCP Tunnel)
+→ sin copiar comandos manualmente (HUMAN_COMMAND_RELAY: NOT_REQUIRED)
+→ conectar de forma segura a MCP-Pi (127.0.0.1:8091 / mcp-gateway-adapter)
+→ consultar estado de termux-main (target_status PASS)
+→ inspeccionar MCP_Local (git_status + read_file PASS)
+→ ejecutar tareas autorizadas (health, list_targets, target_status, git_status, read_file)
+→ obtener el resultado directamente (JSON-RPC sobre Streamable HTTP)
+→ tomar y ejecutar el siguiente paso seguro (autonomía completa)
+→ verificar el resultado (análisis y drift detectado)
+```
+
+Invariantes operativas preservadas:
 
 ```text
 POLICY:                 ENFORCED
 GRANTS:                 ENFORCED
 AUDIT:                  ENABLED
-ARBITRARY_SHELL:        NOT REQUIRED
+ARBITRARY_SHELL:        NOT REQUIRED / FORBIDDEN
 HUMAN_COMMAND_RELAY:    NOT REQUIRED
+MISSION_V1:             ACHIEVED
 ```
 
 ---
@@ -479,8 +514,7 @@ La evidencia detallada vive en:
 ## 12. Próxima acción
 
 ```text
-Retornar a POST_V1_OPERATION_AND_MAINTENANCE sin abrir nuevos frentes
-hasta que exista un trigger real.
+POST_V1_OPERATION_AND_MAINTENANCE
 ```
 
-Mantener operación estable v1.2.1, retención de backup off-device cifrado, monitoreo pasivo y preservación de invariantes de seguridad. No reabrir frentes de integración hasta la disponibilidad de superficies consumidoras oficiales compatibles o triggers reales.
+Retornar a operación normal y mantenimiento de producción v1.2.1 sin abrir nuevos frentes hasta que exista un trigger real. No inventar V2. No abrir nuevas features. Mantener monitoreo pasivo, retención de backup cifrado off-device y preservación estricta de las invariantes de seguridad fail-closed.

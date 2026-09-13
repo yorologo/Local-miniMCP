@@ -4,12 +4,12 @@
 
 | Campo | Valor |
 | --- | --- |
-| Versión documental | 1.0.1 |
-| Fecha de corte técnico | 9 de septiembre de 2026 |
-| Revisión editorial | 10 de septiembre de 2026 |
-| Estado del proyecto | **v1.0.0 RELEASED & IMMUTABLE** (`d52f848`) / **v1.0.1 Hygiene Patch Release — PASS** |
-| Hardware base | Raspberry Pi Model A+ Rev 1.1 — ARMv6, 176 MiB RAM |
-| OS validado | Raspbian / Debian 11 Bullseye |
+| Versión documental | 1.2.1 |
+| Fecha de corte técnico | 13 de septiembre de 2026 |
+| Revisión editorial | 13 de septiembre de 2026 |
+| Estado del proyecto | **v1.2.1 RELEASED** (`0f1ed92`) / Histórico: v1.0.0 (`d52f848`), v1.0.1 (`bcd8fe9`), v1.1.0 (`b2f35d3`), v1.1.1 (`ff9f653`), v1.2.0 (`df5fa43`) |
+| Hardware base | Raspberry Pi Model A+ Rev 1.1 — ARMv6, ~173 MiB RAM utilizable |
+| OS producción actual | Raspberry Pi OS / Debian 13 Trixie (32-bit `armv6l`) — Rollback físico: Raspbian 11 Bullseye preservado |
 | Política de construcción | **Reuse first; build only what is specific to MCP-Pi** |
 
 > Este documento es la fuente de verdad general del proyecto y sustituye conceptualmente a la línea base v0.1. Los documentos por fase, runbooks, reportes y pruebas permanecen como evidencia histórica y operativa.
@@ -88,20 +88,20 @@ Las operaciones habituales no deben exigir recordar rutas internas de Python, SQ
 - **Core:** autoridad única de seguridad y ejecución de políticas.
 - **Service:** servidor MCP externo; concepto futuro y distinto de Target.
 
-## 2. Estado oficial de v1.0.1
+## 2. Estado oficial de v1.2.1
 
 ### 2.1 Gateway
 
 ```text
 Hostname: MCP-Pi
-LAN IP: 192.168.68.85
+LAN IP: 192.168.68.55 (endpoint mutable en runtime DHCP; histórico: 192.168.68.85)
 Hardware: Raspberry Pi Model A Plus Rev 1.1
 Architecture: armv6l
-RAM utilizable: ~176 MiB
+RAM utilizable: ~173 MiB en Trixie (histórico: ~176 MiB en Bullseye)
 OS: Raspberry Pi OS 13 Trixie (producción actual) / Raspbian 11 Bullseye (rollback físico histórico)
-Python: 3.13.5 (Trixie) / 3.9.2 (Bullseye)
+Python: minimum supported Python >= 3.9 (runtime de producción en Trixie: 3.13.5; histórico Bullseye: 3.9.2)
 Runtime user: mcp-gateway (UID: 102, GID: 105 en Trixie; histórico Bullseye: UID 1001)
-Runtime sudo: NO
+Runtime sudo: NO (salvo helper específico /usr/local/bin/mcp-gateway-reboot)
 ```
 
 ### 2.2 Pi-hole separado
@@ -118,13 +118,14 @@ Rol: Pi-hole
 
 ```text
 Target ID: termux-main
-Host actual: 192.168.68.72   # IP LAN mutable en runtime
+Host actual: 192.168.68.84:8022   # IP LAN mutable en runtime (histórico: 192.168.68.72:8022)
 Port: 8022
 User: u0_a435
 Platform: Android / Termux
 SSH Host Key Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
 SSH Aliases: termux-local (principal), pc-local (compatibilidad legacy)
 Transport: SSH Ed25519 con StrictHostKeyChecking=yes
+Invariante canónica: TARGET_ID + SSH HOST KEY = identity; IP + PORT = mutable endpoint
 ```
 
 Proyecto real validado:
@@ -160,11 +161,16 @@ MCP-Pi
 | 4D | PASS | Compatibilidad de contratos, seguridad HTTP y lifecycle |
 | 5 | PASS | Controlled Write seguro — `write_file`, atomicidad y hash lock |
 | 6A | PASS | Clientes IA locales, autenticación y grants |
-| 6B | GATED / BLOCKED | Clientes IA cloud; ChatGPT requiere revalidar túnel autenticado y no se expone públicamente |
+| 6B | PASS | Clientes IA cloud vía Secure MCP Tunnel (`openai/tunnel-client`) sin apertura de puertos |
 | 7A | PASS | Resiliencia, preparación de migración y congelamiento de línea base |
-| 7B | DEFERRED_POST_V1 | Migración física de OS postpuesta; Bullseye sigue siendo la base validada en hardware |
-| **v1.0.0** | **RELEASED** | Release oficial en hardware real — `d52f848` |
-| **v1.0.1** | **RELEASED** | Hygiene Patch Release de metadata, targets genéricos y documentación |
+| 7B | DEFERRED_POST_V1 | Migración física de OS postpuesta al cierre de v1 (ejecutada en Phase 8) |
+| **v1.0.0** | **RELEASED** | Release oficial en hardware real — `d52f848` (inmutable) |
+| **v1.0.1** | **RELEASED** | Hygiene Patch Release de metadata, targets genéricos y documentación (`bcd8fe9`) |
+| 8 | **CLOSED / PASS** | OS Modernization post-v1 — Debian 13 Trixie promovido a producción |
+| **v1.1.0** | **RELEASED** | Herramientas de administración del appliance + Secure MCP Tunnel integration (`b2f35d3`) |
+| **v1.1.1** | **RELEASED** | Tunnel auth & anti-spoofing hardening (`ff9f653`) |
+| **v1.2.0** | **RELEASED** | Dynamic target endpoint resolution & cryptographic discovery (`df5fa43`) |
+| **v1.2.1** | **RELEASED** | Deterministic readiness & autorecovery hardening (`0f1ed92`) |
 
 ## 3. Principios no negociables
 
@@ -295,7 +301,7 @@ La consola administrativa permanece accesible únicamente por localhost y túnel
 Runtime:
 
 ```text
-Python 3.9.2
+Python >= 3.9 (runtime de producción en Trixie: 3.13.5; histórico Bullseye: 3.9.2)
 ```
 
 Responsabilidades:
@@ -444,6 +450,10 @@ No realiza:
 
 ## 6. Catálogo de herramientas y capacidades
 
+El catálogo de herramientas (Tool Catalog v3) expone 14 herramientas deterministas:
+
+### 6.1 Herramientas sobre Targets (9 herramientas)
+
 | Tool | Estado | Riesgo |
 | --- | --- | --- |
 | `health` | ACTIVA | Bajo |
@@ -461,7 +471,19 @@ No realiza:
 
 `run_task` solo acepta tareas declaradas en allowlist.
 
-### 6.1 Política de escritura controlada
+### 6.2 Herramientas de administración del Appliance (5 herramientas)
+
+| Tool | Estado | Riesgo |
+| --- | --- | --- |
+| `gateway_status` | ACTIVA | Bajo |
+| `gateway_doctor` | ACTIVA | Bajo |
+| `gateway_backup` | ACTIVA | Medio |
+| `gateway_maintenance` | ACTIVA | Medio |
+| `gateway_reboot` | ACTIVA | Alto |
+
+`gateway_reboot` solo invoca el helper sin parámetros `/usr/local/bin/mcp-gateway-reboot` bajo confirmación estricta.
+
+### 6.3 Política de escritura controlada
 
 La escritura exige simultáneamente:
 
@@ -487,7 +509,7 @@ La configuración global de seguridad parte de:
 writes_enabled = false
 ```
 
-### 6.2 `write_file`
+### 6.4 `write_file`
 
 `write_file` está implementada y validada con:
 
@@ -1083,11 +1105,13 @@ Nunca almacenar:
 
 ### 10.3 ChatGPT y clientes cloud
 
-El documento de v1.0.1 registra que ChatGPT no conecta directamente a un MCP puramente local. Para infraestructura privada/on-premises debe revalidarse **Secure MCP Tunnel** al retomar Phase 6B.
+Históricamente, v1.0.1 registró la restricción de que ChatGPT no conecta directamente a un MCP puramente local sin un túnel de retransmisión autenticado. Esta integración fue completada y validada en v1.2.1:
 
-La disponibilidad y los permisos dependen del producto/plan vigente y deben comprobarse de nuevo en esa fase.
+- Se cross-compiló e integró el cliente oficial **Secure MCP Tunnel** (`openai/tunnel-client` commit `3b706ea54d0ad303c85d5ccd35633ae69405570b`) para ARMv6.
+- Opera como servicio systemd en `127.0.0.1:8091` sin abrir puertos de entrada en el router ni exponer MCP-Pi a Internet.
+- Se demostró la aceptación E2E con ChatGPT Plus en espacio personal (Developer Mode), ejecutando llamadas a herramientas de forma completamente autónoma contra MCP-Pi.
 
-> **No exponer MCP-Pi públicamente como atajo para evitar esta restricción.**
+> **No exponer MCP-Pi públicamente a Internet bajo ninguna circunstancia.**
 
 ### 10.4 Otros clientes
 
@@ -1113,11 +1137,13 @@ detect
 
 ## 11. Resiliencia y estrategia de OS
 
-### 11.1 Deuda técnica actual
+### 11.1 Modernización de OS completada (Phase 8)
 
-El documento registra que Debian 11 Bullseye alcanzó el final de LTS el **31 de agosto de 2026**. Por tanto, el OS actual es deuda técnica prioritaria.
+Debian 11 Bullseye alcanzó el final de LTS el **31 de agosto de 2026**. Esta deuda técnica fue resuelta formalmente en **Phase 8 (OS Modernization)**:
 
-No realizar un upgrade in-place improvisado.
+- Se realizó una migración física y limpia hacia **Raspberry Pi OS / Debian 13 Trixie (32-bit `armv6l`)**.
+- Tras superar todos los gates funcionales, conectividad Wi-Fi (RTL8188EUS), restauración de identidad SSH histórica, validación de regresión completa y soak test de 60 minutos, Trixie fue promovido como baseline de producción.
+- La microSD original de Bullseye permanece intacta y preservada como rollback físico garantizado (`KNOWN_GOOD`).
 
 ### 11.2 Estrategia de migración
 
@@ -1223,9 +1249,9 @@ AI Client
 
 | Riesgo | Estado actual | Mitigación |
 | --- | --- | --- |
-| Bullseye EOL | **ALTO** | Migración física post-v1 con rollback por microSD |
+| Bullseye EOL | RESUELTO / MITIGADO | Phase 8 completada; producción en Debian 13 Trixie, microSD Bullseye como rollback físico |
 | ARMv6 | CONTROLADO | Cross-build + releases fijadas |
-| 176 MiB RAM | CONTROLADO | Servicios actuales por debajo de ~25 MiB según la evidencia del proyecto |
+| ~173 MiB RAM | CONTROLADO | Servicios actuales por debajo de ~25 MiB según la evidencia del proyecto |
 | Wi-Fi USB único | CONTROLADO | Evitar upgrades de OS improvisados |
 | Prompt injection | CONTROLADO | Narrow tools + Core policy |
 | Cambios de MCP | CONTROLADO | SDK oficial + contratos versionados |
@@ -1233,8 +1259,8 @@ AI Client
 | Incompatibilidad de update | CONTROLADO | Doctor + rollback |
 | Ataques Host/Origin/DNS rebinding | CONTROLADO | Bind local + validaciones y regresión E2E |
 | Escrituras concurrentes | CONTROLADO | `expected_sha256` + atomic write |
-| Suplantación de cliente | CONTROLADO EN 6A / REVALIDAR EN 6B | Identidad autenticada + grants; revalidar auth cloud |
-| Conectividad con clientes cloud | GATED | Revalidar transporte autenticado específico por cliente |
+| Suplantación de cliente | CONTROLADO | Identidad autenticada + grants; token pinning en Secure MCP Tunnel |
+| Conectividad con clientes cloud | RESUELTO / MITIGADO | Secure MCP Tunnel oficial autenticado integrado en v1.2.1 |
 
 ## 15. ADR — decisiones consolidadas
 
@@ -1338,23 +1364,27 @@ Phase 4D quedó completada con:
 - secretos fuera de Git;
 - documentación y runbooks actualizados.
 
-## 17. Estado resumido al cierre de v1.0.1
+## 17. Estado resumido de producción (v1.2.1)
 
 ```text
 PROJECT: MCP-Pi Gateway
-DOCUMENT: 1.0.1
+DOCUMENT: 1.2.1
 
 RELEASE:
+  v1.2.1 — Stable Release, verified @ 0f1ed92
+  v1.2.0 — Dynamic endpoint resolution & discovery
+  v1.1.1 — Tunnel auth & anti-spoofing hardening
+  v1.1.0 — Appliance administration tools
   v1.0.1 — Hygiene Patch Release
   v1.0.0 — Stable Release, immutable @ d52f848
 
-CURRENT STATE: OPERATIONAL_STABLE
+CURRENT STATE: OPERATIONAL_STABLE / MISSION_V1_ACHIEVED
 
 GATEWAY:
   MCP-Pi
-  192.168.68.85
+  192.168.68.55 (mutable runtime LAN IP; histórico: 192.168.68.85)
   Raspberry Pi Model A+ Rev 1.1
-  ARMv6 / 176 MiB RAM
+  ARMv6 / ~173 MiB RAM utilizable
 
 PI-HOLE:
   YorPi
@@ -1363,9 +1393,10 @@ PI-HOLE:
 
 ACTIVE TARGET:
   termux-main
-  192.168.68.72:8022   # mutable runtime LAN IP
+  192.168.68.84:8022 (mutable runtime LAN IP; histórico: 192.168.68.72:8022)
   Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
   SSH aliases: termux-local (principal), pc-local (compat)
+  Invariante: TARGET_ID + SSH HOST KEY = identity; IP + PORT = mutable endpoint
 
 ADMIN:
   127.0.0.1:8080
@@ -1379,38 +1410,58 @@ MCP:
   Protocol: 2026-07-28
   Fallback: 2025-11-25
 
+SECURE MCP TUNNEL:
+  Official openai/tunnel-client (v0.0.14+3b706ea54d0ad303c85d5ccd35633ae69405570b)
+  127.0.0.1:8091 (metrics/health)
+  ChatGPT Plus Developer Mode E2E: PASS
+
 CORE:
-  Python 3.9 stdlib
+  Python >= 3.9 (runtime: 3.13.5 en Trixie; histórico: 3.9.2 en Bullseye)
   Single security authority
 
 REGISTRY:
-  SQLite primary
+  SQLite schema v1 primary
   JSON fallback
 
 TOOLS:
-  9 active deterministic tools
-  file_stat, git_status, health, list_directory,
-  list_targets, read_file, run_task, target_status, write_file
+  14 active deterministic tools (Tool Catalog v3)
+  Target tools (9): file_stat, git_status, health, list_directory,
+    list_targets, read_file, run_task, target_status, write_file
+  Appliance admin tools (5): gateway_status, gateway_doctor, gateway_backup,
+    gateway_maintenance, gateway_reboot
 
 WRITE:
-  write_file IMPLEMENTED
+  write_file IMPLEMENTED (writes_enabled=false por defecto)
   atomic + expected_sha256 + panic switch
   apply_patch DEFERRED_FOR_SAFE_IMPLEMENTATION
 
 ARBITRARY SHELL: DISABLED / OUT OF V1
-AUTO UPDATE: NO
+AUTO UPDATE: NO (unattended-upgrades de seguridad únicamente)
 
 OS:
-  Raspbian 11 Bullseye — verified hardware baseline
-  Physical OS migration deferred post-v1
+  Raspberry Pi OS 13 Trixie — production baseline
+  microSD Raspbian 11 Bullseye — preserved physical rollback
 
 KISS: MANDATORY
 REUSE-FIRST: MANDATORY
 ```
 
+### 17.1 Histórico: Estado al cierre de v1.0.1 (Bullseye)
+
+```text
+PROJECT: MCP-Pi Gateway
+DOCUMENT: 1.0.1
+RELEASE: v1.0.1 — Hygiene Patch Release
+CURRENT STATE: OPERATIONAL_STABLE (Histórico 10-Sep-2026)
+GATEWAY: MCP-Pi (192.168.68.85, Raspberry Pi Model A+ Rev 1.1, ARMv6 / 176 MiB RAM)
+ACTIVE TARGET: termux-main (192.168.68.72:8022)
+TOOLS: 9 active deterministic tools
+OS: Raspbian 11 Bullseye — verified hardware baseline (physical OS migration deferred post-v1)
+```
+
 ## 18. Referencias externas registradas para esta versión
 
-Estas referencias forman parte de la base documental de v1.0.1 y deben revisarse de nuevo cuando cambie una fase que dependa de ellas:
+Estas referencias forman parte de la base documental consolidada de v1.2.1 y deben revisarse de nuevo cuando cambie una fase que dependa de ellas:
 
 - Model Context Protocol — Specification 2026-07-28.
 - Official MCP Go SDK — compatibility matrix and v1.7.0 release notes.
