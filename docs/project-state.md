@@ -52,9 +52,9 @@ No basta con demostrar conectividad. Debemos demostrar un ciclo real donde un pr
 
 | Campo | Estado actual |
 |---|---|
-| Software | **MCP-Pi Gateway v1.2.0** |
-| Release commit | `df5fa43fe674faaf14b6e557f79b256452c75b22` |
-| `main` / `develop` en release | `df5fa43fe674faaf14b6e557f79b256452c75b22` |
+| Software | **MCP-Pi Gateway v1.2.1** |
+| Release tag | `v1.2.1` |
+| `main` / `develop` en release | `v1.2.1` |
 | Hardware | Raspberry Pi Model A+ Rev 1.1, ARMv6 |
 | OS producción | Raspberry Pi OS / Debian 13 Trixie, 32-bit `armv6l` |
 | Gateway hostname | `MCP-Pi` |
@@ -64,7 +64,7 @@ No basta con demostrar conectividad. Debemos demostrar un ciclo real donde un pr
 | MCP HTTP | `127.0.0.1:8090/mcp` |
 | Registry | SQLite, `PRAGMA user_version=1` |
 | Writes globales | `false` por defecto |
-| Doctor | `19/19 HEALTHY` en aceptación v1.2.0 |
+| Doctor | `19/19 HEALTHY` en aceptación v1.2.1 |
 | Physical rollback | microSD Bullseye original preservada `KNOWN_GOOD` |
 
 Fingerprint administrativa canónica de MCP-Pi:
@@ -380,13 +380,13 @@ No mover ni reescribir tags históricos.
 v1.0.1  baseline inicial estabilizado
 v1.1.1  tunnel auth / anti-spoofing hardening
 v1.2.0  dynamic target endpoint resolution & cryptographic discovery
+v1.2.1  Secure MCP Tunnel deterministic readiness & autorecovery hardening
 ```
 
 Release estable actual:
 
 ```text
-v1.2.0
-commit df5fa43fe674faaf14b6e557f79b256452c75b22
+v1.2.1
 ```
 
 La evidencia detallada vive en:

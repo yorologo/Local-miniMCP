@@ -7,12 +7,12 @@
 | Campo | Valor |
 | --- | --- |
 | Rol del documento | Contrato operativo para agentes |
-| Software baseline | **MCP-Pi Gateway v1.2.0** |
-| Release estable | `v1.2.0` |
+| Software baseline | **MCP-Pi Gateway v1.2.1** |
+| Release estable | `v1.2.1` |
 | Hardware | Raspberry Pi Model A+ Rev 1.1 — ARMv6 |
 | Baseline histórico validado | Bullseye / Debian 11 — **preservado como physical rollback** |
 | OS de producción actual | **Raspbian GNU/Linux 13 / Debian 13 Trixie — armv6l** |
-| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (v1.2.0 Released) |
+| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (v1.2.1 Released) |
 | Principios rectores | **KISS + Reuse First + Least Privilege + Deny by Default + Fail Closed** |
 
 
@@ -431,15 +431,15 @@ grpck -r
 ### 9.1 Release actual
 
 ```text
-MCP-Pi Gateway: v1.2.0
-Tag: v1.2.0
+MCP-Pi Gateway: v1.2.1
+Tag: v1.2.1
 Artifact: mcp-gateway-adapter-linux-armv6
 ```
 
 Contratos congelados:
 
 ```text
-Gateway: 1.2.0
+Gateway: 1.2.1
 Core API: 1
 Bridge API: 1
 Tool Catalog: 3
@@ -477,6 +477,7 @@ v1.0.0     -> d52f848dbf1e0c96e5a78806a664d4f2badbe0b8
 v1.0.1     -> bcd8fe907f9e305733896f1d286d04d57a8b1f5e
 v1.1.0     -> b2f35d38c8ee2d0eaff6b09be0f1e3e431d859a6
 v1.1.1     -> ff9f653232787cb52e0a47a22f13b05cb395f902
+v1.2.0     -> df5fa43fe674faaf14b6e557f79b256452c75b22
 ```
 
 Nunca:

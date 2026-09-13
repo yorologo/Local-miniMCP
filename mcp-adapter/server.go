@@ -848,7 +848,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		resp, _ := json.Marshal(map[string]any{
 			"server": map[string]any{
 				"name":    "mcp-gateway-adapter",
-				"version": "1.2.0",
+				"version": "1.2.1",
 			},
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{
