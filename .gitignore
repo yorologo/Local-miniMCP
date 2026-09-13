@@ -9,6 +9,7 @@ __pycache__/
 *admin-secret*
 tailwind/node_modules/
 .superpowers/
+.worktrees/
 mcp-adapter/mcp-gateway-adapter*
 mcp-adapter/*.armv6
 *.armv6
