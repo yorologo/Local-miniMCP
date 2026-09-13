@@ -1,6 +1,6 @@
 # Estado Actual — Local-miniMCP / MCP-Pi Gateway
 
-**Última actualización:** 2026-09-12  
+**Última actualización:** 2026-09-13  
 **Fase operativa:** `POST_V1_OPERATION_AND_MAINTENANCE`  
 **Misión canónica:** [`docs/mission.md`](mission.md)
 
@@ -54,7 +54,8 @@ No basta con demostrar conectividad. Debemos demostrar un ciclo real donde un pr
 |---|---|
 | Software | **MCP-Pi Gateway v1.2.1** |
 | Release tag | `v1.2.1` |
-| `main` / `develop` en release | `v1.2.1` |
+| `main` | `v1.2.1` (`0f1ed929757127f7666cfa23b5615f4868372253`) — línea de release inmutable |
+| `develop` | Post-release operation, maintenance & DR acceptance |
 | Hardware | Raspberry Pi Model A+ Rev 1.1, ARMv6 |
 | OS producción | Raspberry Pi OS / Debian 13 Trixie, 32-bit `armv6l` |
 | Gateway hostname | `MCP-Pi` |
@@ -120,29 +121,105 @@ IP                        != IDENTITY
 ```text
 MCP_PI:                       PRODUCTION_READY
 TERMUX_MAIN:                  PRODUCTION_READY / SELF_HEALING
+ANDROID_COLD_REBOOT_RECOVERY: PASS
 DYNAMIC_TARGET_DISCOVERY:     PRODUCTION_READY
 DHCP_IP_CHANGE_RECOVERY:      PASS
 NETWORK_INTERRUPTION:         PASS
 MCP_PI_REBOOT:                PASS
+SECURE_MCP_TUNNEL:            PRODUCTION_READY
+DISASTER_RECOVERY:            ACCEPTED_WITHOUT_BARE_METAL_RESTORE
 SCHEMA:                       v1
 WRITES:                       false
 DOCTOR:                       19/19
 LOCAL_STACK:                  COMPLETE
 ```
 
-Evidencia principal de `v1.2.0`:
+Evidencia principal de resiliencia y hardening local:
 
 - Python regression: `131/131 PASS`;
 - Go adapter: `11/11 PASS`;
 - MCP-Pi discovery tests: `17/17 PASS`;
 - stale-IP recovery real: `5.47 s`;
 - network interruption controlada: `81.9 s`, recuperación automática;
-- MCP-Pi controlled reboot: `PASS`;
+- MCP-Pi controlled reboot: `PASS` (tiempo total SSH ~3m 32s, túnel ~5m 16s determinista);
 - DB integrity: `ok`;
 - nuevas dependencias externas: `0`;
 - nuevos daemons para discovery: `0`.
 
-El reboot Android completo permanece como prueba operacional diferida; no bloquea el baseline local actual.
+### 4.1 Android Cold-Reboot Persistence Acceptance
+
+Reboot físico real de Android (`termux-main`) ejecutado y validado operacionalmente:
+
+- **Ejecución física:** reboot real del dispositivo móvil sin apertura manual de Termux ni interacción de usuario en la UI.
+- **Auto-start de servicios background:** Termux:Boot arrancó exitosamente `sshd` (puerto 8022), `termux-wake-lock`, watchdog y `crond`.
+- **Métricas de recuperación observadas:**
+  - Recuperación de conectividad e interfaz SSH (puerto 8022): ~48.8 s.
+  - Recuperación y disponibilidad de Target por el Gateway: ~49.6 s.
+- **Intervención manual en Gateway:** `NO` (0 comandos manuales en MCP-Pi).
+- **Auto-recuperación de servicios y daemons:**
+  - `sshd` auto-start: `YES`.
+  - `watchdog` auto-start: `YES`.
+  - `crond` auto-start: `YES`.
+- **Verificación funcional de herramientas del Target:**
+  - `target_status`: `PASS`.
+  - `git_status`: `PASS`.
+  - `read_file`: `PASS`.
+- **Precisión técnica:** La IP del dispositivo se mantuvo idéntica (`192.168.68.84`) tras el reinicio; la validación verificó la persistencia y recuperación vía Fast Path con pinning criptográfico confirmado (`SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0`) sin constituir una nueva prueba de redescubrimiento DHCP.
+
+### 4.2 Disaster Recovery y Política de Respaldo
+
+Se ejecutó y validó la estrategia de recuperación ante desastres (DR) para el appliance MCP-Pi v1.2.1:
+
+```text
+DISASTER_RECOVERY:
+
+BACKUP_CREATION:             PASS
+OFF_DEVICE_ENCRYPTED_BACKUP: PASS
+AES256_HEADER_ENCRYPTION:    PASS
+LOGICAL_RESTORE_ACCEPTANCE:  PASS
+SHADOW_RUNTIME_ACCEPTANCE:   PASS
+RESTORE_GAPS:                0
+
+DISASTER_RECOVERY_READINESS: ACCEPTED_WITHOUT_BARE_METAL_RESTORE
+BARE_METAL_RESTORE_TEST:     NOT_EXECUTED_BY_USER_CHOICE
+```
+
+#### Política de Respaldo Actual
+
+1. **Appliance Source Backup:**
+   - Respaldo completo y autocontenido generado localmente en el appliance con manifest canónico estructurado (`/home/yorologo/backups/`).
+2. **Off-Device DR Archive:**
+   - Copia privada off-device almacenada en la estación de trabajo local (Windows), protegida mediante contenedor cifrado 7-Zip con algoritmo AES-256 y cifrado de cabeceras (`-mhe=on`).
+   - Copias de trabajo en texto claro eliminadas de la estación de trabajo tras verificar la integridad del contenedor cifrado.
+3. **Protección de Credenciales y Secretos:**
+   - Contraseña del archivo cifrado custodiada separadamente por el usuario en gestor de contraseñas externo (`PASSWORD_STORED_SEPARATELY: YES`).
+   - Cero contraseñas, claves privadas, tokens ni credenciales expuestas en Git, scripts o documentación.
+   - Respaldo excluido de sincronización cloud pública.
+
+#### Aceptación de Restauración Lógica No Destructiva
+
+Validación de recuperación integral ejecutada en un entorno de staging aislado (`/tmp`) en MCP-Pi sin modificar producción:
+
+- **Integridad y consistencia de datos:**
+  - Snapshot de SQLite consistente verificado con `PRAGMA integrity_check=ok` y `PRAGMA user_version=1`.
+  - Tablas y conteos de filas idénticos al estado de producción.
+- **Identidades criptográficas preservadas:**
+  - Clave de host SSH de MCP-Pi verificada (`SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E`).
+  - Clave cliente del Gateway (`SHA256:Vd61kRdCrV+JbNYnPyKPLVEQBi7xsQ24Dbug+epdMEY`).
+  - Pinning del host target `termux-main` (`SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0`).
+- **Permisos y secretos de runtime:**
+  - Ficheros sensibles y sockets con permisos restrictivos (0600) y ownership esperado.
+- **Binarios de runtime recuperables:**
+  - `openai/tunnel-client` (v0.0.14+3b706ea) y adaptador Go `mcp-gateway-adapter` (v1.2.1) íntegros y ejecutables.
+- **Aceptación de Shadow Runtime:**
+  - Instancia shadow del Gateway levantada sobre puerto de loopback aislado (`127.0.0.1:18090`).
+  - Endpoints de salud validados: `/live` retornó HTTP 200, `/ready` retornó HTTP 200.
+- **Invariante productiva:**
+  - Cero discrepancias (Restore Gaps: 0).
+  - Limpieza completa del staging tras la prueba; producción permaneció 100% intacta y en ejecución continua.
+- **Alcance de Bare Metal:**
+  - El usuario decidió explícitamente prescindir de almacenamiento secundario físico adicional (`SECOND_OFFLINE_DR_COPY = WAIVED_BY_USER`, `BARE_METAL_CLEAN_RESTORE = NOT_PLANNED`).
+  - La preparación ante desastres se declara formalmente aceptada a nivel lógico y shadow runtime (`ACCEPTED_WITHOUT_BARE_METAL_RESTORE`).
 
 ---
 
@@ -402,9 +479,8 @@ La evidencia detallada vive en:
 ## 12. Próxima acción
 
 ```text
-Investigar y validar la ruta oficial mínima para:
-OpenAI → MCP-Pi → target
-sin intervención manual del usuario y sin depender de infraestructura propietaria de terceros.
+Retornar a POST_V1_OPERATION_AND_MAINTENANCE sin abrir nuevos frentes
+hasta que exista un trigger real.
 ```
 
-Aplicar KISS y reuse-first: primero capacidades oficiales existentes; construir únicamente lo específico de MCP-Pi.
+Mantener operación estable v1.2.1, retención de backup off-device cifrado, monitoreo pasivo y preservación de invariantes de seguridad. No reabrir frentes de integración hasta la disponibilidad de superficies consumidoras oficiales compatibles o triggers reales.
