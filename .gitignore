@@ -18,5 +18,10 @@ bin/*
 !bin/mcp-gateway-reboot
 *.tar.gz
 scratch/
-
-
+backups/
+*.sha256
+*.token
+*.env
+tunnel.env
+tunnel-mcp.token
+manifest-*.json
