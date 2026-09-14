@@ -255,7 +255,49 @@ class TestGatewayTools(unittest.TestCase):
         res = self.tools.write_file("mock-target", "mock-proj", "bad.txt", "bad\0content", create=True)
         self.assertEqual(res["error"]["code"], "INVALID_ENCODING")
 
+    def test_run_command_and_extended_fs_tools(self):
+        self.tools._is_writes_enabled = lambda: True
+        self.config._data["targets"]["mock-target"]["projects"]["mock-proj"]["write"] = True
+
+        # run_command default cwd
+        res = self.tools.run_command("mock-target", "mock-proj", "echo hello")
+        self.assertTrue(res["ok"], f"run_command failed: {res}")
+        self.assertIn("stdout", res["result"])
+        self.assertIn("effective_cwd", res["result"])
+        self.assertEqual(res["result"]["effective_cwd"], "/home/tester/proj")
+
+        # append_file
+        res = self.tools.append_file("mock-target", "mock-proj", "existing.txt", "more text\n")
+        self.assertTrue(res["ok"], f"append_file failed: {res}")
+        self.assertEqual(res["result"]["bytes_appended"], 10)
+
+        # mkdir
+        res = self.tools.mkdir("mock-target", "mock-proj", "new_dir")
+        self.assertTrue(res["ok"], f"mkdir failed: {res}")
+        self.assertTrue(res["result"]["created"])
+
+        # copy_file
+        res = self.tools.copy_file("mock-target", "mock-proj", "existing.txt", "existing_copy.txt")
+        self.assertTrue(res["ok"], f"copy_file failed: {res}")
+        self.assertTrue(res["result"]["copied"])
+
+        # move_file
+        res = self.tools.move_file("mock-target", "mock-proj", "existing.txt", "existing_moved.txt")
+        self.assertTrue(res["ok"], f"move_file failed: {res}")
+        self.assertTrue(res["result"]["moved"])
+
+        # delete_file
+        res = self.tools.delete_file("mock-target", "mock-proj", "existing.txt")
+        self.assertTrue(res["ok"], f"delete_file failed: {res}")
+        self.assertTrue(res["result"]["deleted"])
+
+        # search
+        res = self.tools.search("mock-target", "mock-proj", "hello")
+        self.assertTrue(res["ok"], f"search failed: {res}")
+        self.assertIn("matches", res["result"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1006,3 +1006,473 @@ class GatewayTools:
         except Exception as e:
             return self._error_response("gateway_reboot", "INTERNAL_ERROR", str(e), start_time=start_time)
 
+    def run_command(
+        self,
+        target: str,
+        project: str,
+        command: str,
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        timeout: Optional[int] = None,
+        stdin: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute a shell command in the target worker environment."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("run_command", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        if not command or not isinstance(command, str) or not command.strip():
+            return self._error_response("run_command", "INVALID_ARGUMENTS", "Command must be a non-empty string", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            # Resolve effective_cwd
+            if not cwd or str(cwd).strip() in (".", ""):
+                effective_cwd = root_canonical
+            elif os.path.isabs(cwd):
+                norm_cwd = os.path.normpath(cwd)
+                validate_canonical_path(norm_cwd, root_canonical)
+                effective_cwd = norm_cwd
+            else:
+                norm_rel = validate_relative_path(cwd)
+                cand_cwd = os.path.normpath(os.path.join(root_canonical, norm_rel))
+                validate_canonical_path(cand_cwd, root_canonical)
+                effective_cwd = cand_cwd
+
+            # Scope principle: block obvious attempts to tamper with other private project directories outside MCP_Local
+            import re
+            m = re.search(r'(?:~/|/data/data/com\.termux/files/home/)[Pp]rojects/([^/\s\'";]+)', command)
+            if m:
+                proj_name = m.group(1)
+                expected_proj = os.path.basename(root.rstrip("/"))
+                if proj_name != expected_proj:
+                    raise PolicyError(f"Access to unauthorized project '{proj_name}' is blocked", code="PATH_OUTSIDE_ALLOWED_ROOT")
+
+            input_bytes = stdin.encode("utf-8") if stdin else None
+            effective_timeout = int(timeout) if timeout else None
+
+            res = self.transport.run_command(
+                target=target_cfg,
+                remote_cmd=command,
+                timeout=effective_timeout,
+                cwd=effective_cwd,
+                env=env if isinstance(env, dict) else None,
+                input_data=input_bytes,
+                request_id=self.request_id,
+            )
+
+            duration_sec = round(res.duration_ms / 1000.0, 3)
+            result_data = {
+                "stdout": res.stdout,
+                "stderr": res.stderr,
+                "exit_code": res.exit_code,
+                "timed_out": getattr(res, "timed_out", False),
+                "duration": duration_sec,
+                "effective_cwd": effective_cwd,
+            }
+
+            self._record_audit(
+                "RUN_COMMAND",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1 if res.exit_code == 0 else 0,
+                detail={"command": command[:100], "exit_code": res.exit_code, "cwd": effective_cwd},
+            )
+
+            return self._success_response("run_command", result_data, target, project, start_time)
+
+        except PolicyError as e:
+            self._record_audit(
+                "DENY",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=0,
+                error_code=e.code,
+                detail={"error": str(e), "command": command[:100]},
+            )
+            return self._error_response("run_command", e.code, str(e), target, project, start_time)
+        except SSHError as e:
+            if e.code == "SSH_TIMEOUT":
+                duration_sec = round((time.monotonic() - start_time), 3)
+                result_data = {
+                    "stdout": "",
+                    "stderr": str(e),
+                    "exit_code": 124,
+                    "timed_out": True,
+                    "duration": duration_sec,
+                    "effective_cwd": effective_cwd if 'effective_cwd' in locals() else root,
+                }
+                return self._success_response("run_command", result_data, target, project, start_time)
+            self._record_audit(
+                "ERROR",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=0,
+                error_code=e.code,
+                detail={"error": str(e)},
+            )
+            return self._error_response("run_command", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("run_command", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def append_file(self, target: str, project: str, path: str, content: str) -> Dict[str, Any]:
+        """Append UTF-8 content to an existing file in the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("append_file", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        writes_enabled = str(self._get_setting("writes_enabled", "true")).lower() == "true"
+        if not writes_enabled:
+            return self._error_response("append_file", "WRITES_DISABLED", "Controlled writes are disabled", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "write")
+
+            content_bytes = validate_content_utf8(content)
+            max_write_bytes = int(self._get_setting("max_write_bytes", 262144))
+            validate_write_size(content_bytes, max_write_bytes)
+
+            norm_rel_path = validate_write_relative_path(path)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            probe = self.transport.probe_remote_path(target_cfg, candidate_full_path)
+            if not probe.get("exists"):
+                raise PolicyError(f"File not found: {path}", code="NOT_FOUND")
+            if probe.get("is_dir") or probe.get("is_symlink"):
+                raise PolicyError(f"Cannot append to directory or symlink: {path}", code="INVALID_PATH")
+
+            dest_canon = probe.get("canonical_path", candidate_full_path)
+            validate_canonical_path(dest_canon, root_canonical)
+
+            append_script = (
+                f"import sys, hashlib; p = {json.dumps(dest_canon)}; "
+                f"data = sys.stdin.buffer.read(); "
+                f"open(p, 'ab').write(data); "
+                f"print(hashlib.sha256(open(p, 'rb').read()).hexdigest())"
+            )
+            res = self.transport.run_command(
+                target=target_cfg,
+                remote_cmd=f"python3 -c {shlex.quote(append_script)}",
+                input_data=content_bytes,
+                timeout=15,
+            )
+            if res.exit_code != 0:
+                raise PolicyError(f"Append failed: {res.stderr}", code="WRITE_FAILED")
+
+            new_sha256 = res.stdout.strip()
+            result_data = {
+                "path": norm_rel_path,
+                "bytes_appended": len(content_bytes),
+                "new_sha256": new_sha256,
+            }
+            self._record_audit(
+                "APPEND_FILE",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"path": norm_rel_path, "bytes": len(content_bytes)},
+            )
+            return self._success_response("append_file", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("append_file", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("append_file", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def delete_file(self, target: str, project: str, path: str) -> Dict[str, Any]:
+        """Delete a file or empty directory within the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("delete_file", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        writes_enabled = str(self._get_setting("writes_enabled", "true")).lower() == "true"
+        if not writes_enabled:
+            return self._error_response("delete_file", "WRITES_DISABLED", "Controlled writes are disabled", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "write")
+
+            norm_rel_path = validate_write_relative_path(path)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            if candidate_full_path == root_canonical:
+                raise PolicyError("Deleting project root is forbidden", code="INVALID_PATH")
+
+            probe = self.transport.probe_remote_path(target_cfg, candidate_full_path)
+            if not probe.get("exists"):
+                raise PolicyError(f"File not found: {path}", code="NOT_FOUND")
+
+            dest_canon = probe.get("canonical_path", candidate_full_path)
+            validate_canonical_path(dest_canon, root_canonical)
+
+            del_script = (
+                f"import os; p = {json.dumps(dest_canon)}; "
+                f"os.remove(p) if os.path.isfile(p) or os.path.islink(p) else os.rmdir(p)"
+            )
+            res = self.transport.run_command(
+                target=target_cfg,
+                remote_cmd=f"python3 -c {shlex.quote(del_script)}",
+                timeout=15,
+            )
+            if res.exit_code != 0:
+                raise PolicyError(f"Delete failed: {res.stderr}", code="DELETE_FAILED")
+
+            result_data = {"path": norm_rel_path, "deleted": True}
+            self._record_audit(
+                "DELETE_FILE",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"path": norm_rel_path},
+            )
+            return self._success_response("delete_file", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("delete_file", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("delete_file", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def copy_file(self, target: str, project: str, source_path: str, dest_path: str) -> Dict[str, Any]:
+        """Copy a file within the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("copy_file", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        writes_enabled = str(self._get_setting("writes_enabled", "true")).lower() == "true"
+        if not writes_enabled:
+            return self._error_response("copy_file", "WRITES_DISABLED", "Controlled writes are disabled", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "write")
+
+            norm_src = validate_write_relative_path(source_path)
+            norm_dst = validate_write_relative_path(dest_path)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            src_full = os.path.join(root_canonical, norm_src)
+            dst_full = os.path.join(root_canonical, norm_dst)
+
+            probe_src = self.transport.probe_remote_path(target_cfg, src_full)
+            if not probe_src.get("exists"):
+                raise PolicyError(f"Source file not found: {source_path}", code="NOT_FOUND")
+
+            src_canon = probe_src.get("canonical_path", src_full)
+            validate_canonical_path(src_canon, root_canonical)
+
+            dst_parent = os.path.dirname(dst_full)
+            validate_canonical_path(dst_parent, root_canonical)
+
+            cp_script = f"import shutil; shutil.copy2({json.dumps(src_canon)}, {json.dumps(dst_full)})"
+            res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(cp_script)}", timeout=15)
+            if res.exit_code != 0:
+                raise PolicyError(f"Copy failed: {res.stderr}", code="WRITE_FAILED")
+
+            result_data = {"source": norm_src, "dest": norm_dst, "copied": True}
+            self._record_audit(
+                "COPY_FILE",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"source": norm_src, "dest": norm_dst},
+            )
+            return self._success_response("copy_file", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("copy_file", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("copy_file", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def move_file(self, target: str, project: str, source_path: str, dest_path: str) -> Dict[str, Any]:
+        """Move or rename a file within the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("move_file", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        writes_enabled = str(self._get_setting("writes_enabled", "true")).lower() == "true"
+        if not writes_enabled:
+            return self._error_response("move_file", "WRITES_DISABLED", "Controlled writes are disabled", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "write")
+
+            norm_src = validate_write_relative_path(source_path)
+            norm_dst = validate_write_relative_path(dest_path)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            src_full = os.path.join(root_canonical, norm_src)
+            dst_full = os.path.join(root_canonical, norm_dst)
+
+            probe_src = self.transport.probe_remote_path(target_cfg, src_full)
+            if not probe_src.get("exists"):
+                raise PolicyError(f"Source file not found: {source_path}", code="NOT_FOUND")
+
+            src_canon = probe_src.get("canonical_path", src_full)
+            validate_canonical_path(src_canon, root_canonical)
+
+            dst_parent = os.path.dirname(dst_full)
+            validate_canonical_path(dst_parent, root_canonical)
+
+            mv_script = f"import shutil; shutil.move({json.dumps(src_canon)}, {json.dumps(dst_full)})"
+            res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(mv_script)}", timeout=15)
+            if res.exit_code != 0:
+                raise PolicyError(f"Move failed: {res.stderr}", code="WRITE_FAILED")
+
+            result_data = {"source": norm_src, "dest": norm_dst, "moved": True}
+            self._record_audit(
+                "MOVE_FILE",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"source": norm_src, "dest": norm_dst},
+            )
+            return self._success_response("move_file", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("move_file", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("move_file", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def mkdir(self, target: str, project: str, path: str, parents: bool = True) -> Dict[str, Any]:
+        """Create a directory within the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("mkdir", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        writes_enabled = str(self._get_setting("writes_enabled", "true")).lower() == "true"
+        if not writes_enabled:
+            return self._error_response("mkdir", "WRITES_DISABLED", "Controlled writes are disabled", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "write")
+
+            norm_rel_path = validate_write_relative_path(path)
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            validate_canonical_path(candidate_full_path, root_canonical)
+
+            mkdir_script = f"import os; os.makedirs({json.dumps(candidate_full_path)}, exist_ok={bool(parents)})"
+            res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(mkdir_script)}", timeout=15)
+            if res.exit_code != 0:
+                raise PolicyError(f"mkdir failed: {res.stderr}", code="WRITE_FAILED")
+
+            result_data = {"path": norm_rel_path, "created": True}
+            self._record_audit(
+                "MKDIR",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"path": norm_rel_path},
+            )
+            return self._success_response("mkdir", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("mkdir", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("mkdir", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+    def search(self, target: str, project: str, pattern: str, path: Optional[str] = ".", is_regex: bool = False) -> Dict[str, Any]:
+        """Search text/patterns within files in the project."""
+        start_time = time.monotonic()
+        gw_check = self._check_gateway_enabled("search", target=target, project=project, start_time=start_time)
+        if gw_check:
+            return gw_check
+
+        if not pattern:
+            return self._error_response("search", "INVALID_ARGUMENTS", "Pattern must not be empty", target, project, start_time)
+
+        try:
+            target_cfg = self.config.get_target(target)
+            project_cfg = self.config.get_project(target, project)
+            check_capability(project_cfg, "read")
+
+            rel_dir = validate_relative_path(path or ".")
+            root = project_cfg["root"]
+            root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
+            validate_canonical_path(root_canonical, root)
+
+            search_dir = os.path.normpath(os.path.join(root_canonical, rel_dir))
+            validate_canonical_path(search_dir, root_canonical)
+
+            search_script = (
+                f"import os, re, json; "
+                f"pat = {json.dumps(pattern)}; is_re = {json.dumps(bool(is_regex))}; "
+                f"regex = re.compile(pat) if is_re else None; "
+                f"matches = []; base = {json.dumps(search_dir)}; "
+                f"for r, dirs, files in os.walk(base): "
+                f"    dirs[:] = [d for d in dirs if not d.startswith('.git') and not d.startswith('__pycache__')]; "
+                f"    for f in files: "
+                f"        fp = os.path.join(r, f); "
+                f"        try: "
+                f"            with open(fp, 'r', encoding='utf-8', errors='ignore') as fh: "
+                f"                for idx, line in enumerate(fh, 1): "
+                f"                    hit = (regex.search(line) if is_re else (pat in line)); "
+                f"                    if hit: "
+                f"                        rel_f = os.path.relpath(fp, {json.dumps(root_canonical)}); "
+                f"                        matches.append({{'file': rel_f, 'line': idx, 'text': line.strip()[:200]}}); "
+                f"                        if len(matches) >= 100: break "
+                f"        except Exception: pass\n"
+                f"        if len(matches) >= 100: break\n"
+                f"    if len(matches) >= 100: break\n"
+                f"print(json.dumps(matches))"
+            )
+            res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(search_script)}", timeout=20)
+            matches = []
+            if res.exit_code == 0 and res.stdout.strip():
+                try:
+                    matches = json.loads(res.stdout)
+                except Exception:
+                    pass
+
+            result_data = {"pattern": pattern, "path": rel_dir, "matches": matches, "count": len(matches)}
+            self._record_audit(
+                "SEARCH",
+                target_id=target,
+                project_id=project,
+                start_time=start_time,
+                success=1,
+                detail={"pattern": pattern, "count": len(matches)},
+            )
+            return self._success_response("search", result_data, target, project, start_time)
+        except PolicyError as e:
+            return self._error_response("search", e.code, str(e), target, project, start_time)
+        except Exception as e:
+            return self._error_response("search", "INTERNAL_ERROR", str(e), target, project, start_time)
+
+
