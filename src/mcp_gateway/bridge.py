@@ -25,12 +25,20 @@ ALLOWED_TOOLS = {
     "git_status",
     "run_task",
     "write_file",
+    "append_file",
+    "delete_file",
+    "copy_file",
+    "move_file",
+    "mkdir",
+    "search",
+    "run_command",
     "gateway_status",
     "gateway_doctor",
     "gateway_backup",
     "gateway_maintenance",
     "gateway_reboot",
 }
+
 
 
 def get_tools_catalog(client_id: Optional[str] = None, registry: Optional[Any] = None) -> List[str]:
@@ -233,6 +241,130 @@ def invoke_tool(
                 expected_sha256=expected_sha,
                 dry_run=dry_run,
                 create=create,
+            )
+
+        elif tool_name == "append_file":
+            target = args.get("target")
+            project = args.get("project")
+            path = args.get("relative_path") or args.get("path")
+            content = args.get("content")
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not path or not isinstance(path, str) or content is None or not isinstance(content, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', 'path' (or 'relative_path'), and 'content' are required",
+                    },
+                }
+            return gateway.append_file(target=target, project=project, path=path, content=content)
+
+        elif tool_name == "delete_file":
+            target = args.get("target")
+            project = args.get("project")
+            path = args.get("relative_path") or args.get("path")
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not path or not isinstance(path, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', and 'path' (or 'relative_path') are required",
+                    },
+                }
+            return gateway.delete_file(target=target, project=project, path=path)
+
+        elif tool_name == "copy_file":
+            target = args.get("target")
+            project = args.get("project")
+            source_path = args.get("source_path")
+            dest_path = args.get("dest_path")
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not source_path or not isinstance(source_path, str) or not dest_path or not isinstance(dest_path, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', 'source_path', and 'dest_path' are required",
+                    },
+                }
+            return gateway.copy_file(target=target, project=project, source_path=source_path, dest_path=dest_path)
+
+        elif tool_name == "move_file":
+            target = args.get("target")
+            project = args.get("project")
+            source_path = args.get("source_path")
+            dest_path = args.get("dest_path")
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not source_path or not isinstance(source_path, str) or not dest_path or not isinstance(dest_path, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', 'source_path', and 'dest_path' are required",
+                    },
+                }
+            return gateway.move_file(target=target, project=project, source_path=source_path, dest_path=dest_path)
+
+        elif tool_name == "mkdir":
+            target = args.get("target")
+            project = args.get("project")
+            path = args.get("relative_path") or args.get("path")
+            parents = bool(args.get("parents", True))
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not path or not isinstance(path, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', and 'path' (or 'relative_path') are required",
+                    },
+                }
+            return gateway.mkdir(target=target, project=project, path=path, parents=parents)
+
+        elif tool_name == "search":
+            target = args.get("target")
+            project = args.get("project")
+            pattern = args.get("pattern")
+            path = args.get("relative_path") or args.get("path", ".")
+            is_regex = bool(args.get("is_regex", False))
+            if not target or not isinstance(target, str) or not project or not isinstance(project, str) or not pattern or not isinstance(pattern, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target', 'project', and 'pattern' are required",
+                    },
+                }
+            return gateway.search(target=target, project=project, pattern=pattern, path=path, is_regex=is_regex)
+
+        elif tool_name == "run_command":
+            target = args.get("target")
+            command = args.get("command")
+            project = args.get("project")
+            cwd = args.get("cwd")
+            timeout = args.get("timeout")
+            stdin = args.get("stdin")
+            env = args.get("env")
+
+            if not target or not isinstance(target, str) or not command or not isinstance(command, str):
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": {
+                        "code": "INVALID_ARGUMENTS",
+                        "message": "Missing or invalid required arguments: 'target' and 'command' are required",
+                    },
+                }
+            return gateway.run_command(
+                target=target,
+                command=command,
+                project=project,
+                cwd=cwd,
+                env=env,
+                timeout=timeout,
+                stdin=stdin,
             )
 
         elif tool_name == "gateway_status":

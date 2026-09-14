@@ -91,7 +91,7 @@ class TestBridge(unittest.TestCase):
         self.assertTrue(output["ok"])
         tools = output["tools"]
         self.assertIsInstance(tools, list)
-        self.assertIn(len(tools), (9, 14))
+        self.assertIn(len(tools), (9, 14, 21))
         # Check alphabetical order
         self.assertEqual(tools, sorted(tools))
 
@@ -141,6 +141,26 @@ class TestBridge(unittest.TestCase):
         self.assertFalse(res_hidden["ok"])
         self.assertEqual(res_hidden["error"]["code"], "TOOL_NOT_ALLOWED")
         self.assertIn("lacks grant capability", res_hidden["error"]["message"])
+
+    def test_invoke_run_command_bridge(self):
+        with patch("mcp_gateway.bridge.GatewayTools") as mock_gw_cls:
+            mock_gw = mock_gw_cls.return_value
+            mock_gw.run_command.return_value = {
+                "ok": True,
+                "tool": "run_command",
+                "result": {"stdout": "hello\n", "exit_code": 0},
+            }
+            res = invoke_tool("run_command", {"target": "t1", "command": "echo hello", "client_id": "admin"}, registry=self.mock_registry)
+            self.assertTrue(res["ok"])
+            mock_gw.run_command.assert_called_once_with(
+                target="t1",
+                command="echo hello",
+                project=None,
+                cwd=None,
+                env=None,
+                timeout=None,
+                stdin=None,
+            )
 
 
 if __name__ == "__main__":
