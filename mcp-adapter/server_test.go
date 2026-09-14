@@ -23,9 +23,11 @@ func getTestBridgeConfig() *BridgeConfig {
 	if runtime.GOOS == "windows" {
 		pyBin = "python"
 	}
+	dbPath, _ := filepath.Abs("../gateway.db")
 	return &BridgeConfig{
 		PythonBin:  pyBin,
 		PythonPath: pyPath,
+		DBPath:     dbPath,
 		Timeout:    10 * time.Second,
 	}
 }
@@ -59,6 +61,9 @@ func TestServerToolDiscovery(t *testing.T) {
 	}
 
 	expectedTools := []string{
+		"append_file",
+		"copy_file",
+		"delete_file",
 		"file_stat",
 		"gateway_backup",
 		"gateway_doctor",
@@ -69,8 +74,12 @@ func TestServerToolDiscovery(t *testing.T) {
 		"health",
 		"list_directory",
 		"list_targets",
+		"mkdir",
+		"move_file",
 		"read_file",
+		"run_command",
 		"run_task",
+		"search",
 		"target_status",
 		"write_file",
 	}

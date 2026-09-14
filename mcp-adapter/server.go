@@ -333,6 +333,9 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 }
 
 var allKnownTools = []string{
+	"append_file",
+	"copy_file",
+	"delete_file",
 	"file_stat",
 	"gateway_backup",
 	"gateway_doctor",
@@ -343,8 +346,12 @@ var allKnownTools = []string{
 	"health",
 	"list_directory",
 	"list_targets",
+	"mkdir",
+	"move_file",
 	"read_file",
+	"run_command",
 	"run_task",
+	"search",
 	"target_status",
 	"write_file",
 }
@@ -645,6 +652,207 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 					},
 				},
 				"required": []string{"target", "project", "relative_path", "content"},
+			},
+		}, handler)
+	case "append_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "append_file",
+			Description: "Append UTF-8 text content to an existing file in an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to file within project root",
+					},
+					"content": map[string]any{
+						"type":        "string",
+						"description": "UTF-8 text content to append",
+					},
+				},
+				"required": []string{"target", "project", "relative_path", "content"},
+			},
+		}, handler)
+	case "delete_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "delete_file",
+			Description: "Delete a file or empty directory within an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to file or empty directory within project root",
+					},
+				},
+				"required": []string{"target", "project", "relative_path"},
+			},
+		}, handler)
+	case "copy_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "copy_file",
+			Description: "Copy a file within an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"source_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to source file",
+					},
+					"dest_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to destination file",
+					},
+				},
+				"required": []string{"target", "project", "source_path", "dest_path"},
+			},
+		}, handler)
+	case "move_file":
+		server.AddTool(&mcp.Tool{
+			Name:        "move_file",
+			Description: "Move or rename a file within an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"source_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to source file",
+					},
+					"dest_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to destination file",
+					},
+				},
+				"required": []string{"target", "project", "source_path", "dest_path"},
+			},
+		}, handler)
+	case "mkdir":
+		server.AddTool(&mcp.Tool{
+			Name:        "mkdir",
+			Description: "Create a directory within an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path of directory to create",
+					},
+					"parents": map[string]any{
+						"type":        "boolean",
+						"description": "Create parent directories if needed (default: true)",
+					},
+				},
+				"required": []string{"target", "project", "relative_path"},
+			},
+		}, handler)
+	case "search":
+		server.AddTool(&mcp.Tool{
+			Name:        "search",
+			Description: "Search text or regular expression patterns within files in an authorized project",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Project ID",
+					},
+					"pattern": map[string]any{
+						"type":        "string",
+						"description": "Text pattern or regex to search for",
+					},
+					"relative_path": map[string]any{
+						"type":        "string",
+						"description": "Relative path to search within (default: '.')",
+					},
+					"is_regex": map[string]any{
+						"type":        "boolean",
+						"description": "Treat pattern as regex (default: false)",
+					},
+				},
+				"required": []string{"target", "project", "pattern"},
+			},
+		}, handler)
+	case "run_command":
+		server.AddTool(&mcp.Tool{
+			Name:        "run_command",
+			Description: "Execute a command on the target system with full shell syntax, preserving environment while scoping file access",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"target": map[string]any{
+						"type":        "string",
+						"description": "Target ID (e.g. termux-main)",
+					},
+					"command": map[string]any{
+						"type":        "string",
+						"description": "Shell command line to execute",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "Authorized project ID (defaults to active project)",
+					},
+					"cwd": map[string]any{
+						"type":        "string",
+						"description": "Working directory (defaults to project root)",
+					},
+					"timeout": map[string]any{
+						"type":        "integer",
+						"description": "Execution timeout in seconds",
+					},
+					"stdin": map[string]any{
+						"type":        "string",
+						"description": "Standard input string to supply to command",
+					},
+					"env": map[string]any{
+						"type":        "object",
+						"description": "Optional environment variables key-value map",
+					},
+				},
+				"required": []string{"target", "command"},
 			},
 		}, handler)
 	}
