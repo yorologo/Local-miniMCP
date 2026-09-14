@@ -45,7 +45,36 @@ class TestWebSecurity(unittest.TestCase):
         self.assertEqual(res.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertEqual(res.headers.get("X-Frame-Options"), "DENY")
         self.assertEqual(res.headers.get("Referrer-Policy"), "no-referrer")
+        self.assertEqual(res.headers.get("Permissions-Policy"), "camera=(), microphone=(), geolocation=()")
+        csp = res.headers["Content-Security-Policy"]
+        self.assertIn("script-src 'self'", csp)
+        self.assertIn("style-src 'self'", csp)
+        self.assertNotIn("'unsafe-inline'", csp)
         self.assertIn("no-store", res.headers.get("Cache-Control", ""))
+
+    def test_untrusted_host_is_rejected(self):
+        res = self.client.get("/login", headers={"Host": "evil.example"})
+        self.assertEqual(res.status_code, 403)
+
+    def test_explicit_lan_host_can_be_allowlisted(self):
+        self.app.config["ADMIN_ALLOWED_HOSTS"] = {"127.0.0.1", "localhost", "192.168.68.55"}
+        res = self.client.get("/login", headers={"Host": "192.168.68.55"})
+        self.assertEqual(res.status_code, 200)
+
+    def test_production_admin_service_uses_ipv4_wildcard_bind(self):
+        unit_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "config", "systemd", "mcp-gateway-admin.service")
+        )
+        with open(unit_path, "r", encoding="utf-8") as f:
+            unit = f.read()
+        self.assertIn("Environment=MCP_ADMIN_HOST=0.0.0.0", unit)
+        self.assertIn("Environment=MCP_ADMIN_PORT=80", unit)
+        self.assertIn("Environment=MCP_ADMIN_ALLOWED_HOSTS=127.0.0.1,localhost,192.168.68.55,mcp-pi", unit)
+        self.assertIn("User=mcp-gateway", unit)
+        self.assertIn("Group=mcp-gateway", unit)
+        self.assertIn("CapabilityBoundingSet=CAP_NET_BIND_SERVICE", unit)
+        self.assertIn("AmbientCapabilities=CAP_NET_BIND_SERVICE", unit)
+        self.assertIn("NoNewPrivileges=true", unit)
 
     def test_csrf_missing_denied(self):
         self._login()

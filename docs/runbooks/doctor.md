@@ -6,7 +6,7 @@ Este runbook detalla los procedimientos para diagnosticar el estado del Gateway,
 
 ## Prerrequisitos
 
-- Acceso SSH administrativo a `MCP-Pi` (`192.168.68.85`) con usuario `yorologo`.
+- Acceso SSH administrativo a `MCP-Pi` (`192.168.68.55`) con usuario `yorologo`.
 - Servicios del Gateway instalados en `/home/mcp-gateway/mcp-gateway`.
 
 ---
@@ -16,7 +16,7 @@ Este runbook detalla los procedimientos para diagnosticar el estado del Gateway,
 Conectarse a la Raspberry Pi y ejecutar `doctor`:
 
 ```bash
-ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
 ```
 
 ### Salida Esperada
@@ -33,7 +33,7 @@ ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bi
 [PASS] Data Directory Permissions   : /home/mcp-gateway/.local/share/mcp-gateway mode is 0o700
 [PASS] SSH Key Permissions          : /home/mcp-gateway/.ssh/mcp_gateway_ed25519 mode is 0o600
 [PASS] Gateway Core Health          : Core status ok (writes_enabled=False)
-[PASS] Tool Catalog                 : Catalog contains 9 tools in deterministic order
+[PASS] Tool Catalog                 : Catalog contains 21 tools in deterministic order
 [PASS] MCP HTTP /live               : Liveness probe returned 200 OK
 [PASS] MCP HTTP /ready              : Readiness probe returned 200 OK
 [PASS] MCP Host Protection          : Malicious Host header rejected with HTTP 403
@@ -50,7 +50,7 @@ OVERALL STATUS: HEALTHY
 Si se reportan advertencias o fallos menores de permisos:
 
 ```bash
-ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
 ```
 
 Acciones que ejecuta automáticamente:
@@ -64,7 +64,7 @@ Acciones que ejecuta automáticamente:
 
 1. Abrir un túnel SSH a la consola administrativa:
    ```bash
-   ssh -N -L 8080:127.0.0.1:8080 yorologo@192.168.68.85
+   ssh -N -L 18080:127.0.0.1:80 yorologo@192.168.68.55
    ```
-2. Navegar en el navegador a: `http://127.0.0.1:8080/maintenance`
+2. Navegar en el navegador a: `http://127.0.0.1:18080/maintenance`
 3. Revisar el widget de **Doctor Health Check** y hacer clic en **Re-run Diagnostics** o **Execute Safe Repair** según corresponda.

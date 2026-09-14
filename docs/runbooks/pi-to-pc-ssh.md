@@ -8,7 +8,7 @@ Este documento detalla la arquitectura técnica, configuración, invariantes de 
 
 ### Raspberry Pi (Gateway)
 - **Hostname**: `MCP-Pi`
-- **Dirección IPv4 LAN**: `192.168.68.85`
+- **Dirección IPv4 LAN**: `192.168.68.55`
 - **Dirección MAC LAN**: `8c:90:2d:ac:e5:c0`
 - **Usuario de servicio**: `mcp-gateway` (UID 102, GID 105 en producción Debian 13 Trixie; histórico Bullseye: UID 1001, GID 1001; sin sudo, sin login interactivo por contraseña)
 - **Ruta de clave privada**: `/home/mcp-gateway/.ssh/mcp_gateway_ed25519` (permisos 600, retenida exclusivamente en MCP-Pi)

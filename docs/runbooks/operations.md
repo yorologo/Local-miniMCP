@@ -9,13 +9,13 @@ Este documento establece la **fuente única de verdad consolidada** para la admi
 | Componente | Valor Autorizado | Notas |
 |---|---|---|
 | **Hostname** | `MCP-Pi` | Identidad LAN |
-| **Endpoint LAN** | `192.168.68.85/22` | Asignado vía DHCP con reserva MAC |
+| **Endpoint LAN** | `192.168.68.55/22` | Asignado vía DHCP con reserva MAC |
 | **MAC wlan0** | `8c:90:2d:ac:e5:c0` | Adaptador USB Realtek RTL8188EUS (`0bda:8179`) |
 | **Driver Wi-Fi** | `rtl8xxxu` (`mac80211`) | In-tree nativo en Debian 13 Trixie |
 | **Usuario Administrativo** | `yorologo` (UID 1000) | Acceso SSH mediante `~/.ssh/id_ed25519` |
 | **Usuario de Servicio** | `mcp-gateway` (UID 102, GID 105) | Sin privilegios sudo, sin login por password |
 | **Host Key SSH MCP-Pi** | `SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E` | Fijado en `~/.ssh/mcp_known_hosts` |
-| **Admin Console** | `127.0.0.1:8080` | Confinado a loopback (túnel SSH) |
+| **Admin Console** | `http://192.168.68.55` | TCP/80, LAN confiable + Host allowlist |
 | **Servidor MCP** | `127.0.0.1:8090/mcp` | Confinado a loopback (Streamable HTTP / Stdio) |
 | **Target Canónico** | `termux-main` (`192.168.68.72:8022`) | Fingerprint: `SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0` |
 | **Infraestructura Pi-hole** | `192.168.68.54` (`YorPi`) | **ESTRICTAMENTE FUERA DE ALCANCE — NO MODIFICAR** |
@@ -33,11 +33,11 @@ Este documento establece la **fuente única de verdad consolidada** para la admi
   - Inicia `mcp-gateway-admin.service` y `mcp-gateway-mcp.service` bajo `mcp-gateway`.
 - **Apagado seguro:**
   ```bash
-  ssh yorologo@192.168.68.85 "sudo shutdown -h now"
+  ssh yorologo@192.168.68.55 "sudo shutdown -h now"
   ```
 - **Reinicio planificado:**
   ```bash
-  ssh yorologo@192.168.68.85 "sudo sync && sudo reboot"
+  ssh yorologo@192.168.68.55 "sudo sync && sudo reboot"
   ```
 
 ### 2.2 Verificación Rápida de Salud (Quick Health)
@@ -46,27 +46,20 @@ Desde la estación de trabajo (PC):
 
 ```bash
 # 1. Comprobar servicios systemd
-ssh yorologo@192.168.68.85 "systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
+ssh yorologo@192.168.68.55 "systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
 # Salida esperada: active / active
 
 # 2. Diagnóstico integral con Doctor
-ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
 # Salida esperada: OVERALL STATUS: HEALTHY (19/19 PASS)
 
 # 3. Estado del target worker
-ssh yorologo@192.168.68.85 "curl -s -H 'Host: 127.0.0.1' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"target_status","arguments":{"target":"termux-main"}}}' http://127.0.0.1:8090/mcp"
+ssh yorologo@192.168.68.55 "curl -s -H 'Host: 127.0.0.1' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"target_status","arguments":{"target":"termux-main"}}}' http://127.0.0.1:8090/mcp"
 ```
 
 ### 2.3 Acceso a la Consola de Administración Web
 
-La consola web corre exclusivamente en loopback (`127.0.0.1:8080`). Para acceder desde el navegador local:
-
-```bash
-# Crear túnel seguro local
-ssh -N -L 8080:127.0.0.1:8080 yorologo@192.168.68.85
-```
-
-Abrir en el navegador local: `http://127.0.0.1:8080`
+La consola web de producción está disponible en la LAN confiable en `http://192.168.68.55`. Para una red no confiable, usar el túnel opcional documentado en `docs/runbooks/admin-console.md`.
 
 ### 2.4 Política y Gestión de Escrituras Controladas
 
@@ -75,11 +68,11 @@ Abrir en el navegador local: `http://127.0.0.1:8080`
   - Mediante Web Admin: Menú Settings → Enable Writes.
   - Mediante CLI administrativo:
     ```bash
-    ssh yorologo@192.168.68.85 "sudo -u mcp-gateway python3 -c \"import sqlite3; con = sqlite3.connect('/home/mcp-gateway/.local/share/mcp-gateway/gateway.db'); con.cursor().execute('UPDATE settings SET value=\\\"true\\\" WHERE key=\\\"writes_enabled\\\";'); con.commit(); con.close();\""
+    ssh yorologo@192.168.68.55 "sudo -u mcp-gateway python3 -c \"import sqlite3; con = sqlite3.connect('/home/mcp-gateway/.local/share/mcp-gateway/gateway.db'); con.cursor().execute('UPDATE settings SET value=\\\"true\\\" WHERE key=\\\"writes_enabled\\\";'); con.commit(); con.close();\""
     ```
 - **Botón de pánico (Emergency writes disable):**
   ```bash
-  ssh yorologo@192.168.68.85 "sudo -u mcp-gateway python3 -c \"import sqlite3; con = sqlite3.connect('/home/mcp-gateway/.local/share/mcp-gateway/gateway.db'); con.cursor().execute('UPDATE settings SET value=\\\"false\\\" WHERE key=\\\"writes_enabled\\\";'); con.commit(); con.close();\""
+  ssh yorologo@192.168.68.55 "sudo -u mcp-gateway python3 -c \"import sqlite3; con = sqlite3.connect('/home/mcp-gateway/.local/share/mcp-gateway/gateway.db'); con.cursor().execute('UPDATE settings SET value=\\\"false\\\" WHERE key=\\\"writes_enabled\\\";'); con.commit(); con.close();\""
   ```
 
 ---
@@ -92,7 +85,7 @@ La base de datos SQLite se respalda sin detener servicios mediante la API online
 
 ```bash
 # Ejecutar respaldo en la Pi
-ssh yorologo@192.168.68.85 "sudo -u mcp-gateway python3 -c \"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway python3 -c \"
 import sqlite3
 src = sqlite3.connect('/home/mcp-gateway/.local/share/mcp-gateway/gateway.db')
 dst = sqlite3.connect('/tmp/gateway_backup.db')
@@ -102,8 +95,8 @@ src.close()
 \""
 
 # Transferir a la bóveda local fuera de Git
-scp yorologo@192.168.68.85:/tmp/gateway_backup.db ~/.mcp_migration_backup/post_trixie_promotion/
-ssh yorologo@192.168.68.85 "rm -f /tmp/gateway_backup.db"
+scp yorologo@192.168.68.55:/tmp/gateway_backup.db ~/.mcp_migration_backup/post_trixie_promotion/
+ssh yorologo@192.168.68.55 "rm -f /tmp/gateway_backup.db"
 ```
 
 ### 3.2 Restauración del Registry
@@ -112,17 +105,17 @@ Ante inconsistencia o pérdida de datos:
 
 1. Detener servicios:
    ```bash
-   ssh yorologo@192.168.68.85 "sudo systemctl stop mcp-gateway-admin mcp-gateway-mcp"
+   ssh yorologo@192.168.68.55 "sudo systemctl stop mcp-gateway-admin mcp-gateway-mcp"
    ```
 2. Copiar archivo desde la bóveda:
    ```bash
-   scp ~/.mcp_migration_backup/post_trixie_promotion/gateway.db yorologo@192.168.68.85:/tmp/
-   ssh yorologo@192.168.68.85 "sudo cp /tmp/gateway_backup.db /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && sudo chown mcp-gateway:mcp-gateway /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && sudo chmod 600 /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && rm -f /tmp/gateway_backup.db"
+   scp ~/.mcp_migration_backup/post_trixie_promotion/gateway.db yorologo@192.168.68.55:/tmp/
+   ssh yorologo@192.168.68.55 "sudo cp /tmp/gateway_backup.db /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && sudo chown mcp-gateway:mcp-gateway /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && sudo chmod 600 /home/mcp-gateway/.local/share/mcp-gateway/gateway.db && rm -f /tmp/gateway_backup.db"
    ```
 3. Iniciar servicios y validar con Doctor:
    ```bash
-   ssh yorologo@192.168.68.85 "sudo systemctl start mcp-gateway-admin mcp-gateway-mcp"
-   ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+   ssh yorologo@192.168.68.55 "sudo systemctl start mcp-gateway-admin mcp-gateway-mcp"
+   ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
    ```
 
 ---
@@ -212,11 +205,11 @@ flowchart TD
 
 Para operaciones detalladas paso a paso, referirse a los runbooks existentes en `docs/runbooks/`:
 
-- **Diagnóstico y Reparación:** [`doctor.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/doctor.md)
-- **Recuperación tras Reinicio / Corte Eléctrico:** [`reboot-recovery.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/reboot-recovery.md)
-- **Recuperación de Enlace de Red y Rescate:** [`network-recovery.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/network-recovery.md)
-- **Swap y Rollback Físico de MicroSD:** [`microsd-recovery.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/microsd-recovery.md)
-- **Respaldo y Restauración del Registry:** [`registry-backup-restore.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/registry-backup-restore.md)
-- **Recuperación ante Desastres (Disaster Recovery):** [`disaster-recovery.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/disaster-recovery.md)
-- **Administración de Consola Web:** [`admin-console.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/admin-console.md)
-- **Operaciones de Escritura Segura:** [`controlled-write-smoke-test.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/controlled-write-smoke-test.md) y [`write-recovery.md`](file:///c:/Users/esaud/OneDrive/Escritorio/Proyectos/Local-miniMCP/docs/runbooks/write-recovery.md)
+- **Diagnóstico y Reparación:** [`doctor.md`](doctor.md)
+- **Recuperación tras Reinicio / Corte Eléctrico:** [`reboot-recovery.md`](reboot-recovery.md)
+- **Recuperación de Enlace de Red y Rescate:** [`network-recovery.md`](network-recovery.md)
+- **Swap y Rollback Físico de MicroSD:** [`microsd-recovery.md`](microsd-recovery.md)
+- **Respaldo y Restauración del Registry:** [`registry-backup-restore.md`](registry-backup-restore.md)
+- **Recuperación ante Desastres (Disaster Recovery):** [`disaster-recovery.md`](disaster-recovery.md)
+- **Administración de Consola Web:** [`admin-console.md`](admin-console.md)
+- **Operaciones de Escritura Segura:** [`controlled-write-smoke-test.md`](controlled-write-smoke-test.md) y [`write-recovery.md`](write-recovery.md)

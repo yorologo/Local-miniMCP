@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Login - MCP Gateway Admin{% endblock %}
 {% block content %}
-<div class="min-h-[80vh] flex items-center justify-center">
-  <div class="w-full max-w-md bg-slate-950 border border-slate-800 rounded-xl p-8 shadow-2xl space-y-6">
+<div class="flex min-h-[calc(100vh-2.5rem)] items-center justify-center py-4">
+  <div class="card w-full max-w-md space-y-6 p-6 shadow-2xl sm:p-8">
     <div class="text-center space-y-2">
       <div class="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-white text-xl mx-auto shadow-lg">
         π
@@ -21,18 +21,18 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label for="username" class="block text-xs font-medium text-slate-300 mb-1">Username</label>
-        <input type="text" id="username" name="username" required autofocus class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        <input type="text" id="username" name="username" required autofocus autocomplete="username" class="field">
       </div>
       <div>
         <label for="password" class="block text-xs font-medium text-slate-300 mb-1">Password</label>
-        <input type="password" id="password" name="password" required class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        <input type="password" id="password" name="password" required autocomplete="current-password" class="field">
       </div>
-      <button type="submit" class="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition shadow-lg">
+      <button type="submit" class="btn-primary w-full">
         Sign In
       </button>
     </form>
     <div class="text-center text-xs text-slate-500">
-      Localhost only (127.0.0.1:8080) via SSH Tunnel
+      Authenticated admin endpoint &bull; {{ request.host }}
     </div>
   </div>
 </div>

@@ -6,7 +6,7 @@ Este runbook describe los pasos para verificar y validar las capacidades de escr
 
 ## Prerrequisitos
 
-- Raspberry Pi (`MCP-Pi`, `192.168.68.85`) con servicios `mcp-gateway-admin` y `mcp-gateway-mcp` activos.
+- Raspberry Pi (`MCP-Pi`, `192.168.68.55`) con servicios `mcp-gateway-admin` y `mcp-gateway-mcp` activos.
 - Target Worker (`termux-main`, `192.168.68.84:8022`) alcanzable sin contraseña vía SSH desde la Pi (`mcp-gateway`).
 - Directorio de prueba en el Target Worker: `mcp-write-smoke/`.
 
@@ -17,7 +17,7 @@ Este runbook describe los pasos para verificar y validar las capacidades de escr
 Conectarse a la Raspberry Pi y ejecutar la suite E2E completa:
 
 ```bash
-ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 /home/mcp-gateway/mcp-gateway/scripts/verify-phase-5.py"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 /home/mcp-gateway/mcp-gateway/scripts/verify-phase-5.py"
 ```
 
 Resultado esperado:
@@ -99,7 +99,7 @@ Comprobar que se retorna el campo `"diff"` o `"unified_diff"` y que el archivo e
 Desde la máquina administrativa o por túnel SSH:
 ```bash
 # Vía POST a la consola admin
-curl -s -X POST http://127.0.0.1:8080/settings/disable-writes \
+curl -s -X POST http://127.0.0.1/settings/disable-writes \
   -H "Cookie: session=<admin-cookie>" \
   -d "csrf_token=<token>"
 ```

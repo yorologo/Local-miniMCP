@@ -93,7 +93,7 @@ El Go MCP Adapter actúa estrictamente como puente de protocolo/serialización y
 
 ## 5. Control de Emergencia y Panic Button
 
-En la consola administrativa (`127.0.0.1:8080/settings`):
+En la consola administrativa (`http://192.168.68.55/settings`):
 - **Botón de Pánico**: `/settings/disable-writes` deshabilita de inmediato todas las mutaciones (`writes_enabled: false`) mientras preserva el 100% de las herramientas de lectura (`read_file`, `file_stat`, `list_directory`, etc.).
 - **Kill Switch Global**: `/settings/kill-switch` bloquea absolutamente toda operación de clientes MCP.
 - **Permisos por Proyecto**: En `/projects`, cada proyecto tiene su toggle individual para autorizar o revocar permisos de escritura.

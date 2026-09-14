@@ -70,11 +70,11 @@ class DocumentationChecksTest(unittest.TestCase):
         return root
 
     def test_accepts_valid_markdown(self):
-        root = self.make_repo("# Gateway 1.2.1\n\n[estado](compatibility.json)\n")
+        root = self.make_repo("# Gateway 1.2.1\n\n[estado](../../../compatibility.json)\n")
         self.assertEqual(check_docs.check_repository(root), [])
 
     def test_reports_broken_link_and_open_fence(self):
-        root = self.make_repo("# Gateway 1.2.1\n\n[ausente](docs/no.md)\n\n```sh\necho ok\n")
+        root = self.make_repo("# Gateway 1.2.1\n\n[ausente](../../no.md)\n\n```sh\necho ok\n")
         errors = "\n".join(check_docs.check_repository(root))
         self.assertIn("enlace interno inexistente", errors)
         self.assertIn("bloque de código sin cierre", errors)
@@ -248,7 +248,7 @@ MCP-Pi Gateway v1.2.1 convierte una Raspberry Pi ligera en una frontera de auten
 
 ## Inicio rápido
 
-Para una instalación nueva, seguir [Instalación paso a paso](docs/installation.md). La restauración histórica y las integraciones cloud están marcadas como opcionales.
+Para una instalación nueva, seguir [Instalación paso a paso](../../deployment.md). La restauración histórica y las integraciones cloud están marcadas como opcionales.
 ```
 
 Completar únicamente: propósito, diagrama de contexto pequeño, garantías, inicio rápido, tecnologías principales, estado, mapa documental, desarrollo/verificación, releases y licencia. Enlazar en vez de duplicar procedimientos.
@@ -617,7 +617,7 @@ Expected: hashes guardados en la salida de trabajo para comparar que el cuerpo h
 Después del título de cada archivo, añadir sólo:
 
 ```markdown
-> **DOCUMENTO HISTÓRICO / EVIDENCIA.** Este archivo describe el baseline indicado en su título y no el estado operativo actual. Consultar [Estado actual](../project-state.md) para el baseline vigente. Los endpoints aquí registrados son observaciones fechadas, no identidades.
+> **DOCUMENTO HISTÓRICO / EVIDENCIA.** Este archivo describe el baseline indicado en su título y no el estado operativo actual. Consultar [Estado actual](../../project-state.md) para el baseline vigente. Los endpoints aquí registrados son observaciones fechadas, no identidades.
 ```
 
 Usar `../project-state.md` desde `docs/releases/`, `docs/inventory/` y `docs/migration/`; desde `docs/v1-acceptance.md`, usar `project-state.md`. En `v1.2.1.md`, usar `DOCUMENTO DE RELEASE VIGENTE` sin afirmar que cada endpoint observado sigue igual.

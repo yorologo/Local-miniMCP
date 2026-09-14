@@ -66,9 +66,9 @@ El adaptador MCP stdio asegura que `tools/list` y `tools/call` compartan la mism
 ## 4. SSH Host Key Pinning Inmutable
  
 Para evitar ataques Man-in-the-Middle y spoofing de red:
-- La clave de host pública Ed25519 de MCP-Pi (`192.168.68.85`) se encuentra fijada en `~/.ssh/mcp_known_hosts`:
+- La clave de host pública Ed25519 de MCP-Pi (`192.168.68.55`) se encuentra fijada en `~/.ssh/mcp_known_hosts`:
   ```text
-  192.168.68.85 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOP3j98PiZxf8CKwfyEPCXbFSsV5bwfrI0704ZWR1plV
+  192.168.68.55 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOP3j98PiZxf8CKwfyEPCXbFSsV5bwfrI0704ZWR1plV
   ```
   Fingerprint SHA256: `SHA256:wovttruok3M1sdIkGHUs6pMbwKvTYylrh+Maz4Iv84E`.
 - Todas las configuraciones generadas imponen:

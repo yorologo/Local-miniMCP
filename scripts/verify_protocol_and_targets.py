@@ -30,7 +30,7 @@ import urllib.error
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from scripts.pi_ssh import run_remote
 
-HOST = os.environ.get("MCP_PI_HOST", "192.168.68.85")
+HOST = os.environ.get("MCP_PI_HOST", "192.168.68.55")
 
 
 def run_remote_py(code):

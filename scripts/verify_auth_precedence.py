@@ -23,7 +23,7 @@ import paramiko
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from scripts.pi_ssh import run_remote
 
-HOST = os.environ.get("MCP_PI_HOST", "192.168.68.85")
+HOST = os.environ.get("MCP_PI_HOST", "192.168.68.55")
 USER = "mcp-gateway"
 KEY = os.path.expanduser("~/.ssh/mcp_gemini_ed25519")
 KH = os.path.expanduser("~/.ssh/mcp_known_hosts")

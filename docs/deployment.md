@@ -1,0 +1,73 @@
+# Deployment Guide
+
+## Production target
+
+Current MCP-Pi production endpoint:
+
+- Host: `192.168.68.55`
+- SSH user: configured locally through `.mcp-pi.local.env`
+- Admin Console: `http://192.168.68.55`
+- Admin bind: `0.0.0.0:80` (all IPv4 interfaces; access uses the real host IP, never `0.0.0.0`)
+- MCP adapter: `127.0.0.1:8090/mcp` (loopback only; exposed to OpenAI only through the Secure MCP Tunnel)
+
+The Admin Console LAN binding is deliberate. The service remains `User=mcp-gateway`; systemd grants only `CAP_NET_BIND_SERVICE` so it can bind TCP/80 without running as root. Authentication, CSRF, strict security headers, and an explicit Host allowlist remain enforced. No reverse proxy or external tunnel is required for LAN access. On an untrusted network, use an SSH tunnel instead of direct LAN HTTP.
+
+## Local prerequisites
+
+- Python 3.9+
+- Node.js/npm only for rebuilding Tailwind CSS
+- `ssh`, `scp`, `tar`, `sha256sum` and an authorized SSH key (default: `~/.ssh/id_rsa`)
+- Go only when rebuilding the MCP adapter
+- `config/targets.local.json`
+- local `.mcp-pi.local.env` with deployment credentials; never commit this file
+
+## Build and verification
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+node tests/test_app_js.mjs
+cd tailwind && npm run build
+cd ..
+git diff --check
+```
+
+## Deploy
+
+```bash
+./scripts/deploy-pi.sh
+```
+
+The script transfers runtime code, tests, configuration, documentation, top-level README/AGENTS, and the adapter binary when its checksum changed. It reloads systemd, restarts the Admin Console, and only restarts the MCP adapter/tunnel when the adapter or MCP unit actually changed. By default it runs lightweight remote smoke tests as `mcp-gateway`; set `MCP_DEPLOY_FULL_REMOTE_TESTS=1` for the full remote suite on hardware with enough memory.
+
+## Post-deployment checks
+
+From MCP-Pi itself:
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/login
+```
+
+From any other device on the same LAN:
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' http://192.168.68.55/login
+```
+
+For the MCP adapter:
+
+```bash
+curl -fsS -H 'Host: 127.0.0.1' http://127.0.0.1:8090/live
+```
+
+On MCP-Pi also verify:
+
+```bash
+systemctl is-enabled mcp-gateway-admin
+systemctl is-active mcp-gateway-admin mcp-gateway-mcp mcp-gateway-tunnel
+sudo ss -lntp | grep ':80 '
+sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor
+```
+
+Expected Admin listener: `0.0.0.0:80` (shown by `ss` as an IPv4 wildcard listener).
+
+Acceptance requires the deployed source hashes/content to match the local working tree for the files transferred by `deploy-pi.sh`.

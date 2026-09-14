@@ -3,6 +3,7 @@ import sys
 import tempfile
 import time
 import unittest
+from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
@@ -12,6 +13,31 @@ from mcp_gateway.registry import SQLiteRegistry
 from mcp_gateway.ssh_transport import SSHTransportResult
 from mcp_gateway.tools import GatewayTools
 from mcp_gateway.web import create_app
+
+
+class FormAccessibilityParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.control_ids = []
+        self.label_targets = set()
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "label" and attrs.get("for"):
+            self.label_targets.add(attrs["for"])
+        if tag in ("input", "select", "textarea") and attrs.get("type") != "hidden":
+            self.control_ids.append(attrs.get("id"))
+
+
+class CurrentNavigationParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.current_links = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "a" and attrs.get("aria-current") == "page":
+            self.current_links.append(attrs.get("href"))
 
 
 class MockTransport:
@@ -71,6 +97,43 @@ class TestWebViews(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn(b"System Dashboard", res.data)
         self.assertIn(b"Targets Online", res.data)
+
+    def test_authenticated_layout_has_accessible_mobile_navigation(self):
+        self._login()
+        res = self.client.get("/dashboard")
+
+        self.assertIn(b'aria-controls="primary-navigation"', res.data)
+        self.assertIn(b'aria-expanded="false"', res.data)
+        self.assertIn(b'id="primary-navigation"', res.data)
+        self.assertIn(b'aria-current="page"', res.data)
+        self.assertIn(b'id="primary-navigation" class="flex', res.data)
+
+    def test_primary_navigation_marks_the_exact_current_section(self):
+        self._login()
+        for path in ("/dashboard", "/targets", "/projects", "/clients", "/activity", "/system", "/settings", "/maintenance"):
+            with self.subTest(path=path):
+                parser = CurrentNavigationParser()
+                parser.feed(self.client.get(path).get_data(as_text=True))
+                self.assertEqual(parser.current_links, [path])
+
+    def test_data_tables_expose_responsive_scroll_regions(self):
+        self._login()
+        for path in ("/dashboard", "/targets", "/projects", "/clients", "/activity"):
+            with self.subTest(path=path):
+                res = self.client.get(path)
+                self.assertEqual(res.status_code, 200)
+                self.assertIn(b'role="region"', res.data)
+                self.assertIn(b'tabindex="0"', res.data)
+
+    def test_form_controls_have_programmatic_labels(self):
+        self._login()
+        for path in ("/targets/add", "/projects/add", "/clients/add", "/settings"):
+            with self.subTest(path=path):
+                parser = FormAccessibilityParser()
+                parser.feed(self.client.get(path).get_data(as_text=True))
+                self.assertTrue(parser.control_ids)
+                self.assertNotIn(None, parser.control_ids)
+                self.assertTrue(set(parser.control_ids).issubset(parser.label_targets))
 
     def test_targets_crud(self):
         self._login()
@@ -296,7 +359,7 @@ class TestWebViews(unittest.TestCase):
         )
         self.assertEqual(res_panic.status_code, 200)
         self.assertEqual(self.registry.get_setting("writes_enabled"), "false")
-        self.assertIn(b"Controlled writes have been immediately DISABLED", res_panic.data)
+        self.assertIn(b"Structured filesystem writes are DISABLED", res_panic.data)
 
     def test_maintenance_views(self):
         self._login()

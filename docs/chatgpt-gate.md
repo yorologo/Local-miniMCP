@@ -4,7 +4,7 @@
 
 - **Estado del Gate**: `LOCAL_SIDE_READY / OPENAI_PRODUCT_GATE_PENDING`
 - **Veredicto**: `LOCAL_PASS` (Infraestructura local del Gateway 100% instalada, asegurada y verificada)
-- **Invariante de Seguridad**: `NO INBOUND EXPOSURE` (Cero puertos entrantes abiertos en router, firewall o Raspberry Pi)
+- **Invariante de Seguridad**: `NO INTERNET INBOUND EXPOSURE` (sin port-forwarding ni puertos expuestos a Internet; la consola Admin usa TCP/80 solo dentro de la LAN confiable)
 - **Transporte**: Official Outbound-only OpenAI Secure MCP Tunnel (`github.com/openai/tunnel-client`)
 - **Cliente Registrado**: `chatgpt-main` (Protocolo `mcp-tunnel-2026-07-28`)
 - **Grants Asignados**:
@@ -12,7 +12,7 @@
   - `*.*` (capacidad `admin` para herramientas seguras de administración del appliance)
 - **Servicio systemd**: `mcp-gateway-tunnel.service` (con `ExecCondition` guard fail-safe)
 - **Endpoint MCP Local**: `127.0.0.1:8090/mcp` (Go Adapter, Streamable HTTP / SSE)
-- **Endpoint Admin Local**: `127.0.0.1:8080` (Python Web Console)
+- **Endpoint Admin LAN**: `0.0.0.0:80` (Python Web Console; Host allowlist + autenticación)
 
 ---
 
@@ -45,7 +45,7 @@ La solución arquitectónica adoptada cumple estrictamente con **KISS** y **Reus
 - Dependencias: Inicia después de `mcp-gateway-mcp.service` y `network-online.target`.
 
 ### 3.3 Herramientas de Administración Segura del Appliance
-Para permitir la operación del appliance sin shell arbitrario, se incorporaron 5 herramientas de alto nivel al catálogo MCP:
+Para permitir la operación segura del appliance se mantienen herramientas de alto nivel, junto con `run_command` sujeto a grants y Project scope. Las herramientas de appliance incluyen:
 - `gateway_status`: Telemetría del appliance (CPU, RAM, zram, disco, temperatura, estado de servicios y base de datos).
 - `gateway_doctor`: Diagnóstico unificado de 19 comprobaciones de integridad del sistema.
 - `gateway_backup`: Generación segura de respaldos SQLite en caliente con hash lock.
@@ -58,7 +58,7 @@ Para permitir la operación del appliance sin shell arbitrario, se incorporaron 
 
 | Vector / Control | Estado | Evidencia |
 |---|---|---|
-| Ingress Ports | PASS | 0 puertos expuestos a Internet / 0 puertos en router |
+| Ingress Ports | PASS | 0 puertos expuestos a Internet / 0 port-forwarding; TCP/80 solo LAN para Admin |
 | Client Authentication | PASS | `chatgpt-main` mapeado en `ai_clients` con token / header seguro |
 | Grants Authorization | PASS | Concesión explícita requerida para `tools/list` y `tools/call` |
 | Appliance Administration | PASS | Solo clientes con capacidad `admin` pueden invocar `gateway_*` |

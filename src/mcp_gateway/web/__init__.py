@@ -9,7 +9,7 @@ from flask import Flask, render_template
 from ..tools import GatewayTools
 from ..registry import SQLiteRegistry, get_default_db_path, get_registry
 from .csrf import check_csrf, get_csrf_token
-from .security import apply_security_headers
+from .security import apply_security_headers, check_trusted_host
 from .views import bp as admin_bp, auth_bp
 
 
@@ -55,12 +55,18 @@ def create_app(
     )
 
     resolved_secret = secret_key or get_or_create_secret_key()
+    admin_host = os.environ.get("MCP_ADMIN_HOST", "127.0.0.1")
+    allowed_hosts = os.environ.get(
+        "MCP_ADMIN_ALLOWED_HOSTS",
+        f"127.0.0.1,localhost,{admin_host}",
+    )
     app.config.from_mapping(
         SECRET_KEY=resolved_secret,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
-        SESSION_COOKIE_SECURE=False,  # Bound strictly to 127.0.0.1 HTTP through SSH tunnel
+        SESSION_COOKIE_SECURE=False,  # LAN HTTP supported; prefer SSH tunnel on untrusted networks.
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+        ADMIN_ALLOWED_HOSTS={h.strip().lower() for h in allowed_hosts.split(",") if h.strip()},
     )
 
     if test_config:
@@ -70,6 +76,9 @@ def create_app(
     reg = registry or get_registry()
     app.config["REGISTRY"] = reg
     app.config["TOOLS"] = tools or GatewayTools(registry=reg)
+
+    # Reject DNS rebinding / unexpected Host headers before auth and CSRF handling.
+    app.before_request(check_trusted_host)
 
     # CSRF check on mutating requests
     app.before_request(check_csrf)
@@ -110,7 +119,10 @@ def run_server(host: str = "127.0.0.1", port: int = 8080):
 
     app = create_app()
     print(f"Starting MCP Gateway Admin Console on http://{host}:{port}")
-    print("Access via SSH tunnel: ssh -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85")
+    if host in ("127.0.0.1", "localhost"):
+        print("Admin Console is loopback-only; use an SSH tunnel for remote access.")
+    else:
+        print("Admin Console LAN binding enabled; auth, CSRF, and Host allowlist remain enforced.")
 
     httpd = make_server(host, port, app)
     try:

@@ -19,8 +19,8 @@ Este runbook detalla las directrices de diagnóstico, mitigación y recuperació
 Cuando el punto de acceso local se reinicia o se produce una caída temporal de la señal Wi-Fi:
 1. El demonio de red (`wpa_supplicant`) entra en estado de escaneo continuo.
 2. Al reaparecer el SSID, el adaptador se re-autentica automáticamente mediante WPA2.
-3. El cliente DHCP renueva el lease existente para la MAC `8c:90:2d:ac:e5:c0` obteniendo la IP fija `192.168.68.85`.
-4. **Resiliencia de Servicios**: Los servicios locales `mcp-gateway-admin` (Flask en `127.0.0.1:8080`) y `mcp-gateway-mcp` (Go adapter en `127.0.0.1:8090`) permanecen activos y no sufren reinicio ni degradación, pues escuchan estrictamente en la interfaz de loopback `lo`.
+3. El cliente DHCP renueva el lease existente para la MAC `8c:90:2d:ac:e5:c0` obteniendo la IP fija `192.168.68.55`.
+4. **Resiliencia de Servicios**: Los servicios locales `mcp-gateway-admin` (Flask en `0.0.0.0:80` (LAN: `http://192.168.68.55`)) y `mcp-gateway-mcp` (Go adapter en `127.0.0.1:8090`) permanecen separados: la consola usa LAN allowlisted y MCP conserva loopback estricto.
 5. Al restablecerse la red Wi-Fi, los clientes AI pueden volver a abrir túneles SSH stdio de inmediato sin necesidad de reiniciar la Raspberry Pi.
 
 ---

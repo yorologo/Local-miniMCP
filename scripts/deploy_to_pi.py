@@ -8,8 +8,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
 
 def deploy():
-    host = os.environ.get("MCP_PI_HOST", "192.168.68.85")
-    user = os.environ.get("MCP_PI_USER", "Yorologo")
+    host = os.environ.get("MCP_PI_HOST", "192.168.68.55")
+    user = os.environ.get("MCP_PI_USER", "yorologo")
     key_path = os.path.expanduser("~/.ssh/id_ed25519")
 
     print(f"Connecting to {user}@{host}...")

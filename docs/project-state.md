@@ -70,7 +70,7 @@ No inventar V2. No abrir nuevas features.
 | Gateway hostname | `MCP-Pi` |
 | Gateway LAN | `192.168.68.55` (reserva DHCP operativa; IP no sustituye identidad SSH) |
 | Service user | `mcp-gateway` UID 102 / GID 105, sin sudo general |
-| Admin Web | `127.0.0.1:8080` |
+| Admin Web | `http://192.168.68.55` (`0.0.0.0:80`, LAN allowlisted) |
 | MCP HTTP | `127.0.0.1:8090/mcp` |
 | Registry | SQLite, `PRAGMA user_version=1` |
 | Writes globales | `false` por defecto |

@@ -271,7 +271,7 @@ SoC: BCM2835
 Architecture: armv6l
 Historical usable RAM on Bullseye: ~176 MiB
 Observed usable RAM on Trixie: ~173 MiB
-LAN IPv4 actual: 192.168.68.85/22
+LAN IPv4 actual: 192.168.68.55/22
 MAC wlan0: 8c:90:2d:ac:e5:c0
 SSH: TCP/22
 ```
@@ -500,7 +500,7 @@ Service user: mcp-gateway
 UID: 102 (histórico Bullseye: 1001)
 GID: 105 (histórico Bullseye: 1001)
 Privilege: NO sudo (salvo helper específico /usr/local/bin/mcp-gateway-reboot)
-Admin: 127.0.0.1:8080
+Admin: http://192.168.68.55 (0.0.0.0:80, LAN allowlisted; MCP remains loopback-only)
 MCP: 127.0.0.1:8090/mcp
 Tunnel client: 127.0.0.1:8091 (metrics/health)
 Writes default: disabled
@@ -514,7 +514,7 @@ No declarar estos servicios presentes en el nuevo OS hasta observarlos y probarl
 Debe mantenerse:
 
 ```text
-localhost-only Admin/MCP
+LAN-allowlisted Admin + loopback-only MCP
 + deny-by-default
 + target/project enabled gates
 + client grants

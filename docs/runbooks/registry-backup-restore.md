@@ -12,7 +12,7 @@ El comando `mcp_gateway.admin_cli backup` utiliza la API nativa de respaldo en l
 En la Raspberry Pi (`MCP-Pi`):
 
 ```bash
-ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.admin_cli backup"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.admin_cli backup"
 ```
 
 **Salida típica:**
@@ -32,7 +32,7 @@ sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_
 Para compartir configuraciones, crear plantillas o respaldar la topología sin exponer secretos:
 
 ```bash
-ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.admin_cli export-json --output /home/mcp-gateway/targets-export.json"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.admin_cli export-json --output /home/mcp-gateway/targets-export.json"
 ```
 
 ### Propiedades de la Exportación Saneada:

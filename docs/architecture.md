@@ -13,7 +13,7 @@ El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry 
           v
 +-------------------+
 |  Raspberry Pi A+  |  --> [Frontera de seguridad / Orquestador / Gateway Core]
-|  (192.168.68.85)  |      Valida, autoriza, limita, orquesta, audita (Python stdlib)
+|  (192.168.68.55)  |      Valida, autoriza, limita, orquesta, audita (Python stdlib)
 +-------------------+
           |
           | SSH / SFTP (Controlado y restringido vía clave exclusiva Ed25519)
@@ -46,7 +46,7 @@ El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry 
 
 | Dispositivo / Rol | Dirección IP | Hostname | Interfaz Activa | Estado en el Proyecto |
 |---|---|---|---|---|
-| **Raspberry Pi Gateway** | `192.168.68.85` | `MCP-Pi` | `wlan0` (Wi-Fi USB RTL8188EUS) | **Objetivo activo del gateway** |
+| **Raspberry Pi Gateway** | `192.168.68.55` | `MCP-Pi` | `wlan0` (Wi-Fi USB RTL8188EUS) | **Objetivo activo del gateway** |
 | **Raspberry Pi (Pi-hole)** | `192.168.68.54` | `YorPi` | N/A | **FUERA DEL ALCANCE** (Dispositivo crítico LAN; no tocar) |
 | **Gateway LAN (Router)** | `192.168.68.1` | - | LAN | Router / Servidor DHCP local |
 | **Target Primario (Worker)** | `192.168.68.84:8022` | `localhost` | Wi-Fi LAN | Target `termux-main` (Android 16 / Termux) |
@@ -79,7 +79,7 @@ El Gateway Core reside en `/home/mcp-gateway/mcp-gateway` en la Raspberry Pi y e
 │                                          │             │
 │  ┌──────────────────┐                    │             │
 │  │   GatewayTools   │ ───────────────────┘             │
-│  │  (8 herramientas)│                                  │
+│  │ (21 herramientas)│                                  │
 │  └──────────────────┘                                  │
 │            │                                           │
 │            ▼                                           │
@@ -107,7 +107,8 @@ El Gateway Core reside en `/home/mcp-gateway/mcp-gateway` en la Raspberry Pi y e
    - Comillas seguras con `shlex.quote`.
    - Lector seguro de archivos de texto (límite de 1 MiB, aborto si se detectan bytes nulos binarios).
 4. **Herramientas de Alto Nivel (`tools.py`)**:
-   - Implementa: `health`, `list_targets`, `target_status`, `list_directory`, `file_stat`, `read_file`, `git_status`, `run_task`.
+   - Catálogo vigente: 21 herramientas deterministas (16 Core/Target + 5 administración del appliance).
+   - Incluye lectura/estado, `search`, tareas allowlisted, structured filesystem mutations y `run_command` con grant explícito.
    - Respuestas uniformes en JSON con estado (`ok`), herramienta (`tool`), duración (`duration_ms`), resultado estructurado (`result`) o error estandarizado (`error`).
 
 ---
@@ -116,7 +117,7 @@ El Gateway Core reside en `/home/mcp-gateway/mcp-gateway` en la Raspberry Pi y e
 
 ```text
 [ MCP-Pi Gateway ]                               [ Target Worker ]
-(192.168.68.85)                                  (192.168.68.84)
+(192.168.68.55)                                  (192.168.68.84)
 Usuario: mcp-gateway (UID 1001, sin sudo)        Usuario: u0_a435 (App Android / Termux, sin root)
 Clave: ~/.ssh/mcp_gateway_ed25519                Puerto: 8022
 Alias: pc-local / termux-local                   Allowed Root: .../MCP_Local
@@ -152,12 +153,12 @@ Para garantizar resiliencia operativa ante rotación de IPs por DHCP o reinicios
 La Fase 4B introduce una capa de persistencia transaccional y una consola de gestión web protegida que se sitúa sobre el Gateway Core sin alterar sus garantías de seguridad:
 
 ```text
-       [ Administrador ]
+       [ Administrador en LAN confiable ]
                │
-               │ Túnel SSH (ssh -L 8080:127.0.0.1:8080)
+               │ HTTP LAN + autenticación + Host allowlist
                ▼
 ┌────────────────────────────────────────────────────────┐
-│ MCP-Pi (127.0.0.1:8080)                                │
+│ MCP-Pi (192.168.68.55:80)                            │
 │                                                        │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │     Consola Web Admin (Flask + Jinja2)          │  │
@@ -202,7 +203,7 @@ La Fase 4B introduce una capa de persistencia transaccional y una consola de ges
 - **Rollback transparente**: La variable de entorno `MCP_GATEWAY_REGISTRY=json|sqlite` permite alternar de backend instantáneamente sin cambios de código.
 
 ### 6.2 Consola Web de Administración
-- **Aislamiento de Red**: Escucha estrictamente en `127.0.0.1:8080`, inaccesible directamente por la LAN (`192.168.68.85`).
+- **Exposición LAN explícita**: la consola escucha en `0.0.0.0:80` para administración dentro de la LAN confiable, con allowlist de `Host`, autenticación, CSRF y security headers. El MCP adapter permanece loopback-only.
 - **Zero Node.js en Raspberry Pi**: El CSS de Tailwind (17 KB) se compila en el entorno de desarrollo y se despliega como activo estático estricto.
 - **Operaciones Core Auditas**: La consola invoca `GatewayTools` para pruebas y diagnósticos; nunca ejecuta comandos SSH arbitrarios desde los controladores web.
 - **Interruptor de Emergencia (Emergency Kill Switch)**: Corta globalmente el acceso de las herramientas a los targets en milisegundos actualizando `gateway_enabled = false` en la base de datos.
@@ -228,7 +229,7 @@ La Fase 4C expone las capacidades del Gateway Core a clientes compatibles con Mo
 │  │   Adaptador MCP Oficial en Go                    │  │
 │  │   (mcp-gateway-adapter)                          │  │
 │  │   - Protocolo MCP 2026-07-28 (compat 2025-11-25) │  │
-│  │   - Esquemas JSON Schema de 8 herramientas       │  │
+│  │   - Esquemas JSON Schema del catálogo vigente de 21 herramientas       │  │
 │  │   - Transportes: stdio & Streamable HTTP         │  │
 │  │   - Binario estático compilado para ARMv6 (8 MB) │  │
 │  └──────────────────────────┬───────────────────────┘  │
@@ -303,7 +304,7 @@ python3 -m mcp_gateway.bridge invoke <tool_name> '<json_arguments>'
 - **Servicio systemd**: `mcp-gateway-mcp.service` activo y habilitado en el arranque.
 - **Usuario de ejecución**: `User=mcp-gateway`, `Group=mcp-gateway` (sin privilegios de root ni sudo).
 - **Consumo de memoria**: ~10 MiB RSS en la Raspberry Pi Model A+.
-- **Monitoreo en Consola Admin**: La consola web de administración (`127.0.0.1:8080`) verifica en tiempo real la conectividad contra el socket del adaptador en `127.0.0.1:8090` y muestra el estado en el Dashboard.
+- **Monitoreo en Consola Admin**: La consola web de administración (`127.0.0.1:80`) verifica en tiempo real la conectividad contra el socket del adaptador en `127.0.0.1:8090` y muestra el estado en el Dashboard.
 
 ---
 
@@ -441,18 +442,18 @@ La Fase 4D introduce un marco formal de compatibilidad, hardening de red y gesti
 
 ### 9.1 Matriz de Contratos (`compatibility.json`)
 
-El archivo [`compatibility.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/compatibility.json) actúa como fuente de verdad inmutable para versiones de componentes:
-- `gateway_version`: 0.6.0
+El archivo [`compatibility.json`](../compatibility.json) actúa como fuente de verdad inmutable para versiones de componentes:
+- `gateway_version`: 1.2.1
 - `core_api_version`: 1
 - `bridge_api_version`: 1
-- `tool_catalog_version`: 2 (9 herramientas en orden alfabético estricto)
+- `tool_catalog_version`: 3 (21 herramientas en orden alfabético determinista; visibilidad filtrada por grants)
 - `registry_schema_version`: 1 (`PRAGMA user_version = 1`)
 - `mcp_protocol`: `2026-07-28` con retrocompatibilidad negociada `2025-11-25`
 
 ### 9.2 CLI Unificado y Empaquetado
 
-- **CLI Unificado**: [`bin/mcp-gateway`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/bin/mcp-gateway) como punto de entrada único para administración local (`status`, `doctor`, `repair`, `backup`, `restore`, `rollback`, `uninstall`).
-- **Empaquetado e Instalación**: Manifiesto firmado criptográficamente ([`manifest.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/manifest.json), [`SHA256SUMS`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/SHA256SUMS)) e instalador idempotente [`install.sh`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/install.sh).
+- **CLI Unificado**: [`bin/mcp-gateway`](../bin/mcp-gateway) como punto de entrada único para administración local (`status`, `doctor`, `repair`, `backup`, `restore`, `rollback`, `uninstall`).
+- **Empaquetado e Instalación**: Manifiesto firmado criptográficamente ([`manifest.json`](../manifest.json), [`SHA256SUMS`](../SHA256SUMS)) e instalador idempotente [`install.sh`](../install.sh).
 - **Consola Web de Mantenimiento**: Ruta `/maintenance` que integra diagnósticos en tiempo real, respaldos online y gestión de versiones mediante HTMX local (sin dependencias de red externas).
 
 

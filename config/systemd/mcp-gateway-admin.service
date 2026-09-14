@@ -1,6 +1,7 @@
 [Unit]
 Description=MCP Gateway Admin Console
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -11,10 +12,15 @@ Environment=PYTHONPATH=/home/mcp-gateway/mcp-gateway/src
 Environment=MCP_GATEWAY_REGISTRY=sqlite
 Environment=MCP_GATEWAY_DB=/home/mcp-gateway/.local/share/mcp-gateway/gateway.db
 Environment=MCP_ADMIN_SECRET_FILE=/home/mcp-gateway/.config/mcp-gateway/admin-secret
-ExecStart=/usr/bin/python3 -m mcp_gateway.web 8080
+Environment=MCP_ADMIN_HOST=0.0.0.0
+Environment=MCP_ADMIN_PORT=80
+Environment=MCP_ADMIN_ALLOWED_HOSTS=127.0.0.1,localhost,192.168.68.55,mcp-pi
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/bin/python3 -m mcp_gateway.web
 Restart=on-failure
 RestartSec=5
-NoNewPrivileges=true
 PrivateTmp=true
 
 [Install]

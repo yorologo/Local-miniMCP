@@ -8,34 +8,33 @@ La Fase 4D establece las bases normativas, de compatibilidad y ciclo de vida par
 
 ## 2. Contratos de Versiones (`compatibility.json`)
 
-El archivo [`compatibility.json`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/compatibility.json) define las versiones de interfaz soportadas por el sistema:
+El archivo [`compatibility.json`](../compatibility.json) define las versiones de interfaz soportadas por el sistema:
 
 ```json
 {
-  "gateway_version": "1.0.1",
+  "gateway_version": "1.2.1",
   "core_api_version": 1,
   "bridge_api_version": 1,
-  "tool_catalog_version": 2,
+  "tool_catalog_version": 3,
   "registry_schema_version": 1,
   "mcp": {
     "sdk": "go-sdk",
     "version": "1.7.0",
     "protocol": "2026-07-28",
-    "protocol_legacy": "2025-11-25",
-    "transports": ["stdio", "streamable_http"]
+    "protocol_legacy": "2025-11-25"
   },
   "runtime": {
-    "minimum_python": "3.9",
-    "architectures": ["armv6l", "aarch64", "x86_64"]
+    "python": "3.9+",
+    "architecture": ["armv6l", "aarch64", "x86_64"]
   }
 }
 ```
 
 ### Componentes y Roles
-- **Gateway Version (`1.0.1`)**: Versión semántica global del Gateway.
-- **Core API (`v1`)**: Interfaz interna en Python (`GatewayTools`).
-- **Bridge API (`v1`)**: Protocolo CLI de invocación entre el Go Adapter y Python (`python3 -m mcp_gateway.bridge invoke <tool> <args>`).
-- **Tool Catalog (`v2`)**: Catálogo determinista alfabético de 9 herramientas (`file_stat`, `git_status`, `health`, `list_directory`, `list_targets`, `read_file`, `run_task`, `target_status`, `write_file`).
+- **Gateway Version (`1.2.1`)**: versión global desplegada.
+- **Core API (`v1`)**: interfaz interna Python (`GatewayTools`).
+- **Bridge API (`v1`)**: contrato CLI entre Go Adapter y Python.
+- **Tool Catalog (`v3`)**: 21 herramientas deterministas; la visibilidad se filtra dinámicamente por grants de cliente.
 - **Registry Schema (`v1`)**: Esquema de base de datos SQLite controlado con `PRAGMA user_version = 1`.
 - **MCP Protocol (`2026-07-28`)**: Protocolo oficial MCP nativo soportado por el Go SDK v1.7.0, con compatibilidad regresiva negociada para `2025-11-25`.
 
@@ -62,9 +61,9 @@ Cada interacción iniciada a través del protocolo MCP genera o propaga un ident
 
 ## 5. Costura de Autorización para Clientes Futuros (`can_client_use_tool`)
 
-Preparado para la Fase 6 (integración con ChatGPT y clientes AI externos), el motor de políticas implementa [`can_client_use_tool`](file:///data/data/com.termux/files/home/Projects/test/MCP_Local/src/mcp_gateway/policy.py):
+Preparado para la Fase 6 (integración con ChatGPT y clientes AI externos), el motor de políticas implementa [`can_client_use_tool`](../src/mcp_gateway/policy.py):
 - Consulta el registro SQLite para verificar si el cliente existe y está habilitado.
-- Verifica si el cliente tiene permisos para invocar herramientas específicas (por ejemplo, permitir herramientas de lectura y restringir `write_file` o `run_task`).
+- Verifica si el cliente tiene permisos para invocar herramientas específicas (por ejemplo, permitir lectura, restringir structured writes o conceder `run_command` de forma explícita).
 - Deniega por defecto si el cliente está explícitamente deshabilitado (`CLIENT_UNAUTHORIZED`).
 
 ---

@@ -2,15 +2,15 @@
 {% block title %}Activity Audit - MCP Gateway Admin{% endblock %}
 {% block content %}
 <div class="space-y-6">
-  <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+  <div class="page-header">
     <div>
-      <h1 class="text-2xl font-bold text-white tracking-tight">Activity Audit Log</h1>
-      <p class="text-xs text-slate-400 mt-1">Immutable execution and access trail (Page {{ page }} of {{ total_pages }}, {{ total }} entries total)</p>
+      <h1 class="page-title">Activity Audit Log</h1>
+      <p class="page-description">Immutable execution and access trail (Page {{ page }} of {{ total_pages }}, {{ total }} entries total)</p>
     </div>
   </div>
 
-  <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-    <table class="w-full text-left text-xs">
+  <div class="table-region" role="region" aria-label="Activity audit log" tabindex="0">
+    <table class="data-table min-w-[64rem]">
       <thead class="text-slate-400 bg-slate-900/60 border-b border-slate-800 uppercase tracking-wider">
         <tr>
           <th class="py-3 px-4">Timestamp (UTC)</th>
@@ -71,14 +71,14 @@
 
   <!-- Pagination -->
   {% if total_pages > 1 %}
-  <div class="flex items-center justify-between text-xs text-slate-400 pt-2">
+  <div class="flex flex-col gap-3 pt-2 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
     <div>Showing page {{ page }} of {{ total_pages }}</div>
     <div class="space-x-2">
       {% if page > 1 %}
-        <a href="{{ url_for('admin.activity_view', page=page-1) }}" class="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded hover:bg-slate-900 text-slate-200 transition">&larr; Previous</a>
+        <a href="{{ url_for('admin.activity_view', page=page-1) }}" class="btn-secondary">&larr; Previous</a>
       {% endif %}
       {% if page < total_pages %}
-        <a href="{{ url_for('admin.activity_view', page=page+1) }}" class="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded hover:bg-slate-900 text-slate-200 transition">Next &rarr;</a>
+        <a href="{{ url_for('admin.activity_view', page=page+1) }}" class="btn-secondary">Next &rarr;</a>
       {% endif %}
     </div>
   </div>

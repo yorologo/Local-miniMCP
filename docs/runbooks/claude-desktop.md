@@ -36,7 +36,7 @@ Editar el archivo de configuración de Claude Desktop en Windows:
         "-o", "StrictHostKeyChecking=no",
         "-o", "ServerAliveInterval=30",
         "-T",
-        "mcp-gateway@192.168.68.85"
+        "mcp-gateway@192.168.68.55"
       ]
     }
   }

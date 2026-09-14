@@ -712,7 +712,7 @@ def toggle_writes_switch():
         success=True,
         detail=f"Admin toggled writes_enabled to {new_state}"
     )
-    msg = "Controlled writes ENABLED. AI clients may modify authorized projects." if new_state else "Controlled writes DISABLED globally."
+    msg = "Structured filesystem writes ENABLED for authorized projects." if new_state else "Structured filesystem writes DISABLED globally."
     cat = "warning" if new_state else "info"
     flash(msg, cat)
     return redirect(url_for("admin.settings_view"))
@@ -729,7 +729,7 @@ def disable_writes():
         success=True,
         detail="Admin activated emergency disable for controlled writes"
     )
-    flash("PANIC: Controlled writes have been immediately DISABLED. All read operations remain fully functional.", "warning")
+    flash("PANIC: Structured filesystem writes are DISABLED. Read tools and separately granted run_command remain independent.", "warning")
     return redirect(url_for("admin.settings_view"))
 
 
@@ -743,6 +743,7 @@ def maintenance_view():
     from .. import compatibility
     from ..doctor import run_doctor
     from ..lifecycle import get_paths
+    from ..bridge import ALLOWED_TOOLS
 
     overall, checks = run_doctor(verbose=False)
     compat = compatibility.get_compatibility()
@@ -768,6 +769,7 @@ def maintenance_view():
         overall_status=overall,
         checks=checks,
         compat=compat,
+        tool_count=len(ALLOWED_TOOLS),
         backups=backups,
         current_target=current_target,
         previous_target=previous_target,

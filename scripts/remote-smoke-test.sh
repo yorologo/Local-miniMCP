@@ -10,8 +10,8 @@ if [ -f "${PROJECT_ROOT}/.mcp-pi.local.env" ]; then
     set +a
 fi
 
-PI_HOST="${MCP_PI_HOST:-192.168.68.85}"
-PI_USER="${MCP_PI_USER:-Yorologo}"
+PI_HOST="${MCP_PI_HOST:-192.168.68.55}"
+PI_USER="${MCP_PI_USER:-yorologo}"
 REMOTE_DIR="/home/mcp-gateway/mcp-gateway"
 CFG="${REMOTE_DIR}/config/targets.local.json"
 

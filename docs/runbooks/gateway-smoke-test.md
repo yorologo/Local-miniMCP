@@ -1,12 +1,12 @@
 # Runbook: Despliegue y Pruebas del Gateway Core en MCP-Pi
 
-Este runbook documenta el procedimiento estándar para desplegar el código del Gateway Core en la Raspberry Pi `MCP-Pi` (`192.168.68.85`) y ejecutar la batería completa de verificación (pruebas unitarias remotas, pruebas en vivo contra targets y pruebas negativas de seguridad).
+Este runbook documenta el procedimiento estándar para desplegar el código del Gateway Core en la Raspberry Pi `MCP-Pi` (`192.168.68.55`) y ejecutar la batería completa de verificación (pruebas unitarias remotas, pruebas en vivo contra targets y pruebas negativas de seguridad).
 
 ---
 
 ## 1. Requisitos Previos
 
-- Conectividad SSH con `MCP-Pi` (`192.168.68.85:22`) como `Yorologo` (con contraseña o clave).
+- Conectividad SSH con `MCP-Pi` (`192.168.68.55:22`) como `yorologo` (con contraseña o clave).
 - Archivo de credenciales locales `.mcp-pi.local.env` presente y con permisos `600` en la raíz del repositorio.
 - Configuración de targets locales en `config/targets.local.json`.
 - Acceso SSH operativo desde la Raspberry Pi hacia el target `termux-main` (`192.168.68.84:8022`) vía usuario `mcp-gateway` (alias `pc-local` y `termux-local`).
@@ -28,7 +28,7 @@ El script `scripts/deploy-pi.sh` realiza las siguientes acciones:
 
 ### Resultado esperado:
 ```text
-=== Deploying MCP Gateway to MCP-Pi (192.168.68.85) ===
+=== Deploying MCP Gateway to MCP-Pi (192.168.68.55) ===
 1. Creating remote directory structure...
 2. Transferring files...
 3. Running remote unit tests as mcp-gateway...
@@ -72,7 +72,7 @@ Para verificar la integración real con el target `termux-main` y la efectividad
 Para ejecutar un comando puntual desde la Raspberry Pi:
 
 ```bash
-ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.cli --config /home/mcp-gateway/mcp-gateway/config/targets.local.json <herramienta> [argumentos]"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway PYTHONPATH=/home/mcp-gateway/mcp-gateway/src python3 -m mcp_gateway.cli --config /home/mcp-gateway/mcp-gateway/config/targets.local.json <herramienta> [argumentos]"
 ```
 
 Ejemplos:

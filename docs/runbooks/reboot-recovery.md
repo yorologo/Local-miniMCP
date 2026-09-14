@@ -35,18 +35,18 @@ La Raspberry Pi Model A+ tarda aproximadamente 45 segundos en:
 1. Cargar el kernel Linux desde la microSD.
 2. Inicializar el bus USB e identificar el dongle Realtek RTL8188EUS (`0bda:8179`).
 3. Cargar el módulo `rtl8xxxu` (en Trixie) o `r8188eu` (en Bullseye) y asociarse al SSID Wi-Fi.
-4. Solicitar y recibir la concesión DHCP (`192.168.68.85`).
+4. Solicitar y recibir la concesión DHCP (`192.168.68.55`).
 
 ### Paso 2: Verificación de Conectividad de Red
 Desde la estación de trabajo:
 ```bash
-ping 192.168.68.85 -n 4
+ping 192.168.68.55 -n 4
 ```
 **Resultado esperado**: 4 paquetes transmitidos, 4 recibidos (0% de pérdida), latencia ~2-15 ms.
 
 ### Paso 3: Verificación de Servicios
 ```bash
-ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts yorologo@192.168.68.85 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
+ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts yorologo@192.168.68.55 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
 ```
 **Resultado esperado**:
 ```text
@@ -56,7 +56,7 @@ active
 
 ### Paso 4: Verificación Integral con Doctor
 ```bash
-ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
 ```
 **Resultado esperado**:
 ```text
@@ -77,16 +77,16 @@ Todos los chequeos en `[PASS]`, incluyendo integridad de SQLite, catálogo de he
    - Verificar si el LED azul del dongle Realtek RTL8188EUS parpadea. Si está completamente apagado, extraerlo y reinsertarlo firmemente en el puerto USB hembra de la Pi.
 
 ### Problema B: El Hostname o la IP cambiaron
-- Si el router asignó una IP diferente a `192.168.68.85`:
+- Si el router asignó una IP diferente a `192.168.68.55`:
   - Verificar en la consola web del router la tabla DHCP para la MAC `8c:90:2d:ac:e5:c0`.
-  - Asegurar que la reserva estática para `8c:90:2d:ac:e5:c0` apunte a `192.168.68.85`.
+  - Asegurar que la reserva estática para `8c:90:2d:ac:e5:c0` apunte a `192.168.68.55`.
 
 ### Problema C: Uno de los Servicios está en estado `failed`
 1. Consultar el log del servicio:
    ```bash
-   ssh yorologo@192.168.68.85 "sudo journalctl -u mcp-gateway-admin -n 50 --no-pager"
+   ssh yorologo@192.168.68.55 "sudo journalctl -u mcp-gateway-admin -n 50 --no-pager"
    ```
 2. Ejecutar la auto-reparación no destructiva:
    ```bash
-   ssh yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
+   ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway repair"
    ```

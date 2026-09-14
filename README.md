@@ -5,14 +5,44 @@
 | Campo | Valor |
 | --- | --- |
 | Versión documental | 1.2.1 |
-| Fecha de corte técnico | 13 de septiembre de 2026 |
-| Revisión editorial | 13 de septiembre de 2026 |
+| Fecha de corte técnico | 14 de septiembre de 2026 |
+| Revisión editorial | 14 de septiembre de 2026 |
 | Estado del proyecto | **v1.2.1 RELEASED** (`0f1ed92`) / Histórico: v1.0.0 (`d52f848`), v1.0.1 (`bcd8fe9`), v1.1.0 (`b2f35d3`), v1.1.1 (`ff9f653`), v1.2.0 (`df5fa43`) |
 | Hardware base | Raspberry Pi Model A+ Rev 1.1 — ARMv6, ~173 MiB RAM utilizable |
 | OS producción actual | Raspberry Pi OS / Debian 13 Trixie (32-bit `armv6l`) — Rollback físico: Raspbian 11 Bullseye preservado |
 | Política de construcción | **Reuse first; build only what is specific to MCP-Pi** |
 
 > Este documento es la fuente de verdad general del proyecto y sustituye conceptualmente a la línea base v0.1. Los documentos por fase, runbooks, reportes y pruebas permanecen como evidencia histórica y operativa.
+
+## Inicio rápido y mapa documental
+
+Para uso diario no es necesario leer toda la documentación maestra:
+
+- **Arquitectura actual:** [`docs/architecture.md`](docs/architecture.md) y [`docs/diagrams.md`](docs/diagrams.md).
+- **Configuración y variables de entorno:** [`docs/configuration.md`](docs/configuration.md).
+- **Despliegue a MCP-Pi:** [`docs/deployment.md`](docs/deployment.md).
+- **Consola web:** [`docs/admin-console.md`](docs/admin-console.md).
+- **Troubleshooting:** [`docs/troubleshooting.md`](docs/troubleshooting.md).
+- **Misión y visión:** [`docs/mission.md`](docs/mission.md).
+- **Estado operativo actual:** [`docs/project-state.md`](docs/project-state.md).
+- **Roadmap y limitaciones:** [`docs/roadmap.md`](docs/roadmap.md).
+- **Contribución:** [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- **Cambios:** [`CHANGELOG.md`](CHANGELOG.md).
+
+Desarrollo local típico:
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+node tests/test_app_js.mjs
+cd tailwind && npm run build
+```
+
+Despliegue actual:
+
+```bash
+./scripts/deploy-pi.sh
+# Admin Console: http://192.168.68.55
+```
 
 ## 1. Propósito y alcance
 
@@ -38,7 +68,7 @@ El proyecto debe mantenerse:
 - multi-target y multi-project;
 - agnóstico del cliente de IA;
 - deny-by-default;
-- sin shell arbitrario;
+- shell completo solo para clientes con grant explícito de `run_command`, confinado al Project y auditado;
 - sin exposición pública por defecto;
 - sin dependencias pesadas innecesarias.
 
@@ -94,7 +124,7 @@ Las operaciones habituales no deben exigir recordar rutas internas de Python, SQ
 
 ```text
 Hostname: MCP-Pi
-LAN IP: 192.168.68.55 (endpoint mutable en runtime DHCP; histórico: 192.168.68.85)
+LAN IP: 192.168.68.55 (reserva DHCP operativa; histórico: 192.168.68.85)
 Hardware: Raspberry Pi Model A Plus Rev 1.1
 Architecture: armv6l
 RAM utilizable: ~173 MiB en Trixie (histórico: ~176 MiB en Bullseye)
@@ -244,15 +274,17 @@ sin sudo
 
 Los privilegios administrativos se reservan para instalación y mantenimiento controlado.
 
-### 3.6 No arbitrary shell
+### 3.6 Shell completo solo con autorización explícita
 
-Fuera de v1:
+`run_command` está activo para clientes que tengan un grant que incluya `execute`, `run_command`, `environment_management`, `system_package_management` o `*`. La herramienta:
 
-- arbitrary shell;
-- generic exec;
-- generic PowerShell;
-- generic Bash;
-- unrestricted command execution.
+- parte del root del Project autorizado;
+- mantiene `cwd` dentro del Project;
+- preserva el entorno real del Target cuando corresponde;
+- registra auditoría;
+- sigue sujeta a `gateway_enabled`, Target/Project habilitados y grants del cliente.
+
+Las herramientas estructuradas de filesystem (`write_file`, `append_file`, `delete_file`, `copy_file`, `move_file`, `mkdir`) permanecen además sujetas a `writes_enabled` y `project.write`. `run_command` es una capacidad de ejecución separada: apagar el switch de structured writes no revoca por sí solo un grant de ejecución.
 
 ### 3.7 Una capa por actualización
 
@@ -286,13 +318,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    BROWSER[Browser] --> TUNNEL[SSH Tunnel]
-    TUNNEL --> ADMIN[127.0.0.1:8080 Admin Console]
-    ADMIN --> REG[Registry]
-    ADMIN --> CORE[Gateway Core]
+    BROWSER[Browser on trusted LAN] --> ADMIN[192.168.68.55:80 Admin Console]
+    ADMIN --> HOST[Host allowlist + auth + CSRF + CSP]
+    HOST --> REG[Registry]
+    HOST --> CORE[Gateway Core]
+    OPTIONAL[Optional SSH tunnel on untrusted networks] --> ADMIN
 ```
 
-La consola administrativa permanece accesible únicamente por localhost y túnel SSH.
+La consola administrativa está expuesta únicamente en la LAN confiable del MCP-Pi y valida un allowlist explícito de `Host`. El adaptador MCP continúa estrictamente en loopback (`127.0.0.1:8090`) y solo sale mediante Secure MCP Tunnel.
 
 ## 5. Componentes
 
@@ -370,15 +403,18 @@ Servicio:
 
 ```text
 mcp-gateway-admin.service
-127.0.0.1:8080
+192.168.68.55:80
 User=mcp-gateway
+Host allowlist: 127.0.0.1, localhost, 192.168.68.55, mcp-pi
 ```
 
-Acceso habitual:
+Acceso habitual en la LAN confiable:
 
-```bash
-ssh -N -L 8080:127.0.0.1:8080 Yorologo@192.168.68.85
+```text
+http://192.168.68.55
 ```
+
+En una red no confiable puede mantenerse el patrón SSH tunnel hacia el mismo servicio.
 
 Controles existentes:
 
@@ -390,7 +426,7 @@ Controles existentes:
 - CSP y security headers;
 - rate limiting de login;
 - debug deshabilitado;
-- bind exclusivo a localhost.
+- bind IPv4 `0.0.0.0:80` en producción, con Host allowlist explícita y `CAP_NET_BIND_SERVICE` únicamente.
 
 ### 5.4 MCP Adapter
 
@@ -450,28 +486,32 @@ No realiza:
 
 ## 6. Catálogo de herramientas y capacidades
 
-El catálogo de herramientas (Tool Catalog v3) expone 14 herramientas deterministas:
+El catálogo vigente (`Tool Catalog v3`) expone **21 herramientas deterministas**. La visibilidad real por cliente depende de sus grants.
 
-### 6.1 Herramientas sobre Targets (9 herramientas)
+### 6.1 Herramientas Core / Targets (16)
 
-| Tool | Estado | Riesgo |
+| Tool | Capacidad principal | Riesgo |
 | --- | --- | --- |
-| `health` | ACTIVA | Bajo |
-| `list_targets` | ACTIVA | Bajo |
-| `target_status` | ACTIVA | Bajo |
-| `list_directory` | ACTIVA | Bajo |
-| `file_stat` | ACTIVA | Bajo |
-| `read_file` | ACTIVA | Medio |
-| `git_status` | ACTIVA | Bajo |
-| `run_task` | ACTIVA | Medio |
-| `write_file` | ACTIVA | Alto |
-| `apply_patch` | DEFERRED_FOR_SAFE_IMPLEMENTATION | Alto |
-| `delete_file` | FUERA DE V1 | Muy alto |
-| arbitrary shell | FUERA DE V1 | Crítico |
+| `health` | health/read | Bajo |
+| `list_targets` | read | Bajo |
+| `target_status` | read | Bajo |
+| `list_directory` | read | Bajo |
+| `file_stat` | read | Bajo |
+| `read_file` | read | Medio |
+| `git_status` | read | Bajo |
+| `search` | read | Medio |
+| `run_task` | execute allowlisted task | Medio |
+| `run_command` | execute / environment management | Alto |
+| `write_file` | structured write | Alto |
+| `append_file` | structured write | Alto |
+| `delete_file` | structured write | Alto |
+| `copy_file` | structured write | Alto |
+| `move_file` | structured write | Alto |
+| `mkdir` | structured write | Alto |
 
-`run_task` solo acepta tareas declaradas en allowlist.
+`run_task` acepta únicamente tareas declaradas. `run_command` requiere autorización explícita y opera bajo el Project autorizado; no sustituye la política ni los grants.
 
-### 6.2 Herramientas de administración del Appliance (5 herramientas)
+### 6.2 Herramientas de administración del Appliance (5)
 
 | Tool | Estado | Riesgo |
 | --- | --- | --- |
@@ -481,7 +521,9 @@ El catálogo de herramientas (Tool Catalog v3) expone 14 herramientas determinis
 | `gateway_maintenance` | ACTIVA | Medio |
 | `gateway_reboot` | ACTIVA | Alto |
 
-`gateway_reboot` solo invoca el helper sin parámetros `/usr/local/bin/mcp-gateway-reboot` bajo confirmación estricta.
+`gateway_reboot` requiere confirmación explícita y usa el helper controlado del appliance.
+
+`apply_patch` **no forma parte del catálogo vigente**; la edición estructurada usa las herramientas de filesystem y la edición avanzada puede hacerse mediante `run_command` cuando el cliente dispone del grant correspondiente.
 
 ### 6.3 Política de escritura controlada
 
@@ -490,17 +532,17 @@ La escritura exige simultáneamente:
 ```text
 gateway_enabled
 AND
-writes_enabled
-AND
 target.enabled
 AND
 project.enabled
 AND
-project.write
-AND
 client grant/capability
 AND
-path policy
+project/path scope
+
+# additional conditions for structured filesystem mutations:
+AND writes_enabled
+AND project.write
 ```
 
 La configuración global de seguridad parte de:
@@ -1272,7 +1314,7 @@ AI Client
 | ADR-004 | No Docker inicialmente | ACCEPTED |
 | ADR-005 | Los Targets hacen el trabajo pesado | ACCEPTED |
 | ADR-006 | SSH como transporte principal a Targets | ACCEPTED |
-| ADR-007 | No arbitrary shell en v1 | ACCEPTED |
+| ADR-007 | `run_command` permitido solo por grant explícito, Project scope y auditoría | SUPERSEDED / ACCEPTED CURRENT |
 | ADR-008 | AI-client agnostic | ACCEPTED |
 | ADR-009 | Multi-target | ACCEPTED |
 | ADR-010 | Multi-project | ACCEPTED |
@@ -1367,80 +1409,43 @@ Phase 4D quedó completada con:
 ## 17. Estado resumido de producción (v1.2.1)
 
 ```text
-PROJECT: MCP-Pi Gateway
-DOCUMENT: 1.2.1
-
-RELEASE:
-  v1.2.1 — Stable Release, verified @ 0f1ed92
-  v1.2.0 — Dynamic endpoint resolution & discovery
-  v1.1.1 — Tunnel auth & anti-spoofing hardening
-  v1.1.0 — Appliance administration tools
-  v1.0.1 — Hygiene Patch Release
-  v1.0.0 — Stable Release, immutable @ d52f848
-
-CURRENT STATE: OPERATIONAL_STABLE / MISSION_V1_ACHIEVED
+PROJECT: Local-miniMCP / MCP-Pi Gateway
+DOCUMENT: 1.2.1 + post-release operational updates (2026-09-14)
+CURRENT STATE: OPERATIONAL / REMOTE_AUTONOMY_ENABLED
 
 GATEWAY:
   MCP-Pi
-  192.168.68.55 (mutable runtime LAN IP; histórico: 192.168.68.85)
+  192.168.68.55
   Raspberry Pi Model A+ Rev 1.1
-  ARMv6 / ~173 MiB RAM utilizable
-
-PI-HOLE:
-  YorPi
-  192.168.68.54
-  DO NOT MODIFY
-
-ACTIVE TARGET:
-  termux-main
-  192.168.68.84:8022 (mutable runtime LAN IP; histórico: 192.168.68.72:8022)
-  Fingerprint: SHA256:qILA9dmqZNJS7PaxqDtC7weR4NdcGhruxsUYHpPish0
-  SSH aliases: termux-local (principal), pc-local (compat)
-  Invariante: TARGET_ID + SSH HOST KEY = identity; IP + PORT = mutable endpoint
+  ARMv6 / Debian 13 Trixie
 
 ADMIN:
-  127.0.0.1:8080
-  Flask + Jinja + Tailwind
-  SSH tunnel only
+  http://192.168.68.55
+  Flask + Jinja + precompiled Tailwind
+  Host allowlist + authentication + CSRF + CSP
 
 MCP:
   Official Go SDK v1.7.0
-  127.0.0.1:8090/mcp
-  stdio + Streamable HTTP
+  127.0.0.1:8090/mcp (loopback only)
   Protocol: 2026-07-28
-  Fallback: 2025-11-25
-
-SECURE MCP TUNNEL:
-  Official openai/tunnel-client (v0.0.14+3b706ea54d0ad303c85d5ccd35633ae69405570b)
-  127.0.0.1:8091 (metrics/health)
-  ChatGPT Plus Developer Mode E2E: PASS
-
-CORE:
-  Python >= 3.9 (runtime: 3.13.5 en Trixie; histórico: 3.9.2 en Bullseye)
-  Single security authority
-
-REGISTRY:
-  SQLite schema v1 primary
-  JSON fallback
+  Secure MCP Tunnel to OpenAI
 
 TOOLS:
-  14 active deterministic tools (Tool Catalog v3)
-  Target tools (9): file_stat, git_status, health, list_directory,
-    list_targets, read_file, run_task, target_status, write_file
-  Appliance admin tools (5): gateway_status, gateway_doctor, gateway_backup,
-    gateway_maintenance, gateway_reboot
+  21 deterministic tools (Tool Catalog v3)
+  16 Core/Target tools + 5 appliance admin tools
+  run_command: ACTIVE when explicitly granted
 
-WRITE:
-  write_file IMPLEMENTED (writes_enabled=false por defecto)
-  atomic + expected_sha256 + panic switch
-  apply_patch DEFERRED_FOR_SAFE_IMPLEMENTATION
+STRUCTURED WRITES:
+  write_file, append_file, delete_file, copy_file, move_file, mkdir
+  protected by writes_enabled + project.write + grants + path scope
 
-ARBITRARY SHELL: DISABLED / OUT OF V1
-AUTO UPDATE: NO (unattended-upgrades de seguridad únicamente)
+EXECUTION:
+  run_command is separate from the structured-write switch
+  requires execute/run_command/environment-management capability or *
 
-OS:
-  Raspberry Pi OS 13 Trixie — production baseline
-  microSD Raspbian 11 Bullseye — preserved physical rollback
+ACTIVE TARGET:
+  termux-main / Android Termux / SSH :8022
+  endpoint may change; SSH host key is canonical identity
 
 KISS: MANDATORY
 REUSE-FIRST: MANDATORY

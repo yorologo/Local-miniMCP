@@ -26,14 +26,14 @@ Activar este procedimiento inmediatamente si se presenta cualquiera de las sigui
                                                                 v
 +-------------------+      +-------------------+      +-------------------+
 | 6. Doctor         | <--- | 5. Conectar SSH   | <--- | 4. Encender       |
-| HEALTHY           |      | Yorologo@...85    |      | (Reconectar 5V)   |
+| HEALTHY           |      | yorologo@...55    |      | (Reconectar 5V)   |
 +-------------------+      +-------------------+      +-------------------+
 ```
 
 ### Paso 1: Apagado Seguro o Desconexión
 Si el sistema responde por SSH:
 ```bash
-ssh Yorologo@192.168.68.85 "sudo shutdown -h now"
+ssh yorologo@192.168.68.55 "sudo shutdown -h now"
 ```
 Esperar 15 segundos hasta que el LED verde ACT deje de parpadear por completo. Si el sistema está congelado o inaccesible, desconectar físicamente la fuente de alimentación Micro-USB de 5V.
 
@@ -50,7 +50,7 @@ Esperar 15 segundos hasta que el LED verde ACT deje de parpadear por completo. S
 
 ### Paso 5: Espera de Asociación de Red (45-60 Segundos)
 - La Raspberry Pi cargará automáticamente el driver `r8188eu` preexistente y se asociará a la red Wi-Fi local.
-- El router le asignará la dirección IP reservada: `192.168.68.85`.
+- El router le asignará la dirección IP reservada: `192.168.68.55`.
 
 ---
 
@@ -60,17 +60,17 @@ Desde la estación de trabajo:
 
 1. **Comprobar Ping y Acceso SSH**:
    ```bash
-   ping 192.168.68.85 -n 4
-   ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts Yorologo@192.168.68.85 "hostname -I; uname -a"
+   ping 192.168.68.55 -n 4
+   ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/mcp_known_hosts yorologo@192.168.68.55 "hostname -I; uname -a"
    ```
    **Resultado esperado**:
-   - Host: `192.168.68.85`
+   - Host: `192.168.68.55`
    - Kernel: `Linux MCP-Pi 6.1.21+ ... armv6l`
    - Sin advertencias de host key pinning.
 
 2. **Comprobar Estado de Servicios**:
    ```bash
-   ssh Yorologo@192.168.68.85 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
+   ssh yorologo@192.168.68.55 "sudo systemctl is-active mcp-gateway-admin mcp-gateway-mcp"
    ```
    **Resultado esperado**:
    ```text
@@ -80,7 +80,7 @@ Desde la estación de trabajo:
 
 3. **Ejecutar Doctor de Salud**:
    ```bash
-   ssh Yorologo@192.168.68.85 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
+   ssh yorologo@192.168.68.55 "sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor"
    ```
    **Resultado esperado**: `OVERALL STATUS: HEALTHY`.
 

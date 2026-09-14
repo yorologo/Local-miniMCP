@@ -37,7 +37,7 @@ En la configuración del cliente (e.g. `gemini.config.json` o archivo de configu
         "-o", "StrictHostKeyChecking=no",
         "-o", "ServerAliveInterval=30",
         "-T",
-        "mcp-gateway@192.168.68.85"
+        "mcp-gateway@192.168.68.55"
       ]
     }
   }
@@ -68,7 +68,7 @@ Inicialmente, `gemini-main` tiene asignado el perfil de permisos `read,execute`,
 Para verificar la conexión de forma interactiva desde PowerShell:
 
 ```powershell
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}' | ssh -i "$HOME/.ssh/mcp_gemini_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=no -T mcp-gateway@192.168.68.85
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}' | ssh -i "$HOME/.ssh/mcp_gemini_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=no -T mcp-gateway@192.168.68.55
 ```
 
 Respuesta esperada:
@@ -80,6 +80,6 @@ Respuesta esperada:
 
 ## 6. Solución de Problemas
 
-- **Conexión rechazada o timeout**: Verificar que la Raspberry Pi esté encendida en `192.168.68.85` y que no haya interferencia en la red Wi-Fi USB.
+- **Conexión rechazada o timeout**: Verificar que la Raspberry Pi esté encendida en `192.168.68.55` y que no haya interferencia en la red Wi-Fi USB.
 - **Permission denied (publickey)**: Verificar que la clave pública esté presente en `/home/mcp-gateway/.ssh/authorized_keys` con los permisos `0600`.
-- **Tool not allowed**: Si una herramienta necesaria no aparece en `tools/list`, solicitar al administrador del gateway que añada el grant correspondiente en la consola web (`127.0.0.1:8080`).
+- **Tool not allowed**: Si una herramienta necesaria no aparece en `tools/list`, solicitar al administrador del gateway que añada el grant correspondiente en la consola web (`http://192.168.68.55`).
