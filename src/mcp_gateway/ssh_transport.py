@@ -20,12 +20,13 @@ class SSHError(Exception):
 class SSHTransportResult:
     """Result of an SSH remote command execution."""
 
-    def __init__(self, exit_code: int, stdout: str, stderr: str, duration_ms: int, request_id: Optional[str] = None):
+    def __init__(self, exit_code: int, stdout: str, stderr: str, duration_ms: int, request_id: Optional[str] = None, timed_out: bool = False):
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
         self.duration_ms = duration_ms
         self.request_id = request_id
+        self.timed_out = timed_out
 
     @property
     def ok(self) -> bool:
@@ -210,6 +211,7 @@ class SSHTransport:
         remote_cmd: str,
         timeout: Optional[int] = None,
         cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
         input_data: Optional[bytes] = None,
         request_id: Optional[str] = None,
         is_retry: bool = False,
@@ -217,10 +219,15 @@ class SSHTransport:
         """Execute a remote shell command string safely constructed by the gateway."""
         effective_timeout = timeout or self.default_timeout
 
+        cmd_parts = []
+        if env:
+            for k, v in env.items():
+                if str(k).isidentifier():
+                    cmd_parts.append(f"export {k}={shlex.quote(str(v))};")
         if cwd:
-            full_remote_cmd = f"cd {shlex.quote(cwd)} && {remote_cmd}"
-        else:
-            full_remote_cmd = remote_cmd
+            cmd_parts.append(f"cd {shlex.quote(cwd)} &&")
+        cmd_parts.append(remote_cmd)
+        full_remote_cmd = " ".join(cmd_parts)
 
         ssh_args = self._build_ssh_args(target, effective_timeout)
         ssh_args.append(full_remote_cmd)
