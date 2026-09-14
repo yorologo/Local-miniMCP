@@ -1009,7 +1009,7 @@ class GatewayTools:
     def run_command(
         self,
         target: str,
-        project: str,
+        project: Optional[str],
         command: str,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
@@ -1018,6 +1018,19 @@ class GatewayTools:
     ) -> Dict[str, Any]:
         """Execute a shell command in the target worker environment."""
         start_time = time.monotonic()
+        if not project:
+            try:
+                t_cfg = self.config.get_target(target)
+                projs = t_cfg.get("projects", {})
+                if len(projs) == 1:
+                    project = list(projs.keys())[0]
+                elif "MCP_Local" in projs:
+                    project = "MCP_Local"
+                elif projs:
+                    project = list(projs.keys())[0]
+            except Exception:
+                pass
+
         gw_check = self._check_gateway_enabled("run_command", target=target, project=project, start_time=start_time)
         if gw_check:
             return gw_check
