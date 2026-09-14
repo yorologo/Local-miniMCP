@@ -206,7 +206,33 @@ class TestPolicy(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("TARGET_DISABLED", err)
 
+    def test_run_command_and_extended_fs_capabilities(self):
+        from unittest.mock import MagicMock
+        from mcp_gateway.policy import authorize_client
+
+        reg = MagicMock()
+        reg.get_client.return_value = {"id": "c_all", "enabled": True}
+        reg.get_setting.return_value = "true"
+        reg.get_target.return_value = {"id": "t1", "enabled": True}
+        reg.get_project.return_value = {"id": "p1", "enabled": True, "read": True, "write": True}
+        reg.get_client_grants.return_value = [
+            {"client_id": "c_all", "target_id": "t1", "project_id": "p1", "capability": "*", "enabled": True}
+        ]
+
+        for tool in ["run_command", "append_file", "delete_file", "copy_file", "move_file", "mkdir", "search"]:
+            ok, err = authorize_client("c_all", "t1", "p1", tool, registry=reg)
+            self.assertTrue(ok, f"{tool} should be authorized for c_all with *: err={err}")
+
+        # c_ro with only read capability
+        reg.get_client_grants.return_value = [
+            {"client_id": "c_ro", "target_id": "t1", "project_id": "p1", "capability": "read", "enabled": True}
+        ]
+        ok, err = authorize_client("c_ro", "t1", "p1", "run_command", registry=reg)
+        self.assertFalse(ok)
+        self.assertIn("TOOL_NOT_ALLOWED", err)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

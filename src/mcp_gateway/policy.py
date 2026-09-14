@@ -162,12 +162,20 @@ TOOL_CAPABILITIES = {
     "git_status": {"read", "git_status", "*"},
     "run_task": {"execute", "run_task", "tasks", "*"},
     "write_file": {"write", "write_file", "*"},
+    "append_file": {"write", "append_file", "*"},
+    "delete_file": {"write", "delete_file", "*"},
+    "copy_file": {"write", "copy_file", "*"},
+    "move_file": {"write", "move_file", "*"},
+    "mkdir": {"write", "mkdir", "*"},
+    "search": {"read", "search", "*"},
+    "run_command": {"execute", "run_command", "environment_management", "system_package_management", "*"},
     "gateway_status": {"admin", "status", "*"},
     "gateway_doctor": {"admin", "doctor", "*"},
     "gateway_backup": {"admin", "backup", "*"},
     "gateway_maintenance": {"admin", "maintenance", "*"},
     "gateway_reboot": {"admin", "reboot", "*"},
 }
+
 
 
 def authorize_client(
@@ -284,8 +292,8 @@ def authorize_client(
                 return False, f"PROJECT_DISABLED: Project '{project_id}' is disabled"
             return False, f"PROJECT_NOT_FOUND: Project '{project_id}' not found in target '{target_id}'"
 
-    # 8. Check write policy if tool is write_file
-    if tool_name == "write_file":
+    # 8. Check write policy if tool is mutating
+    if tool_name in ("write_file", "append_file", "delete_file", "copy_file", "move_file", "mkdir"):
         if hasattr(registry, "get_setting"):
             writes_enabled = registry.get_setting("writes_enabled", "true")
             if str(writes_enabled).lower() != "true":
