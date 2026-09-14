@@ -297,11 +297,18 @@ func SecurityMiddleware(next http.Handler) http.Handler {
 
 // NewGatewayServer creates an official MCP server registering tools in deterministic order.
 func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
+	opts := &mcp.ServerOptions{
+		Capabilities: &mcp.ServerCapabilities{
+			Tools: &mcp.ToolCapabilities{
+				ListChanged: true,
+			},
+		},
+	}
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-gateway-adapter",
 		Title:   "MCP Raspberry Pi Gateway Official Adapter",
-		Version: "1.1.0",
-	}, nil)
+		Version: "1.2.1",
+	}, opts)
 
 	var allowedTools map[string]bool
 	if bridge != nil {
@@ -1061,7 +1068,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{
 				"tools": map[string]any{
-					"listChanged": false,
+					"listChanged": true,
 				},
 			},
 			"endpoints": map[string]any{
