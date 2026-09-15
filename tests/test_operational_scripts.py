@@ -36,6 +36,8 @@ class TestOperationalScripts(unittest.TestCase):
             '/tmp/mcp-gateway-deploy-',
             'sudo tar -xzf "$archive"',
             'sudo chown -R mcp-gateway:mcp-gateway "$candidate"',
+            'sudo test -f "$unit_backup/$unit"',
+            'ROLLBACK_REMOTE_FAILED',
             'ROLLBACK_VERIFIED',
             '.deployment.json',
             "'verified': True",

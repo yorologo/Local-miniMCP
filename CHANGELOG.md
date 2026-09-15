@@ -17,6 +17,9 @@ All notable changes to this project are documented here.
 - systemd hardening was incrementally strengthened without arbitrary memory limits.
 - `install.sh` now fails fast on required bootstrap/readiness/Doctor failures.
 
+### Fixed
+- Transactional rollback now reads protected systemd unit backups with the required privilege and propagates remote rollback failures instead of emitting a false `ROLLBACK_VERIFIED`.
+
 ### Verified
 - Full development gate covers Python, Go, ARMv6, JavaScript, Tailwind, documentation and diff hygiene.
 - Production acceptance requires exact SHA/provenance, services, endpoints, Doctor, Target, audit and rollback evidence.

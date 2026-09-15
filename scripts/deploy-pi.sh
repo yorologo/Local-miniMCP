@@ -106,9 +106,10 @@ REMOTE
 
 rollback() {
     echo "ROLLBACK: restoring previous runtime and systemd units..." >&2
+    local rollback_rc=0
     ssh_pi bash -s -- \
         "${REMOTE_TARGET_DIR}" "${REMOTE_PREVIOUS}" "${REMOTE_FAILED}" \
-        "${REMOTE_UNIT_BACKUP}" "${OLD_DEPLOY_SHA}" <<'REMOTE'
+        "${REMOTE_UNIT_BACKUP}" "${OLD_DEPLOY_SHA}" <<'REMOTE' || rollback_rc=$?
 set -euo pipefail
 current="$1"
 previous="$2"
@@ -127,7 +128,7 @@ fi
 sudo mv "$previous" "$current"
 
 for unit in mcp-gateway-admin.service mcp-gateway-mcp.service mcp-gateway-tunnel.service; do
-    [ -f "$unit_backup/$unit" ] || { echo "ROLLBACK ERROR: unit backup missing: $unit" >&2; exit 81; }
+    sudo test -f "$unit_backup/$unit" || { echo "ROLLBACK ERROR: unit backup missing: $unit" >&2; exit 81; }
     sudo install -m 0644 "$unit_backup/$unit" "/etc/systemd/system/$unit"
 done
 sudo systemctl daemon-reload
@@ -156,6 +157,10 @@ fi
 sudo -u mcp-gateway "$current/bin/mcp-gateway" doctor >/dev/null
 sudo rm -rf "$failed" "$unit_backup"
 REMOTE
+    if [ "${rollback_rc}" -ne 0 ]; then
+        echo "ROLLBACK_REMOTE_FAILED rc=${rollback_rc}" >&2
+        return "${rollback_rc}"
+    fi
     ACTIVATED=0
     ROLLBACK_VERIFIED=1
     echo "ROLLBACK_VERIFIED old_sha=${OLD_DEPLOY_SHA:-unknown}"
