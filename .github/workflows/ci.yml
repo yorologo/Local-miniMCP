@@ -28,7 +28,7 @@ jobs:
           cache-dependency-path: mcp-adapter/go.sum
       - name: Go tests
         working-directory: mcp-adapter
-        run: go test ./...
+        run: go test -count=1 ./...
       - name: ARMv6 cross-build
         working-directory: mcp-adapter
         env:

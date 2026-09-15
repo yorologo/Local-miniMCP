@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -30,6 +31,34 @@ func getTestBridgeConfig() *BridgeConfig {
 		DBPath:     dbPath,
 		Timeout:    10 * time.Second,
 	}
+}
+
+func getSeededClientBridgeConfig(t *testing.T, clientID, capability string, enabled bool) *BridgeConfig {
+	t.Helper()
+	bridge := getTestBridgeConfig()
+	bridge.DBPath = filepath.Join(t.TempDir(), "gateway.db")
+	enabledArg := "0"
+	if enabled {
+		enabledArg = "1"
+	}
+	seed := `
+from mcp_gateway.registry import SQLiteRegistry
+import sys
+r = SQLiteRegistry(sys.argv[1])
+client_id = sys.argv[2]
+capability = sys.argv[3]
+enabled = sys.argv[4] == "1"
+r.add_client({"id": client_id, "display_name": client_id, "enabled": enabled})
+if enabled and capability:
+    r.add_grant({"client_id": client_id, "target_id": "*", "project_id": "*", "capability": capability, "enabled": True})
+`
+	cmd := exec.Command(bridge.PythonBin, "-c", seed, bridge.DBPath, clientID, capability, enabledArg)
+	cmd.Env = bridge.buildEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("seed client registry failed: %v: %s", err, string(out))
+	}
+	bridge.ClientID = clientID
+	return bridge
 }
 
 func TestServerToolDiscovery(t *testing.T) {
@@ -417,8 +446,7 @@ func TestClientToolFiltering(t *testing.T) {
 
 func TestClientAwareToolsListAndCall(t *testing.T) {
 	ctx := context.Background()
-	bridge := getTestBridgeConfig()
-	bridge.ClientID = "claude-desktop" // Read-only client profile
+	bridge := getSeededClientBridgeConfig(t, "claude-desktop", "read", true) // Read-only client profile
 	state := NewAdapterState()
 	state.SetReady(true, "ready", nil)
 	server := NewGatewayServer(bridge, state)
@@ -475,8 +503,7 @@ func TestClientAwareToolsListAndCall(t *testing.T) {
 
 func TestDisabledClientGo(t *testing.T) {
 	ctx := context.Background()
-	bridge := getTestBridgeConfig()
-	bridge.ClientID = "disabled-test-client"
+	bridge := getSeededClientBridgeConfig(t, "disabled-test-client", "", false)
 	state := NewAdapterState()
 	state.SetReady(true, "ready", nil)
 	server := NewGatewayServer(bridge, state)
@@ -513,8 +540,7 @@ func TestStdioTransportSimulation(t *testing.T) {
 
 	tServer, tClient := mcp.NewInMemoryTransports()
 
-	bridge := getTestBridgeConfig()
-	bridge.ClientID = "gemini-main"
+	bridge := getSeededClientBridgeConfig(t, "gemini-main", "read", true)
 	state := NewAdapterState()
 	state.SetReady(true, "ready", nil)
 	server := NewGatewayServer(bridge, state)
@@ -545,8 +571,7 @@ func TestStdioTransportSimulation(t *testing.T) {
 }
 
 func TestTokenAuthenticationAndAntiSpoofing(t *testing.T) {
-	bridge := getTestBridgeConfig()
-	bridge.ClientID = "chatgpt-main"
+	bridge := getSeededClientBridgeConfig(t, "chatgpt-main", "read", true)
 	bridge.AuthToken = "secret-token-xyz-12345"
 	state := NewAdapterState()
 	state.SetReady(true, "ready", nil)
