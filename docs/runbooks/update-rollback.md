@@ -38,7 +38,24 @@ El comando valida automáticamente:
 
 ---
 
-## 3. Reversión de Release (*Rollback*)
+## 3. Exact-commit deployment desde desarrollo
+
+El camino canónico para promover `develop` a MCP-Pi es `scripts/deploy-pi.sh <sha>`. Requiere worktree limpio y que el SHA sea exactamente `HEAD == origin/<branch>`. El script construye/valida candidate ARMv6, preserva runtime+units previos, activa candidate, reinicia en orden Admin → MCP → Tunnel, verifica `/live`, `/ready`, SQLite y Doctor, y sólo después escribe `.deployment.json` con `verified=true`.
+
+Prueba controlada del rollback (no toca Registry ni user data):
+
+```bash
+SHA="$(git rev-parse HEAD)"
+MCP_DEPLOY_INJECT_FAILURE=after-activation ./scripts/deploy-pi.sh "$SHA"
+```
+
+El comando debe fallar por diseño, imprimir `ROLLBACK_VERIFIED`, restaurar el SHA previo y dejar Admin/MCP/Tunnel y Doctor sanos. Después se ejecuta nuevamente el deploy sin inyección para promover el candidate válido.
+
+## 4. Rollback de lifecycle/release layout
+
+El comando `mcp-gateway rollback` descrito abajo pertenece al mecanismo histórico/versionado de lifecycle (`current`/`previous`) y es distinto del rollback transaccional de `deploy-pi.sh`.
+
+### Reversión de Release (*Rollback*)
 
 Si se utilizan symlinks de release (`current` y `previous`):
 

@@ -12,7 +12,7 @@ El archivo [`compatibility.json`](../compatibility.json) define las versiones de
 
 ```json
 {
-  "gateway_version": "1.2.1",
+  "gateway_version": "1.3.0",
   "core_api_version": 1,
   "bridge_api_version": 1,
   "tool_catalog_version": 3,
@@ -31,7 +31,7 @@ El archivo [`compatibility.json`](../compatibility.json) define las versiones de
 ```
 
 ### Componentes y Roles
-- **Gateway Version (`1.2.1`)**: versión global desplegada.
+- **Gateway Version (`1.3.0`)**: versión global desplegada.
 - **Core API (`v1`)**: interfaz interna Python (`GatewayTools`).
 - **Bridge API (`v1`)**: contrato CLI entre Go Adapter y Python.
 - **Tool Catalog (`v3`)**: 21 herramientas deterministas; la visibilidad se filtra dinámicamente por grants de cliente.

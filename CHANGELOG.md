@@ -2,7 +2,24 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## Unreleased — 1.3.0
+
+### Added
+- Trusted Target shell capability (`target_shell`) with independent `shell_enabled` kill switch and readable effective-capability UI.
+- Remote Target Environment Facts, deterministic MCP catalog diagnostics, standard Tool Annotations, CI workflow and documentation audit.
+- Exact-commit candidate deployment with verified `.deployment.json` provenance and automatic rollback path.
+- Optional `age` encryption for private off-device appliance backups; requested encryption fails closed if `age` is unavailable.
+
+### Changed
+- Structured filesystem mutations now share remote canonical destination resolution and fail closed on symlink-parent escapes.
+- Critical mutations require an available audit sink before execution; `run_task` validates enabled/allowlisted argv/cwd/timeout.
+- `run_command` is documented and enforced as a trusted administrative Target shell, not a Project filesystem sandbox.
+- systemd hardening was incrementally strengthened without arbitrary memory limits.
+- `install.sh` now fails fast on required bootstrap/readiness/Doctor failures.
+
+### Verified
+- Full development gate covers Python, Go, ARMv6, JavaScript, Tailwind, documentation and diff hygiene.
+- Production acceptance requires exact SHA/provenance, services, endpoints, Doctor, Target, audit and rollback evidence.
 
 ### Added
 - Full 21-tool MCP catalog including `run_command` and structured filesystem operations.

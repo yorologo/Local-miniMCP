@@ -34,7 +34,10 @@ flowchart LR
 - `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` y `Cache-Control: no-store`.
 - SQL parametrizado; secretos fuera del repositorio.
 - `gateway_enabled` funciona como kill switch global.
-- `writes_enabled` controla structured filesystem mutations; `run_command` se autoriza por grants separados.
+- `writes_enabled` controla structured filesystem mutations.
+- `shell_enabled` controla de forma independiente el trusted Target shell.
+- `run_command` requiere grant `target_shell` (o alias compatible), Target/Project habilitados y auditoría; no se presenta como Project sandbox.
+- `/clients` muestra capabilities efectivas legibles para distinguir read/write/tasks/Target shell/gateway admin.
 
 ## UX actual
 
@@ -48,7 +51,7 @@ La UI incluye navegación responsive accesible, estado de sección con `aria-cur
 - `/clients`: identidades de clientes IA.
 - `/activity`: auditoría.
 - `/system`: runtime/hardware.
-- `/settings`: límites, kill switch y structured writes.
+- `/settings`: límites, kill switch global, structured writes y Target shell.
 - `/maintenance`: Doctor, backups, repair y rollback.
 
 ## Desarrollo del frontend

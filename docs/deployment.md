@@ -34,10 +34,11 @@ git diff --check
 ## Deploy
 
 ```bash
-./scripts/deploy-pi.sh
+SHA="$(git rev-parse HEAD)"
+./scripts/deploy-pi.sh "$SHA"
 ```
 
-The script transfers runtime code, tests, configuration, documentation, top-level README/AGENTS, and the adapter binary when its checksum changed. It reloads systemd, restarts the Admin Console, and only restarts the MCP adapter/tunnel when the adapter or MCP unit actually changed. By default it runs lightweight remote smoke tests as `mcp-gateway`; set `MCP_DEPLOY_FULL_REMOTE_TESTS=1` for the full remote suite on hardware with enough memory.
+The deploy script refuses dirty trees and requires the requested SHA to equal both local `HEAD` and `origin/<branch>`. It packages that exact commit with `git archive`, builds/validates an ARMv6 candidate from the archive, creates a rollback copy of the active runtime and systemd units, activates the candidate, restarts Admin → MCP → Tunnel in control-plane-safe order, runs lightweight production acceptance and Doctor, then writes `.deployment.json` with commit/branch/timestamp/package+adapter hashes. `verified=true` is written only after acceptance. `MCP_DEPLOY_INJECT_FAILURE=after-activation` is reserved for a controlled rollback test and must restore the previous known-good runtime.
 
 ## Post-deployment checks
 
@@ -70,4 +71,4 @@ sudo -u mcp-gateway /home/mcp-gateway/mcp-gateway/bin/mcp-gateway doctor
 
 Expected Admin listener: `0.0.0.0:80` (shown by `ss` as an IPv4 wildcard listener).
 
-Acceptance requires the deployed source hashes/content to match the local working tree for the files transferred by `deploy-pi.sh`.
+Acceptance requires `.deployment.json.commit == local HEAD == origin/develop`, matching adapter SHA256, healthy services/endpoints/Doctor and successful Target checks. The Raspberry Pi intentionally does not run the full development suite because of its constrained RAM; the full gate runs on the development workstation before push/deploy.

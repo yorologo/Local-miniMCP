@@ -47,26 +47,26 @@ Nunca documentar valores reales de API keys o tokens.
 
 ```bash
 MCP_PI_HOST=192.168.68.55
-MCP_PI_PORT=22
 MCP_PI_USER=<usuario-administrativo>
-MCP_PI_PASSWORD=<secreto-local>
+MCP_PI_IDENTITY_FILE=~/.ssh/id_rsa
 ```
 
-`scripts/deploy-pi.sh` usa estas variables para copiar el árbol de runtime, reiniciar unidades y ejecutar pruebas remotas.
+`scripts/deploy-pi.sh <exact-sha>` usa estas variables para autenticación SSH, exige árbol Git limpio y `HEAD == origin/<branch> == <exact-sha>`, construye un candidate y conserva rollback hasta la aceptación externa final.
 
 ## Settings persistidos
 
 La consola `/settings` administra valores persistidos como:
 
 - `gateway_enabled`: kill switch global.
-- `writes_enabled`: structured filesystem writes.
+- `writes_enabled`: kill switch para structured filesystem mutations.
+- `shell_enabled`: kill switch independiente para trusted Target shell (`run_command`).
 - `default_timeout`.
 - `max_output_bytes`.
 - `max_file_read_bytes`.
 - `max_write_bytes`.
 - `activity_retention`.
 
-`run_command` no depende del switch `writes_enabled`; se gobierna por grants de ejecución, Project scope y `gateway_enabled`.
+`run_command` no depende de `writes_enabled`; se gobierna por `gateway_enabled`, `shell_enabled`, Target/Project habilitados y grants (`target_shell` o aliases compatibles). El Project define scope de autorización y cwd inicial, no un sandbox del shell.
 
 ### Puerto 80 y privilegios
 

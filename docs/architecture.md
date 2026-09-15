@@ -128,7 +128,7 @@ Alias: pc-local / termux-local                   Allowed Root: .../MCP_Local
 
 - **Separación de privilegios en el Gateway**: El canal hacia el target se ejecuta exclusivamente desde la cuenta de servicio `mcp-gateway`, sin acceso a `sudo` ni credenciales administrativas de la Raspberry.
 - **Entorno del Worker en PC**: Ejecutado en un sandbox Linux/Android sin privilegios de root (`u:r:untrusted_app_27`), con OpenSSH Server en el puerto 8022.
-- **Alcance acotado**: Delimitado al root del proyecto para impedir modificaciones o lecturas imprevistas fuera del espacio asignado.
+- **Filesystem estructurado acotado**: `read_file`, `write_file`, `copy_file`, `move_file`, `mkdir`, `search`, etc. resuelven paths canónicos en el Target y permanecen confinados al Project. `run_command` es deliberadamente un trusted Target shell: usa el Project como scope/cwd inicial, no como sandbox.
 
 ### 5.1 Resolución Dinámica de Endpoints y Descubrimiento Criptográfico
 
@@ -443,7 +443,7 @@ La Fase 4D introduce un marco formal de compatibilidad, hardening de red y gesti
 ### 9.1 Matriz de Contratos (`compatibility.json`)
 
 El archivo [`compatibility.json`](../compatibility.json) actúa como fuente de verdad inmutable para versiones de componentes:
-- `gateway_version`: 1.2.1
+- `gateway_version`: 1.3.0
 - `core_api_version`: 1
 - `bridge_api_version`: 1
 - `tool_catalog_version`: 3 (21 herramientas en orden alfabético determinista; visibilidad filtrada por grants)

@@ -7,12 +7,12 @@
 | Campo | Valor |
 | --- | --- |
 | Rol del documento | Contrato operativo para agentes |
-| Software baseline | **MCP-Pi Gateway v1.2.1** |
-| Release estable | `v1.2.1` |
+| Software baseline | **MCP-Pi Gateway 1.3.0** |
+| Último tag inmutable | `v1.2.1` |
 | Hardware | Raspberry Pi Model A+ Rev 1.1 — ARMv6 |
 | Baseline histórico validado | Bullseye / Debian 11 — **preservado como physical rollback** |
 | OS de producción actual | **Raspbian GNU/Linux 13 / Debian 13 Trixie — armv6l** |
-| Fase operativa actual | **POST_V1_OPERATION_AND_MAINTENANCE** (v1.2.1 Released) |
+| Fase operativa actual | **1.3.0 DEVELOP / PRODUCTION BASELINE**; sin tag nuevo en esta misión |
 | Principios rectores | **KISS + Reuse First + Least Privilege + Deny by Default + Fail Closed** |
 
 
@@ -20,10 +20,10 @@ Documentación relacionada:
 
 - `docs/project-state.md` — estado dinámico y cronología;
 - `docs/v1-acceptance.md` — aceptación de v1;
-- `docs/releases/v1.2.1.md` — release actual (y `docs/releases/` para releases históricas);
+- `docs/releases/v1.3.0.md` — baseline 1.3.0 actual; `v1.2.1` sigue siendo el último tag inmutable;
 - `docs/os-migration.md` — modernización de OS;
 - `docs/runbooks/` — procedimientos operativos;
-- Documentación Maestra — arquitectura, decisiones consolidadas y baseline general de v1.2.1.
+- Documentación Maestra — arquitectura, decisiones consolidadas y baseline general de 1.3.0.
 
 ---
 
@@ -431,15 +431,16 @@ grpck -r
 ### 9.1 Release actual
 
 ```text
-MCP-Pi Gateway: v1.2.1
-Tag: v1.2.1
+MCP-Pi Gateway: 1.3.0
+Current branch baseline: develop
+Latest immutable tag: v1.2.1
 Artifact: mcp-gateway-adapter-linux-armv6
 ```
 
 Contratos congelados:
 
 ```text
-Gateway: 1.2.1
+Gateway: 1.3.0
 Core API: 1
 Bridge API: 1
 Tool Catalog: 3
@@ -491,7 +492,7 @@ rewrite historical release
 
 ---
 
-## 10. Runtime esperado de v1.2.1
+## 10. Runtime esperado de 1.3.0
 
 En la línea base de producción Trixie este runtime está formalmente validado y activo:
 
@@ -717,7 +718,7 @@ POST_V1_OPERATION_AND_MAINTENANCE
 Objetivo:
 
 ```text
-operación estable v1.2.1 sobre producción Trixie
+operación estable 1.3.0 sobre producción Trixie
 + retención de rollback físico Bullseye
 + monitoreo y mantenimiento preventivo
 ```
@@ -940,7 +941,8 @@ Nunca inventar progreso ni afirmar que existe un monitor que no fue realmente cr
 | 8 | **CLOSED / PASS — OS Modernization post-v1 (Trixie promovido a producción)** |
 | v1.1.0 / v1.1.1 | RELEASED / HISTORICAL |
 | v1.2.0 | RELEASED / HISTORICAL |
-| v1.2.1 | **RELEASED / CURRENT SOFTWARE BASELINE** |
+| v1.2.1 | **RELEASED / LATEST IMMUTABLE TAG** |
+| 1.3.0 | **CURRENT DEVELOP / PRODUCTION BASELINE** |
 
 > Phase 8 es la ejecución operativa posterior del trabajo de modernización física que quedó diferido al cerrar v1. No reescribe el estado histórico de Phase 7B en la release v1.0.1.
 

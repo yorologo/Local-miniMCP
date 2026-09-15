@@ -9,6 +9,7 @@ Este runbook describe el proceso de instalación automatizada e idempotente del 
 - Host objetivo: Raspberry Pi Model A+ (`armv6l`) o dispositivo Linux compatible.
 - Cuenta administrativa con privilegios `sudo`.
 - Python 3.9+ instalado en el sistema.
+- Dependencias Python declaradas en `requirements.txt` (Flask/Werkzeug; SQLite proviene de stdlib).
 
 ---
 
@@ -28,6 +29,7 @@ sudo /home/mcp-gateway/mcp-gateway/install.sh
 4. **Base de Datos**: Inicializa el esquema SQLite con `PRAGMA user_version = 1`.
 5. **Servicios Systemd**: Instala y activa `mcp-gateway-admin.service` (`0.0.0.0:80`, accesible como `http://192.168.68.55`, LAN allowlisted) y `mcp-gateway-mcp.service` (`127.0.0.1:8090`, loopback).
 6. **Binario CLI**: Instala el enlace simbólico global `/usr/local/bin/mcp-gateway`.
+7. **Fail-fast**: un fallo obligatorio de schema, systemd, readiness o Doctor termina la instalación con código distinto de cero; no se degrada silenciosamente.
 
 ---
 

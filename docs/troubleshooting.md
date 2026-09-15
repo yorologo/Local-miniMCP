@@ -27,7 +27,7 @@ Do not change grants or delete the registry until you know at which hop the coun
 
 ## Admin Console returns 403 on LAN
 
-The Admin Console validates the HTTP `Host` header. Production allows `192.168.68.55`, `mcp-pi`, `localhost`, and `127.0.0.1`. If the address changes, update both `MCP_ADMIN_HOST` and `MCP_ADMIN_ALLOWED_HOSTS` in the systemd unit/environment, reload systemd, and restart `mcp-gateway-admin`.
+The Admin Console validates the HTTP `Host` header. Production allows `192.168.68.55`, `mcp-pi`, `localhost`, and `127.0.0.1`. If the reserved LAN address changes, keep `MCP_ADMIN_HOST=0.0.0.0` and update the explicit `MCP_ADMIN_ALLOWED_HOSTS` entry, then reload systemd and restart `mcp-gateway-admin`.
 
 ## Admin Console does not load styles or scripts
 
@@ -43,7 +43,7 @@ The production Pi does not need Node.js; compiled assets are deployed from the d
 
 ## `WRITES_DISABLED`
 
-The structured filesystem tools (`write_file`, `append_file`, `delete_file`, `copy_file`, `move_file`, `mkdir`) require the global write switch plus project write permission. `run_command` is a separate execute capability and is controlled by its grant/project scope rather than the structured-write switch.
+The structured filesystem tools (`write_file`, `append_file`, `delete_file`, `copy_file`, `move_file`, `mkdir`) require the global write switch plus project write permission. `run_command` is a separate trusted Target-shell capability controlled by `shell_enabled`, client grant and Target/Project authorization scope rather than the structured-write switch. Its shell effects are not confined to the Project root.
 
 ## Deployment fails before tests
 

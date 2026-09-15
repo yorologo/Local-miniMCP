@@ -1,6 +1,6 @@
-# Runbook: Recuperación ante Desastres (Disaster Recovery) — MCP-Pi v1.2.1
+# Runbook: Recuperación ante Desastres (Disaster Recovery) — MCP-Pi 1.3.0
 
-> Procedimiento canónico de respaldo y reconstrucción limpia del appliance **MCP-Pi Gateway (v1.2.1)** ante pérdida catastrófica de medio de arranque (microSD), daño de hardware o contingencia mayor.
+> Procedimiento canónico de respaldo y reconstrucción limpia del appliance **MCP-Pi Gateway 1.3.0** ante pérdida catastrófica de medio de arranque (microSD), daño de hardware o contingencia mayor.
 
 ---
 
@@ -18,7 +18,7 @@ La recuperación se basa en la separación estricta entre **artefactos reproduci
 
 | Componente | Clasificación | Fuente de Verdad / Mecanismo |
 |---|---|---|
-| Código fuente y compatibilidad | Reproducible | Repositorio Git (`tag v1.2.1` en GitHub) |
+| Código fuente y compatibilidad | Reproducible | Repositorio Git + commit exacto registrado en `.deployment.json` (último tag inmutable: `v1.2.1`) |
 | Binario MCP Adapter (`armv6`) | Reproducible | Release artifact / build Go ARMv6 (`mcp-gateway-adapter`) |
 | Binario OpenAI Tunnel Client | Reproducible | Binario oficial `openai-tunnel-client` (Linux ARMv6) |
 | Systemd unit definitions | Reproducible | Repositorio Git (`config/systemd/`) |
@@ -49,7 +49,7 @@ El script ejecuta automáticamente:
 3. Validación inmediata de la integridad del snapshot (`PRAGMA integrity_check == 'ok'`).
 4. Recolección de archivos de configuración, secretos e identidades preservando permisos exactos.
 5. Generación de manifiesto no secreto `manifest.json` con metadatos, fingerprints y sumas SHA256 de cada archivo.
-6. Empaquetado en archivo tarball comprimido con permisos restringidos `0600` (`mcp-pi-v1.2.1-<TIMESTAMP>.tar.gz`).
+6. Empaquetado en archivo tarball comprimido con permisos restringidos `0600` (`mcp-pi-v<manifest-version>-<TIMESTAMP>.tar.gz`); si `BACKUP_AGE_RECIPIENT` está definido, el tarball se cifra con `age` y no existe fallback silencioso a plaintext.
 7. Generación de suma criptográfica SHA256 (`.tar.gz.sha256`).
 8. Limpieza garantizada del directorio temporal de staging.
 
@@ -57,7 +57,7 @@ El script ejecuta automáticamente:
 
 ## 4. Procedimiento de Restauración Paso a Paso (Fresh Install)
 
-Escenario base: **Fresh Debian 13 Trixie ARMv6 + Git tag v1.2.1 + Respaldo privado de estado**.
+Escenario base: **Fresh Debian 13 Trixie ARMv6 + commit exacto de `.deployment.json` + respaldo privado de estado**.
 
 ### Paso 1: Preparar OS y Usuarios
 1. Grabar microSD limpia con Raspberry Pi OS Lite 32-bit (Debian 13 Trixie).
@@ -69,11 +69,11 @@ Escenario base: **Fresh Debian 13 Trixie ARMv6 + Git tag v1.2.1 + Respaldo priva
    ```
 
 ### Paso 2: Instalar Release de Software
-1. Clonar el repositorio oficial e inicializarlo en el tag congelado `v1.2.1`:
+1. Clonar el repositorio oficial y checkout del commit exacto registrado en `.deployment.json` (usar `v1.2.1` sólo como último rollback/tag inmutable si ese es el baseline que se pretende restaurar):
    ```bash
    sudo -u mcp-gateway git clone https://github.com/yorologo/Local-miniMCP.git /home/mcp-gateway/mcp-gateway
    cd /home/mcp-gateway/mcp-gateway
-   sudo -u mcp-gateway git checkout v1.2.1
+   sudo -u mcp-gateway git checkout <deployment-commit-sha>
    ```
 2. Instalar o compilar el binario ARMv6 `bin/mcp-gateway-adapter`:
    ```bash
@@ -93,7 +93,7 @@ sudo systemctl stop mcp-gateway-tunnel.service mcp-gateway-mcp.service mcp-gatew
 ```
 
 ### Paso 4: Restaurar Base de Datos y Estado Persistente
-Desde el archivo de respaldo `mcp-pi-v1.2.1-<TIMESTAMP>.tar.gz` extraído en un directorio temporal aislado `/tmp/restore`:
+Desde el archivo de respaldo `mcp-pi-v<manifest-version>-<TIMESTAMP>.tar.gz` (descifrado previamente con `age` cuando corresponda) extraído en un directorio temporal aislado `/tmp/restore`:
 ```bash
 sudo mkdir -p /home/mcp-gateway/.local/share/mcp-gateway
 sudo cp /tmp/restore/data/gateway.db /home/mcp-gateway/.local/share/mcp-gateway/gateway.db
@@ -206,4 +206,4 @@ Para certificar la reproducibilidad completa del Disaster Recovery sin destruir 
    → DOCTOR_PASS (19/19 checks HEALTHY)
    → TARGET_PASS (conexión al target y tools operacionales)
    ```
-3. **Criterio de Aprobación**: El entorno restaurado debe alcanzar funcionalidad idéntica a la línea base de producción actual v1.2.1 sin intervención manual correctiva.
+3. **Criterio de Aprobación**: El entorno restaurado debe alcanzar funcionalidad idéntica a la commit/version de producción registrado en provenance sin intervención manual correctiva.

@@ -61,10 +61,10 @@ No inventar V2. No abrir nuevas features.
 
 | Campo | Estado actual |
 |---|---|
-| Software | **MCP-Pi Gateway v1.2.1** |
-| Release tag | `v1.2.1` |
+| Software | **MCP-Pi Gateway 1.3.0** |
+| Release tag | `v1.2.1` es el último tag inmutable; 1.3.0 se ejecuta desde `develop` por SHA exacto |
 | `main` | `v1.2.1` (`0f1ed929757127f7666cfa23b5615f4868372253`) — línea de release inmutable |
-| `develop` | Post-release operation, maintenance & DR acceptance |
+| `develop` | **1.3.0 current software/production baseline**, exact-commit deployment |
 | Hardware | Raspberry Pi Model A+ Rev 1.1, ARMv6 |
 | OS producción | Raspberry Pi OS / Debian 13 Trixie, 32-bit `armv6l` |
 | Gateway hostname | `MCP-Pi` |
@@ -74,7 +74,7 @@ No inventar V2. No abrir nuevas features.
 | MCP HTTP | `127.0.0.1:8090/mcp` |
 | Registry | SQLite, `PRAGMA user_version=1` |
 | Writes globales | `false` por defecto |
-| Doctor | `19/19 HEALTHY` en aceptación v1.2.1 |
+| Doctor | `19/19 HEALTHY`; debe revalidarse después de cada exact-commit deploy |
 | Physical rollback | microSD Bullseye original preservada `KNOWN_GOOD` |
 
 Fingerprint administrativa canónica de MCP-Pi:
@@ -493,12 +493,14 @@ v1.0.1  baseline inicial estabilizado
 v1.1.1  tunnel auth / anti-spoofing hardening
 v1.2.0  dynamic target endpoint resolution & cryptographic discovery
 v1.2.1  Secure MCP Tunnel deterministic readiness & autorecovery hardening
+1.3.0   filesystem confinement, trusted Target shell controls, audit hardening, Target facts, MCP annotations, reproducible CI/deploy/provenance
 ```
 
-Release estable actual:
+Software baseline actual:
 
 ```text
-v1.2.1
+1.3.0 (develop, exact commit)
+latest immutable tag: v1.2.1
 ```
 
 La evidencia detallada vive en:
@@ -517,4 +519,4 @@ La evidencia detallada vive en:
 POST_V1_OPERATION_AND_MAINTENANCE
 ```
 
-Retornar a operación normal y mantenimiento de producción v1.2.1 sin abrir nuevos frentes hasta que exista un trigger real. No inventar V2. No abrir nuevas features. Mantener monitoreo pasivo, retención de backup cifrado off-device y preservación estricta de las invariantes de seguridad fail-closed.
+Mantener operación normal y mantenimiento de producción 1.3.0 sin abrir nuevos frentes hasta que exista un trigger real. No inventar V2. No abrir nuevas features. Mantener monitoreo pasivo, retención de backup cifrado off-device y preservación estricta de las invariantes de seguridad fail-closed.

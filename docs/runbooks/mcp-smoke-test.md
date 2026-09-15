@@ -90,7 +90,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o mcp-gat
 ### Paso 2: Desplegar y Reiniciar Servicio en MCP-Pi
 ```bash
 cd /data/data/com.termux/files/home/Projects/test/MCP_Local
-bash scripts/deploy-pi.sh
+SHA="$(git rev-parse HEAD)"
+bash scripts/deploy-pi.sh "$SHA"
 ```
 
 El script transfiere el binario a `/home/mcp-gateway/mcp-gateway/bin/mcp-gateway-adapter`, actualiza el servicio systemd y corre las pruebas remotas.

@@ -23,7 +23,8 @@ El script `scripts/deploy-pi.sh` realiza las siguientes acciones:
 
 ### Ejecución:
 ```bash
-./scripts/deploy-pi.sh
+SHA="$(git rev-parse HEAD)"
+./scripts/deploy-pi.sh "$SHA"
 ```
 
 ### Resultado esperado:

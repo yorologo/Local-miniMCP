@@ -4,10 +4,10 @@
 
 | Campo | Valor |
 | --- | --- |
-| Versión documental | 1.2.1 |
+| Versión documental | 1.3.0 |
 | Fecha de corte técnico | 14 de septiembre de 2026 |
 | Revisión editorial | 14 de septiembre de 2026 |
-| Estado del proyecto | **v1.2.1 RELEASED** (`0f1ed92`) / Histórico: v1.0.0 (`d52f848`), v1.0.1 (`bcd8fe9`), v1.1.0 (`b2f35d3`), v1.1.1 (`ff9f653`), v1.2.0 (`df5fa43`) |
+| Estado del proyecto | **1.3.0 CURRENT DEVELOP/PRODUCTION BASELINE**; último tag inmutable: `v1.2.1` (`0f1ed92`) |
 | Hardware base | Raspberry Pi Model A+ Rev 1.1 — ARMv6, ~173 MiB RAM utilizable |
 | OS producción actual | Raspberry Pi OS / Debian 13 Trixie (32-bit `armv6l`) — Rollback físico: Raspbian 11 Bullseye preservado |
 | Política de construcción | **Reuse first; build only what is specific to MCP-Pi** |
@@ -40,7 +40,7 @@ cd tailwind && npm run build
 Despliegue actual:
 
 ```bash
-./scripts/deploy-pi.sh
+./scripts/deploy-pi.sh "$(git rev-parse HEAD)"
 # Admin Console: http://192.168.68.55
 ```
 
@@ -68,7 +68,7 @@ El proyecto debe mantenerse:
 - multi-target y multi-project;
 - agnóstico del cliente de IA;
 - deny-by-default;
-- shell completo solo para clientes con grant explícito de `run_command`, confinado al Project y auditado;
+- shell completo solo para clientes con grant explícito `target_shell` (o alias compatible), gobernado por `shell_enabled`, Target/Project scope de autorización y auditoría; no es un sandbox de filesystem;
 - sin exposición pública por defecto;
 - sin dependencias pesadas innecesarias.
 
@@ -118,7 +118,7 @@ Las operaciones habituales no deben exigir recordar rutas internas de Python, SQ
 - **Core:** autoridad única de seguridad y ejecución de políticas.
 - **Service:** servidor MCP externo; concepto futuro y distinto de Target.
 
-## 2. Estado oficial de v1.2.1
+## 2. Estado de software actual y último release inmutable
 
 ### 2.1 Gateway
 
@@ -276,13 +276,15 @@ Los privilegios administrativos se reservan para instalación y mantenimiento co
 
 ### 3.6 Shell completo solo con autorización explícita
 
-`run_command` está activo para clientes que tengan un grant que incluya `execute`, `run_command`, `environment_management`, `system_package_management` o `*`. La herramienta:
+`run_command` es un **trusted administrative Target shell**. Está activo únicamente cuando `shell_enabled=true` y el cliente tiene un grant que incluya `target_shell`, `run_command`, `execute`, `environment_management`, `system_package_management` o `*`. La herramienta:
 
-- parte del root del Project autorizado;
-- mantiene `cwd` dentro del Project;
+- usa el Project autorizado como scope de autorización, auditoría y `cwd` inicial;
+- **no** promete confinar los efectos del shell al Project; comandos de confianza pueden operar en las ubicaciones que permita la cuenta remota;
 - preserva el entorno real del Target cuando corresponde;
-- registra auditoría;
-- sigue sujeta a `gateway_enabled`, Target/Project habilitados y grants del cliente.
+- registra auditoría fail-closed antes de operaciones críticas;
+- sigue sujeta a `gateway_enabled`, Target/Project habilitados, `shell_enabled` y grants del cliente.
+
+Para trabajo repetible debe preferirse `run_task`, que permanece allowlisted por `argv`, `cwd`, timeout y estado enabled.
 
 Las herramientas estructuradas de filesystem (`write_file`, `append_file`, `delete_file`, `copy_file`, `move_file`, `mkdir`) permanecen además sujetas a `writes_enabled` y `project.write`. `run_command` es una capacidad de ejecución separada: apagar el switch de structured writes no revoca por sí solo un grant de ejecución.
 
@@ -509,7 +511,7 @@ El catálogo vigente (`Tool Catalog v3`) expone **21 herramientas deterministas*
 | `move_file` | structured write | Alto |
 | `mkdir` | structured write | Alto |
 
-`run_task` acepta únicamente tareas declaradas. `run_command` requiere autorización explícita y opera bajo el Project autorizado; no sustituye la política ni los grants.
+`run_task` acepta únicamente tareas declaradas y es la vía preferida para operaciones repetibles. `run_command` requiere autorización explícita de Target shell; el Project aporta scope/cwd inicial, pero no convierte el shell en un sandbox.
 
 ### 6.2 Herramientas de administración del Appliance (5)
 
@@ -1406,11 +1408,11 @@ Phase 4D quedó completada con:
 - secretos fuera de Git;
 - documentación y runbooks actualizados.
 
-## 17. Estado resumido de producción (v1.2.1)
+## 17. Estado resumido de producción (1.3.0)
 
 ```text
 PROJECT: Local-miniMCP / MCP-Pi Gateway
-DOCUMENT: 1.2.1 + post-release operational updates (2026-09-14)
+DOCUMENT: 1.3.0 current develop/production baseline (2026-09-14); latest immutable tag: v1.2.1
 CURRENT STATE: OPERATIONAL / REMOTE_AUTONOMY_ENABLED
 
 GATEWAY:
@@ -1433,7 +1435,7 @@ MCP:
 TOOLS:
   21 deterministic tools (Tool Catalog v3)
   16 Core/Target tools + 5 appliance admin tools
-  run_command: ACTIVE when explicitly granted
+  run_command: TRUSTED TARGET SHELL when shell_enabled=true and explicitly granted
 
 STRUCTURED WRITES:
   write_file, append_file, delete_file, copy_file, move_file, mkdir
@@ -1441,7 +1443,8 @@ STRUCTURED WRITES:
 
 EXECUTION:
   run_command is separate from the structured-write switch
-  requires execute/run_command/environment-management capability or *
+  requires target_shell/run_command/execute/environment-management capability or *
+  shell_enabled is the dedicated Target-shell kill switch
 
 ACTIVE TARGET:
   termux-main / Android Termux / SSH :8022
@@ -1466,7 +1469,7 @@ OS: Raspbian 11 Bullseye — verified hardware baseline (physical OS migration d
 
 ## 18. Referencias externas registradas para esta versión
 
-Estas referencias forman parte de la base documental consolidada de v1.2.1 y deben revisarse de nuevo cuando cambie una fase que dependa de ellas:
+Estas referencias incluyen la base histórica consolidada de v1.2.1 y el baseline CURRENT 1.3.0; deben revisarse de nuevo cuando cambie una fase que dependa de ellas:
 
 - Model Context Protocol — Specification 2026-07-28.
 - Official MCP Go SDK — compatibility matrix and v1.7.0 release notes.
