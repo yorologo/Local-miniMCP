@@ -7,21 +7,20 @@ This document is intentionally short and dynamic. Detailed historical evidence b
 **Latest immutable tag:** `v1.2.1` until a new release is explicitly published
 **Current work:** 1.3.0 release-readiness — installation UX, lifecycle clarity and documentation consolidation
 
-## Last production-verified baseline before this release-readiness change
+## Current production baseline
 
 ```text
-commit: 2d0ac19c8f6df0e101a2e9184c57b864c6a129a5
 Gateway: 1.3.0
 Core API: 1
 Bridge API: 1
 Tool catalog: 3 / 21 tools
 Registry schema: 1
-Doctor: HEALTHY
-rollback: VERIFIED
-deployment provenance: VERIFIED
+Doctor: HEALTHY after production acceptance
+rollback: VERIFIED by the release deployment path
+deployment provenance: REQUIRED / VERIFIED after acceptance
 ```
 
-The authoritative deployed commit at any later moment is the runtime `.deployed-git-sha` plus `.deployment.json`, not this prose snapshot.
+The deployed Git SHA is intentionally **not duplicated in tracked prose**. Its authoritative sources are the runtime `.deployed-git-sha` and `.deployment.json`; this avoids self-referential documentation drift every time the state document itself changes.
 
 ## Reference production appliance
 
