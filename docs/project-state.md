@@ -4,8 +4,8 @@ This document is intentionally short and dynamic. Detailed historical evidence b
 
 **Software baseline:** Local-miniMCP / MCP-Pi Gateway 1.3.0
 **Development branch:** `develop`
-**Latest immutable tag:** `v1.2.1` until a new release is explicitly published
-**Current work:** 1.3.0 release-readiness — installation UX, lifecycle clarity and documentation consolidation
+**Latest immutable tag:** `v1.3.0`
+**Current work:** post-1.3.0 maintenance; release state is represented by the immutable tag and runtime provenance
 
 ## Current production baseline
 

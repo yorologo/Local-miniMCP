@@ -24,7 +24,7 @@ flowchart LR
 | MCP protocol | `2026-07-28` |
 | Python | 3.9+ |
 
-`develop` is the current integrated/production baseline while 1.3.0 release-readiness is finalized. The latest immutable tag remains `v1.2.1` until a new release is explicitly published.
+`main` is the stable release branch and `develop` remains the integration branch. The current published release is `v1.3.0`.
 
 ## Why this exists
 

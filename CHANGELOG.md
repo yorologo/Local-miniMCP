@@ -2,7 +2,7 @@
 
 All notable user-visible changes are documented here. Historical release details remain under `docs/releases/`.
 
-## Unreleased — 1.3.0
+## 1.3.0 — 2026-09-15
 
 ### Added
 - Resumable long-job runner using `nohup` + `setsid` + `flock`, durable non-secret state, explicit status/log/cleanup, optional short-lived Termux wake lock, and no automatic retries after interrupted control sessions.
