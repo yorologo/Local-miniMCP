@@ -61,15 +61,16 @@ class TestWebSecurity(unittest.TestCase):
         res = self.client.get("/login", headers={"Host": "192.168.68.55"})
         self.assertEqual(res.status_code, 200)
 
-    def test_production_admin_service_uses_ipv4_wildcard_bind(self):
+    def test_admin_service_uses_safe_defaults_and_runtime_env_override(self):
         unit_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "config", "systemd", "mcp-gateway-admin.service")
         )
         with open(unit_path, "r", encoding="utf-8") as f:
             unit = f.read()
-        self.assertIn("Environment=MCP_ADMIN_HOST=0.0.0.0", unit)
+        self.assertIn("Environment=MCP_ADMIN_HOST=127.0.0.1", unit)
         self.assertIn("Environment=MCP_ADMIN_PORT=80", unit)
-        self.assertIn("Environment=MCP_ADMIN_ALLOWED_HOSTS=127.0.0.1,localhost,192.168.68.55,mcp-pi", unit)
+        self.assertIn("Environment=MCP_ADMIN_ALLOWED_HOSTS=127.0.0.1,localhost,mcp-pi", unit)
+        self.assertIn("EnvironmentFile=-/home/mcp-gateway/.config/mcp-gateway/admin.env", unit)
         self.assertIn("User=mcp-gateway", unit)
         self.assertIn("Group=mcp-gateway", unit)
         self.assertIn("CapabilityBoundingSet=CAP_NET_BIND_SERVICE", unit)

@@ -1,459 +1,115 @@
-# Arquitectura MCP Raspberry Pi Gateway
+# Architecture
 
-## 1. Visión Conceptual
+Local-miniMCP is a small security gateway, not a compute platform. The appliance centralizes identity, policy, audit and protocol adaptation; Targets perform the actual work.
 
-El objetivo del proyecto es establecer un Gateway MCP personal en una Raspberry Pi Model A+ que actúe como perímetro de seguridad, intermediario y orquestador entre ChatGPT y el entorno de trabajo remoto (Target Worker).
+## Components
+
+```mermaid
+flowchart LR
+    C[AI / MCP client] --> A[Go MCP adapter]
+    B[Admin browser] --> W[Flask Admin Console]
+    A --> G[Gateway Core]
+    W --> G
+    G --> P[Policy engine]
+    P --> R[(SQLite Registry)]
+    G --> S[SSH transport]
+    S --> T[Target]
+    T --> PR[Authorized Project]
+```
+
+The Admin Console and MCP adapter **must use the same Gateway Core**. There is no parallel Admin-to-SSH bypass.
+
+## Responsibilities
+
+| Component | Responsibility |
+| --- | --- |
+| Go MCP adapter | MCP protocol, HTTP/stdin transport, client identity handoff, tool annotations |
+| Gateway Core | canonical tool behavior, limits, audit and orchestration |
+| Policy | client/grant/Target/Project/capability authorization |
+| Registry | Targets, Projects, clients, grants, settings and activity |
+| SSH transport | pinned Target connection and bounded remote operations |
+| Admin Console | human configuration using the same Registry/Core |
+| Target | performs project work; not trusted merely because its IP matches |
+
+## Request flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as MCP adapter
+    participant G as Gateway Core
+    participant P as Policy / Registry
+    participant S as SSH transport
+    participant T as Target
+
+    C->>A: tools/list or tools/call
+    A->>G: authenticated client + request
+    G->>P: authorize capability/scope
+    alt denied
+        P-->>G: deny
+        G-->>A: structured fail-closed error
+        A-->>C: denied
+    else allowed
+        P-->>G: allow
+        G->>S: bounded operation
+        S->>T: pinned SSH session
+        T-->>S: result
+        S-->>G: result
+        G->>P: audit result
+        G-->>A: structured result
+        A-->>C: MCP response
+    end
+```
+
+## Tool families
+
+The catalog currently contains 21 deterministic tools. They fall into four practical groups:
+
+- read/introspection;
+- structured project filesystem mutations;
+- allowlisted project tasks;
+- appliance administration plus trusted Target shell.
+
+Structured filesystem mutations enforce Project-root canonical paths. `run_command` is different: it is a **trusted Target shell** for explicitly authorized clients. Its Project identifies authorization scope and initial working directory; it is not a filesystem sandbox.
+
+## Identity versus endpoint
+
+A Target ID and pinned SSH host key establish identity. DHCP addresses and ports are runtime endpoints and may change.
 
 ```text
-+-------------------+
-|      ChatGPT      |
-+-------------------+
-          |
-          | MCP Seguro (Model Context Protocol)
-          v
-+-------------------+
-|  Raspberry Pi A+  |  --> [Frontera de seguridad / Orquestador / Gateway Core]
-|  (192.168.68.55)  |      Valida, autoriza, limita, orquesta, audita (Python stdlib)
-+-------------------+
-          |
-          | SSH / SFTP (Controlado y restringido vía clave exclusiva Ed25519)
-          v
-+-------------------+
-|   Target Worker   |  --> [Nodo de cómputo y almacenamiento pesado]
-|                   |      Almacena, busca, compila, ejecuta, procesa
-+-------------------+
+Target ID + SSH host fingerprint = identity
+IP + port                         = endpoint
 ```
 
----
+Endpoint rediscovery may update an address only after cryptographic identity matches. An unexpected host key fails closed.
 
-## 2. Roles y Separación de Responsabilidades
-
-### Raspberry Pi Model A+ (Gateway)
-- **Frontera de seguridad**: Expone únicamente interfaces controladas y autorizadas hacia el cliente/agente LLM.
-- **Orquestación y auditoría**: Registra las operaciones solicitadas, valida políticas de acceso y supervisa el tráfico.
-- **Bajo consumo y aislamiento**: No ejecuta modelos LLM ni tareas pesadas de compilación o análisis intensivo de datos, adecuándose a sus recursos (CPU ARMv6 single-core, ~176 MB RAM utilizables).
-- **Deny-by-default**: Todas las operaciones no explícitamente permitidas están denegadas.
-- **Zero-External-Dependencies**: El núcleo opera al 100% sobre la librería estándar de Python 3, evitando sobrecarga en ARMv6 y protegiendo el sistema operativo Raspbian 11 de dependencias pesadas.
-
-### Target Worker (Worker / Storage)
-- **Cómputo pesado**: Ejecución de compilaciones, indexación de archivos grandes, ejecución de pruebas pesadas o contenedores.
-- **Almacenamiento**: Persistencia principal de repositorios y proyectos.
-- **Acceso controlado**: Recibe únicamente comandos u operaciones canalizadas a través del canal SSH auditado desde el Gateway.
-
----
-
-## 3. Topología de Red y Dispositivos Relevantes
-
-| Dispositivo / Rol | Dirección IP | Hostname | Interfaz Activa | Estado en el Proyecto |
-|---|---|---|---|---|
-| **Raspberry Pi Gateway** | `192.168.68.55` | `MCP-Pi` | `wlan0` (Wi-Fi USB RTL8188EUS) | **Objetivo activo del gateway** |
-| **Raspberry Pi (Pi-hole)** | `192.168.68.54` | `YorPi` | N/A | **FUERA DEL ALCANCE** (Dispositivo crítico LAN; no tocar) |
-| **Gateway LAN (Router)** | `192.168.68.1` | - | LAN | Router / Servidor DHCP local |
-| **Target Primario (Worker)** | `192.168.68.84:8022` | `localhost` | Wi-Fi LAN | Target `termux-main` (Android 16 / Termux) |
-
-> [!CAUTION]
-> **Aislamiento de Pi-hole (`192.168.68.54`)**:
-> La Raspberry Pi con IP `192.168.68.54` actúa como DNS/Pi-hole de la red local y conserva su hostname `YorPi`. Está totalmente fuera del alcance de este proyecto y NO debe ser modificada, reiniciada ni alterada por ningún agente.
-
-> [!NOTE]
-> **Colisión de Hostname Resuelta**:
-> La colisión inicial fue resuelta en la Fase 2A renombrando la Raspberry del gateway a `MCP-Pi`. La Raspberry Pi-hole conserva su nombre `YorPi`. No existe conflicto de resolución local.
-
----
-
-## 4. Arquitectura del Gateway Core (Fase 4A)
-
-El Gateway Core reside en `/home/mcp-gateway/mcp-gateway` en la Raspberry Pi y está desacoplado del protocolo final y de la plataforma subyacente.
+## Runtime layout
 
 ```text
-[ Cliente / Interfaz / Adaptador de Protocolo ]
-                     │
-                     ▼
-┌────────────────────────────────────────────────────────┐
-│                      GATEWAY CORE                      │
-│                                                        │
-│  ┌──────────────────┐        ┌──────────────────────┐  │
-│  │  GatewayConfig   │ ◄────► │    Policy Engine     │  │
-│  │ (config/targets) │        │ (Deny-by-default)    │  │
-│  └──────────────────┘        └──────────────────────┘  │
-│                                          │             │
-│  ┌──────────────────┐                    │             │
-│  │   GatewayTools   │ ───────────────────┘             │
-│  │ (21 herramientas)│                                  │
-│  └──────────────────┘                                  │
-│            │                                           │
-│            ▼                                           │
-│  ┌──────────────────┐                                  │
-│  │   SSHTransport   │                                  │
-│  │ (OpenSSH stdlib) │                                  │
-│  └──────────────────┘                                  │
-└────────────┬───────────────────────────────────────────┘
-             │
-             │ Conexión SSH segura vía alias OpenSSH
-             ▼
-[ Target Remoto: Linux / macOS / Windows / Android-Termux ]
+/home/mcp-gateway/mcp-gateway/                  application runtime
+/home/mcp-gateway/.local/share/mcp-gateway/    Registry + backups
+/home/mcp-gateway/.config/mcp-gateway/          private config + secrets
+/etc/systemd/system/                             service definitions
 ```
 
-### 4.1 Capas del Núcleo
-1. **Configuración (`config.py`)**:
-   - Soporte nativo para múltiples targets y múltiples proyectos por target.
-   - Declaración de raíces autorizadas (`root`), capacidades permitidas (`read`, `tasks`, etc.) y tareas predefinidas en lista blanca con vectores `argv` estrictos.
-2. **Motor de Políticas (`policy.py`)**:
-   - **Sintaxis de rutas**: Rechazo de rutas absolutas, traversals (`..`), caracteres nulos y paths vacíos.
-   - **Validación canónica remota**: Resolución con `realpath` en el target para garantizar que la ruta resuelta habite dentro del `root` del proyecto, previniendo escapes mediante enlaces simbólicos o colisiones de prefijos hermanos.
-   - **Lista blanca de tareas**: Solo se pueden ejecutar comandos explícitamente declarados en la configuración.
-3. **Transporte SSH (`ssh_transport.py`)**:
-   - Invocación de `ssh` mediante `subprocess` estándar sin shells intermedios (`shell=False`).
-   - Comillas seguras con `shlex.quote`.
-   - Lector seguro de archivos de texto (límite de 1 MiB, aborto si se detectan bytes nulos binarios).
-4. **Herramientas de Alto Nivel (`tools.py`)**:
-   - Catálogo vigente: 21 herramientas deterministas (16 Core/Target + 5 administración del appliance).
-   - Incluye lectura/estado, `search`, tareas allowlisted, structured filesystem mutations y `run_command` con grant explícito.
-   - Respuestas uniformes en JSON con estado (`ok`), herramienta (`tool`), duración (`duration_ms`), resultado estructurado (`result`) o error estandarizado (`error`).
+Application updates must not overwrite persistent Registry/config/secrets.
 
----
+## Installation and deployment boundaries
 
-## 5. Implementación del Canal Seguro Pi → Target
-
-```text
-[ MCP-Pi Gateway ]                               [ Target Worker ]
-(192.168.68.55)                                  (192.168.68.84)
-Usuario: mcp-gateway (UID 1001, sin sudo)        Usuario: u0_a435 (App Android / Termux, sin root)
-Clave: ~/.ssh/mcp_gateway_ed25519                Puerto: 8022
-Alias: pc-local / termux-local                   Allowed Root: .../MCP_Local
-        |                                                ^
-        +================== SSH =========================+
-                    (Ed25519 sin password)
+```mermaid
+flowchart TD
+    U[User release bundle] --> I[install.sh]
+    I --> R[Installed runtime]
+    M[Maintainer exact Git SHA] --> D[scripts/deploy-pi.sh]
+    D --> C[Validated candidate]
+    C --> R
+    R --> P[Persistent data/config]
 ```
 
-- **Separación de privilegios en el Gateway**: El canal hacia el target se ejecuta exclusivamente desde la cuenta de servicio `mcp-gateway`, sin acceso a `sudo` ni credenciales administrativas de la Raspberry.
-- **Entorno del Worker en PC**: Ejecutado en un sandbox Linux/Android sin privilegios de root (`u:r:untrusted_app_27`), con OpenSSH Server en el puerto 8022.
-- **Filesystem estructurado acotado**: `read_file`, `write_file`, `copy_file`, `move_file`, `mkdir`, `search`, etc. resuelven paths canónicos en el Target y permanecen confinados al Project. `run_command` es deliberadamente un trusted Target shell: usa el Project como scope/cwd inicial, no como sandbox.
+`install.sh` is the user install/reinstall path. `deploy-pi.sh` is a maintainer promotion mechanism with exact-commit provenance and transactional rollback.
 
-### 5.1 Resolución Dinámica de Endpoints y Descubrimiento Criptográfico
+## Resource model
 
-Para garantizar resiliencia operativa ante rotación de IPs por DHCP o reinicios del router sin requerir reservas DHCP ni intervención manual:
+The reference appliance is intentionally constrained. Heavy tests, frontend builds and Go cross-compilation run on a development host. The appliance runs only lightweight validation/Doctor and the production services.
 
-- **Paradigma de Identidad**:
-  $$\text{Target ID} + \text{SSH Host Key Pinning} = \text{Identidad Criptográfica}$$
-  $$\text{IP} + \text{Port} = \text{Endpoint Mutable}$$
-- **Autoridad Única en SQLite**: La tabla `targets` (`host`, `port`) es la única fuente autoritativa. En tiempo de ejecución, `SSHTransport` inyecta explícitamente `-o HostName={host} -o Port={port} -o HostKeyAlias={target_id}` antes del alias OpenSSH, garantizando que `~/.ssh/config` no actúe como fuente paralela no autorizada y forzando la validación estricta de la clave contra el alias del target.
-- **Fail-Closed Ante Errores de Seguridad**: Cualquier discrepancia de claves (`Host key verification failed`, `REMOTE HOST IDENTIFICATION HAS CHANGED`) o fallo de autenticación rechaza la operación inmediatamente (fail-closed) sin disparar búsquedas ni modificaciones.
-- **Descubrimiento Multinivel Bajo Demanda**: Disparado únicamente ante errores de conectividad de red (`Connection refused`, `No route to host`, etc.):
-  1. *Fast Path*: Conexión directa al endpoint registrado (0 sobrecarga).
-  2. *Fast Discovery*: Lectura de vecinos ARP en `/proc/net/arp` y comprobación rápida del puerto de SSH mediante sondeo concurrente.
-  3. *Fallback Discovery*: Barrido dinámico de la subred activa local (detectada sin prefijos fijos) en caso de que la tabla ARP no contenga candidatos.
-  4. *Verificación Criptográfica*: Extracción de claves del host (`ssh-keyscan`) y verificación contra la clave fijada en `known_hosts` para `target_id`.
-  5. *Actualización y Reintento*: Si existe coincidencia criptográfica inequívoca, `targets.host` se actualiza atómicamente, se registra el evento en `activity` y el comando SSH se reintenta exactamente una vez. Cooldown per-target previene tormentas de escaneo.
-
----
-
-## 6. Registro Persistente y Consola de Administración (Fase 4B)
-
-La Fase 4B introduce una capa de persistencia transaccional y una consola de gestión web protegida que se sitúa sobre el Gateway Core sin alterar sus garantías de seguridad:
-
-```text
-       [ Administrador en LAN confiable ]
-               │
-               │ HTTP LAN + autenticación + Host allowlist
-               ▼
-┌────────────────────────────────────────────────────────┐
-│ MCP-Pi (192.168.68.55:80)                            │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │     Consola Web Admin (Flask + Jinja2)          │  │
-│  │     - Estilos Tailwind CSS precompilados         │  │
-│  │     - CSRF, HttpOnly, SameSite=Strict, CSP       │  │
-│  │     - PBKDF2 password hash, Rate limiting        │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │                          │
-│                             ▼                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │           Registry Abstraction Layer             │  │
-│  │                                                  │  │
-│  │   ┌────────────────────┐   ┌─────────────────┐   │  │
-│  │   │   SQLiteRegistry   │   │  JsonRegistry   │   │  │
-│  │   │  (gateway.db 64K)  │   │   (Fallback)    │   │  │
-│  │   └────────────────────┘   └─────────────────┘   │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │                          │
-│                             ▼                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │             Gateway Core (tools.py)              │  │
-│  │  - Emergency Kill Switch (gateway_enabled)       │  │
-│  │  - Target / Project Enable / Disable check       │  │
-│  │  - Deny-by-default Policy Engine                 │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │                          │
-│                             ▼                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │           SSHTransport (Subprocess)              │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────┬──────────────────────────┘
-                              │
-                              │ SSH Ed25519
-                              ▼
-                       [ Target Worker ]
-```
-
-### 6.1 Capa de Registro Abstraída
-- **`RegistryBase` (ABC)**: Interfaz uniforme para operaciones de consulta y mutación.
-- **`SQLiteRegistry`**: Almacén principal en `/home/mcp-gateway/.local/share/mcp-gateway/gateway.db`. Consultas 100% parametrizadas (`?`), control de versión de esquema con `PRAGMA user_version = 1`.
-- **`JsonRegistry`**: Adaptador compatible hacia atrás para `config/targets.local.json`.
-- **Rollback transparente**: La variable de entorno `MCP_GATEWAY_REGISTRY=json|sqlite` permite alternar de backend instantáneamente sin cambios de código.
-
-### 6.2 Consola Web de Administración
-- **Exposición LAN explícita**: la consola escucha en `0.0.0.0:80` para administración dentro de la LAN confiable, con allowlist de `Host`, autenticación, CSRF y security headers. El MCP adapter permanece loopback-only.
-- **Zero Node.js en Raspberry Pi**: El CSS de Tailwind (17 KB) se compila en el entorno de desarrollo y se despliega como activo estático estricto.
-- **Operaciones Core Auditas**: La consola invoca `GatewayTools` para pruebas y diagnósticos; nunca ejecuta comandos SSH arbitrarios desde los controladores web.
-- **Interruptor de Emergencia (Emergency Kill Switch)**: Corta globalmente el acceso de las herramientas a los targets en milisegundos actualizando `gateway_enabled = false` en la base de datos.
-
----
-
-## 7. Adaptador de Protocolo MCP Oficial (Fase 4C)
-
-La Fase 4C expone las capacidades del Gateway Core a clientes compatibles con Model Context Protocol (MCP) mediante un adaptador de protocolo dedicado implementado con el SDK oficial de Go (`github.com/modelcontextprotocol/go-sdk` v1.7.0).
-
-```text
-┌────────────────────────────────────────────────────────┐
-│                   Cliente MCP (LLM)                    │
-│             (Claude Desktop, Cursor, etc.)             │
-└───────────────────────────┬────────────────────────────┘
-                            │
-              JSON-RPC 2.0  │ (stdio ó Streamable HTTP)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│ MCP-Pi (127.0.0.1:8090)                                │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   Adaptador MCP Oficial en Go                    │  │
-│  │   (mcp-gateway-adapter)                          │  │
-│  │   - Protocolo MCP 2026-07-28 (compat 2025-11-25) │  │
-│  │   - Esquemas JSON Schema del catálogo vigente de 21 herramientas       │  │
-│  │   - Transportes: stdio & Streamable HTTP         │  │
-│  │   - Binario estático compilado para ARMv6 (8 MB) │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │                          │
-│        Invocación Bridge    │ CLI JSON (stdout/stderr) │
-│        python3 -m bridge    │                          │
-│                             ▼                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   Puente Python Gateway (bridge.py)              │  │
-│  │   - Deserializa argumentos JSON                  │  │
-│  │   - Consulta Registry (SQLite / JSON)            │  │
-│  │   - Invoca GatewayTools con Policy Engine        │  │
-│  │   - Devuelve resultado o error estandarizado     │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │                          │
-│                             ▼                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   Policy Engine + Registry + SSHTransport        │  │
-│  │   - Emergency Kill Switch global & por target    │  │
-│  │   - Validación de rutas canónicas (realpath)     │  │
-│  │   - Tareas predefinidas en lista blanca          │  │
-│  └──────────────────────────┬───────────────────────┘  │
-└─────────────────────────────┼──────────────────────────┘
-                              │
-                              │ SSH Ed25519 (mcp-gateway)
-                              ▼
-                       [ Target Worker ]
-```
-
-### 7.1 Separación Estricta de Responsabilidades
-
-| Responsabilidad | Adaptador Go (`mcp-adapter`) | Núcleo Python (`mcp_gateway`) |
-|---|---|---|
-| **Protocolo MCP** | Handshake, negociación de versión, JSON-RPC 2.0 | Desacoplado de MCP (agnóstico de protocolo) |
-| **Definición de Schemas** | Esquemas formales JSON Schema para 8 herramientas | Define tipos y docstrings de métodos |
-| **Transportes** | Framing stdio y Streamable HTTP (`/mcp` con chunked SSE) | Subproceso CLI invoked on-demand |
-| **Serialización** | Validación sintáctica de inputs MCP y wrapping de respuestas | Estructuras de datos Python a JSON nativo |
-| **Seguridad y Políticas** | NINGUNA (no toma decisiones de autorización) | **AUTORIDAD ÚNICA**: validación de rutas, traversal, allowlists |
-| **Kill Switch** | No almacena estado de seguridad | Evaluado en cada invocación contra `gateway.db` |
-| **Conexiones SSH** | NINGUNA (no maneja credenciales ni claves SSH) | Invocación `ssh` segura con usuario `mcp-gateway` |
-
-### 7.2 Protocolo y Transportes Soportados
-
-1. **Stdio**:
-   - Lectura de mensajes JSON-RPC por `stdin` y emisión por `stdout`.
-   - Ideal para clientes locales (CLI, scripts, subprocesos de herramientas locales).
-   - Flag: `-transport stdio`.
-2. **Streamable HTTP**:
-   - Escucha en `127.0.0.1:8090/mcp`.
-   - Endpoint de salud en `GET /health` (retorna `{"status":"ok"}`).
-   - Protocolo streaming basado en SSE (Server-Sent Events) cuando el cliente solicita `Accept: application/json, text/event-stream`.
-   - Respuestas chunked con eventos de protocolo MCP.
-   - Flag: `-transport http -bind 127.0.0.1:8090`.
-
-### 7.3 Interfaz de Puente (Bridge)
-
-La comunicación entre el adaptador Go y el Gateway Core se realiza a través de la CLI del puente `bridge.py`:
-```bash
-python3 -m mcp_gateway.bridge invoke <tool_name> '<json_arguments>'
-```
-- **Entrada**: Nombre de la herramienta y un string JSON con sus argumentos.
-- **Salida**: JSON estructurado en `stdout`:
-  - En caso exitoso: `{"ok": true, "result": {...}, "tool": "...", "duration_ms": ...}`
-  - En caso de error: `{"ok": false, "error": {"code": "...", "message": "..."}, "tool": "..."}`
-- **Códigos de salida**:
-  - `0`: Ejecución exitosa de la herramienta.
-  - `1`: Error controlado devuelto por la herramienta (política, archivo no encontrado, timeout, etc.).
-  - `2`: Error de sintaxis en argumentos o fallo interno del puente.
-
-### 7.4 Servicio del Sistema e Integración Operacional
-
-- **Servicio systemd**: `mcp-gateway-mcp.service` activo y habilitado en el arranque.
-- **Usuario de ejecución**: `User=mcp-gateway`, `Group=mcp-gateway` (sin privilegios de root ni sudo).
-- **Consumo de memoria**: ~10 MiB RSS en la Raspberry Pi Model A+.
-- **Monitoreo en Consola Admin**: La consola web de administración (`127.0.0.1:80`) verifica en tiempo real la conectividad contra el socket del adaptador en `127.0.0.1:8090` y muestra el estado en el Dashboard.
-
----
-
-## 8. Modelo de Escritura Controlada (Fase 5)
-
-La Fase 5 introduce la capacidad de mutación controlada en targets remotos mediante la herramienta `write_file`, manteniendo inquebrantable el principio deny-by-default y protegiendo el sistema contra desbordamientos, colisiones concurrentes (TOCTOU) y escrituras destructivas.
-
-```text
-┌────────────────────────────────────────────────────────┐
-│                   Cliente MCP (LLM)                    │
-└───────────────────────────┬────────────────────────────┘
-                            │ write_file(target_id, project_id, path,
-                            │            content, expected_sha256, create, dry_run)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│ MCP-Pi (127.0.0.1:8090)                                │
-│                                                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   Adaptador MCP en Go (mcp-gateway-adapter)      │  │
-│  │   - Valida esquema de parámetros de write_file   │  │
-│  │   - Pasa stdin/stdout al puente Python           │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │ CLI Bridge: python3 -m mcp_gateway.bridge
-│                             ▼
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   Gateway Core & Policy Engine (Python)          │  │
-│  │                                                  │  │
-│  │   1. Kill Switch Check (gateway_enabled == true) │  │
-│  │   2. Dual-Key Check (writes_enabled && project)  │  │
-│  │   3. Path Confinement (relativo, sin traversal)  │  │
-│  │   4. Content Encoding (UTF-8 estricto, sin NUL)  │  │
-│  │   5. Probe Remoto (SSH: realpath, existe, tipo)  │  │
-│  │   6. Symlink Check (bloquea enlaces simbólicos)  │  │
-│  │   7. Hash Lock Check (expected_sha256 / create)  │  │
-│  │   8. Dry-Run Check (retorna diff si dry_run=true)│  │
-│  │   9. Local Rolling Backup (Gateway ~/.local/...) │  │
-│  │  10. Atomic Write (temp file -> fsync -> os.rep) │  │
-│  └──────────────────────────┬───────────────────────┘  │
-│                             │ Safe stdin piping (shlex.quote)
-│                             ▼
-│  ┌──────────────────────────────────────────────────┐  │
-│  │   SSHTransport (OpenSSH subprocess)              │  │
-│  └──────────────────────────┬───────────────────────┘  │
-└─────────────────────────────┼──────────────────────────┘
-                              │ SSH Ed25519 (mcp-gateway)
-                              ▼
-                       [ Target Worker ]
-                       - Escritura en `.tmp_write_*`
-                       - `os.replace` atómico en directorio padre
-```
-
-### 8.1 Garantías de Seguridad y Control
-
-1. **Autorización con Doble Llave (Dual-Key Authorization)**:
-   - **Llave Global**: `writes_enabled = true` en la tabla `settings` del Gateway (`SQLiteRegistry`). Por defecto está desactivada (`false`).
-   - **Llave por Proyecto**: `project.write = true` en la configuración del proyecto específico. Si un proyecto solo tiene `read = true`, cualquier intento de escritura es denegado con `WRITE_NOT_ALLOWED`.
-
-2. **Bloqueo Precondicional de Hash (Optimistic Concurrency / TOCTOU Protection)**:
-   - Toda sobreescritura de un archivo existente **requiere** el parámetro `expected_sha256`. Si el contenido remoto ha cambiado o no coincide, la operación se aborta de inmediato con código `WRITE_CONFLICT`.
-   - Para creación de archivos nuevos (`create = true`), el motor falla explícitamente con `FILE_ALREADY_EXISTS` si el destino ya existe.
-
-3. **Confinamiento de Rutas y Rechazo de Enlaces Simbólicos**:
-   - Se rechazan rutas que apunten a un enlace simbólico (`SYMLINK_WRITE_DENIED`), ya sea el archivo destino o cualquier directorio ancestro dentro del proyecto.
-   - La ruta canónica debe residir estrictamente dentro de la raíz permitida del proyecto.
-
-4. **Atomicidad de Escritura y Consistencia en Disco**:
-   - El contenido se escribe en un archivo temporal con prefijo `.tmp_write_` en el mismo directorio padre.
-   - Se asegura la sincronización a disco (`fsync`), se preservan los permisos POSIX del archivo original y se ejecuta una sustitución atómica mediante `os.replace`.
-   - Se realiza `fsync` sobre el directorio contenedor para persistir la entrada de directorio.
-
-5. **Backups Locales Rotativos en el Gateway**:
-   - Antes de modificar cualquier archivo remoto existente, el Gateway almacena una copia íntegra en `~/.local/share/mcp-gateway/backups/<target>/<project>/<timestamp>_<path>`.
-   - Se conservan hasta 5 versiones históricas por archivo. Al estar en la Raspberry Pi, el historial de backups no puede ser alterado o borrado desde el Target Worker.
-
-6. **Modo Dry-Run**:
-   - Si `dry_run = true`, el Gateway realiza todas las validaciones (autorización, hash precondicional, límites) y genera un `unified diff` entre el contenido existente y el nuevo, devolviéndolo sin aplicar ninguna modificación en el target.
-
-7. **Botón de Pánico (Writes Panic Button)**:
-   - La consola web de administración incluye un control de emergencia en `/settings/disable-writes` que apaga instantáneamente todas las mutaciones en el sistema sin interrumpir las consultas ni las lecturas de herramientas de diagnóstico.
-
-### 8.2 Decisión Arquitectónica sobre `apply_patch`
-
-El diseño original contemplaba una herramienta `apply_patch` para aplicar diffs unificados. Tras evaluación técnica, se determinó:
-- **`APPLY_PATCH: DEFERRED_FOR_SAFE_IMPLEMENTATION`**: Aplicar parches multi-hunk de manera remota introduce vulnerabilidades de parsing difuso (fuzzy matching), ambigüedad de codificación de finales de línea (CRLF vs LF) y riesgo de estado inconsistente entre plataformas.
-- La combinación de `read_file` (que expone el `sha256` actual) junto con `write_file(expected_sha256=...)` proporciona a los modelos LLM un flujo de edición determinista, atómico y libre de condiciones de carrera sin añadir complejidad frágil al gateway.
-
----
-
-## 9. Fundamentos de Compatibilidad, Seguridad y Ciclo de Vida (Fase 4D)
-
-La Fase 4D introduce un marco formal de compatibilidad, hardening de red y gestión del ciclo de vida del Gateway, preparando la infraestructura para la integración con clientes AI externos en la Fase 6.
-
-```text
-[ Cliente AI Externo / ChatGPT / Claude ]
-                   │
-                   │ HTTP / Streamable SSE (Confinado a loopback en Fase 4D)
-                   ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Go MCP Protocol Adapter (mcp-gateway-adapter)              │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ SecurityMiddleware (Defensa Perimetral HTTP)          │  │
-│  │  1. Host Header Enforcement (localhost/127.0.0.1 only)│  │
-│  │     --> Bloquea DNS Rebinding Attacks                 │  │
-│  │  2. Origin Header Protection                          │  │
-│  │     --> Rechaza orígenes foráneos maliciosos (HTTP 403│  │
-│  │  3. Max Request Body Limit (1048576 bytes / 1 MiB)    │  │
-│  └──────────────────────────┬────────────────────────────┘  │
-│                             │                               │
-│  ┌──────────────────────────▼────────────────────────────┐  │
-│  │ Endpoints & Modelo de Salud                           │  │
-│  │  - /live            : Liveness probe ligero           │  │
-│  │  - /ready           : Readiness probe (fail-closed)   │  │
-│  │  - /health          : Telemetría sin secretos         │  │
-│  │  - /server/discover : Descubrimiento MCP              │  │
-│  │  - /mcp             : Transporte Streamable HTTP      │  │
-│  └──────────────────────────┬────────────────────────────┘  │
-│                             │ Inyección de request_id (req-*)
-│  ┌──────────────────────────▼────────────────────────────┐  │
-│  │ Fail-Closed Contract Verification                     │  │
-│  │  Verifica bridge_api_version == 1 al arrancar         │  │
-│  │  Si falla: Rechaza llamadas con ADAPTER_NOT_READY     │  │
-│  └──────────────────────────┬────────────────────────────┘  │
-└─────────────────────────────┼───────────────────────────────┘
-                              │ Subprocess JSON CLI
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Python Gateway Core                                        │
-│  - Propagación de request_id hacia logs y transporte SSH    │
-│  - Costura de autorización: can_client_use_tool(...)        │
-│  - Doctor & Safe Repair (diagnóstico integral de salud)     │
-│  - Gestor de ciclo de vida (backup, restore, rollback)      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 9.1 Matriz de Contratos (`compatibility.json`)
-
-El archivo [`compatibility.json`](../compatibility.json) actúa como fuente de verdad inmutable para versiones de componentes:
-- `gateway_version`: 1.3.0
-- `core_api_version`: 1
-- `bridge_api_version`: 1
-- `tool_catalog_version`: 3 (21 herramientas en orden alfabético determinista; visibilidad filtrada por grants)
-- `registry_schema_version`: 1 (`PRAGMA user_version = 1`)
-- `mcp_protocol`: `2026-07-28` con retrocompatibilidad negociada `2025-11-25`
-
-### 9.2 CLI Unificado y Empaquetado
-
-- **CLI Unificado**: [`bin/mcp-gateway`](../bin/mcp-gateway) como punto de entrada único para administración local (`status`, `doctor`, `repair`, `backup`, `restore`, `rollback`, `uninstall`).
-- **Empaquetado e Instalación**: Manifiesto firmado criptográficamente ([`manifest.json`](../manifest.json), [`SHA256SUMS`](../SHA256SUMS)) e instalador idempotente [`install.sh`](../install.sh).
-- **Consola Web de Mantenimiento**: Ruta `/maintenance` que integra diagnósticos en tiempo real, respaldos online y gestión de versiones mediante HTMX local (sin dependencias de red externas).
-
-
+See [security.md](security.md), [configuration.md](configuration.md) and [compatibility.md](reference/compatibility.md).

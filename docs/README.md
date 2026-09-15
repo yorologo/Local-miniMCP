@@ -1,39 +1,51 @@
-# Documentation index
+# Documentation
 
-This index classifies project documentation so current operational guidance is not confused with historical evidence or design material. Current software baseline: **1.3.0** on `develop`; latest immutable tag: `v1.2.1`.
+The documentation is deliberately split into **CURRENT**, **REFERENCE** and **ARCHIVE** so an operator never has to guess whether an old command still applies.
 
-## CURRENT
+## CURRENT — authoritative operational guidance
 
-Use these as the source of truth for the running project:
+Use these documents for the current 1.3.0 codebase:
 
-- [`../README.md`](../README.md) — project overview and quick start.
-- [`architecture.md`](architecture.md) / [`diagrams.md`](diagrams.md) — current architecture and flows.
-- [`configuration.md`](configuration.md) — environment, registry and security settings.
-- [`deployment.md`](deployment.md) — development-to-MCP-Pi deployment.
-- [`admin-console.md`](admin-console.md) — Admin Console behavior and security.
-- [`compatibility.md`](compatibility.md) — versioned compatibility contract.
-- [`troubleshooting.md`](troubleshooting.md) — current diagnostics.
-- [`runbooks/`](runbooks/) — current operational runbooks.
+- [`../README.md`](../README.md) — project landing and quick start.
+- [`getting-started.md`](getting-started.md) — shortest path for a new user.
+- [`installation.md`](installation.md) — fresh install and reinstall contract.
+- [`configuration.md`](configuration.md) — environment, Registry and security settings.
+- [`operations.md`](operations.md) — normal administration and maintenance.
+- [`update-rollback.md`](update-rollback.md) — user update/rollback and maintainer deployment boundary.
+- [`recovery.md`](recovery.md) — backup, restore and disaster recovery.
+- [`troubleshooting.md`](troubleshooting.md) — diagnosis by layer.
+- [`architecture.md`](architecture.md) — current component and request flows.
+- [`security.md`](security.md) — trust boundaries, grants, kill switches and shell semantics.
+- [`admin-console.md`](admin-console.md) — Admin UI behavior.
+- [`project-state.md`](project-state.md) — concise dynamic state of this repository/production baseline.
 
-## HISTORICAL
+Project context, not step-by-step operating instructions:
 
-These preserve facts from an earlier point in time and may intentionally contain old IPs, versions, paths or tool counts:
 
-- [`releases/`](releases/)
-- [`migration/`](migration/)
-- [`inventory/`](inventory/)
-- [`gateway-mvp.md`](gateway-mvp.md)
-- [`os-migration.md`](os-migration.md)
-- [`v1-acceptance.md`](v1-acceptance.md)
+## REFERENCE — deep technical detail
 
-## DESIGN
+[`reference/`](reference/) keeps specialized protocol, lifecycle, deployment and integration material that is useful to maintainers but should not compete with the beginner path.
 
-Design rationale and specifications. They describe intended or accepted architecture and must not be treated as proof that a feature is deployed:
+Reference documents are not the source of truth for a command when a CURRENT guide says otherwise.
 
-- [`superpowers/specs/`](superpowers/specs/)
+## ARCHIVE — historical evidence
 
-## PLAN
+[`archive/`](archive/) preserves completed migrations, old runbooks, implementation plans/specs and acceptance evidence. Old IPs, versions, tool counts and procedures may intentionally appear there.
 
-Implementation plans and work logs; commands and expected failures may be intentionally historical:
+Do **not** execute archived commands as current operating guidance.
 
-- [`superpowers/plans/`](superpowers/plans/)
+Release notes under [`releases/`](releases/) are historical and immutable by version.
+
+## Authority rule
+
+```text
+Observed runtime / code contract
+        ↓
+CURRENT documentation
+        ↓
+REFERENCE rationale/details
+        ↓
+ARCHIVE historical evidence
+```
+
+If CURRENT documentation disagrees with the running software, stop, determine which source drifted, correct it and re-run `python scripts/audit-docs.py`. Never change production merely to make it match old archived text.

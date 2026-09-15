@@ -54,3 +54,12 @@ jobs:
         run: PYTHONPATH=src python scripts/audit-docs.py
       - name: Diff hygiene
         run: git diff --check && git diff --exit-code
+      - name: Build beginner ARMv6 release bundle
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          scripts/build-release-package.sh "$GITHUB_SHA" "$RUNNER_TEMP/release"
+          pkg="$(find "$RUNNER_TEMP/release" -maxdepth 1 -name 'Local-miniMCP-*-linux-armv6-*.tar.gz' -print -quit)"
+          test -n "$pkg"
+          tar -tzf "$pkg" | grep -q '/bin/mcp-gateway-adapter$'
+          tar -tzf "$pkg" | grep -q '/install.sh$'
+          sha256sum "$pkg"

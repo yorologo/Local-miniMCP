@@ -1,48 +1,40 @@
 # Changelog
 
-All notable changes to this project are documented here.
+All notable user-visible changes are documented here. Historical release details remain under `docs/releases/`.
 
 ## Unreleased — 1.3.0
 
 ### Added
-- Trusted Target shell capability (`target_shell`) with independent `shell_enabled` kill switch and readable effective-capability UI.
-- Remote Target Environment Facts, deterministic MCP catalog diagnostics, standard Tool Annotations, CI workflow and documentation audit.
-- Exact-commit candidate deployment with verified `.deployment.json` provenance and automatic rollback path.
-- Optional `age` encryption for private off-device appliance backups; requested encryption fails closed if `age` is unavailable.
+
+- trusted Target-shell capability with independent `shell_enabled` kill switch and readable effective-capability UI;
+- Target Environment Facts, deterministic MCP catalog diagnostics and standard Tool Annotations;
+- CI and semantic documentation audit;
+- exact-commit maintainer deployment with verified `.deployment.json` provenance and transactional rollback;
+- optional fail-closed `age` encryption for private off-device backups;
+- beginner-facing release-package builder with prebuilt ARMv6 adapter;
+- source/release-tree installer preflight (`install.sh --check`) and installer-managed rollback;
+- minimal real Admin bootstrap through `mcp-gateway setup`.
 
 ### Changed
-- Structured filesystem mutations now share remote canonical destination resolution and fail closed on symlink-parent escapes.
-- Critical mutations require an available audit sink before execution; `run_task` validates enabled/allowlisted argv/cwd/timeout.
-- `run_command` is documented and enforced as a trusted administrative Target shell, not a Project filesystem sandbox.
-- systemd hardening was incrementally strengthened without arbitrary memory limits.
-- `install.sh` now fails fast on required bootstrap/readiness/Doctor failures.
+
+- structured filesystem mutations share remote canonical destination resolution and reject symlink-parent escapes;
+- critical mutations require audit availability before execution;
+- `run_task` validates enabled/allowlisted argv/cwd/timeout;
+- `run_command` is explicitly a trusted Target shell, not a Project filesystem sandbox;
+- systemd hardening was strengthened without arbitrary memory limits;
+- Admin systemd defaults are generic/loopback-safe; machine-specific trusted-LAN binding lives in private `admin.env`;
+- fresh Registry defaults keep both structured writes and trusted Target shell disabled;
+- `install.sh` now installs from the directory containing the release/source, preserves persistent state, stages application updates, verifies readiness/Doctor and provides rollback;
+- `mcp-gateway update/rollback` no longer present the historical symlink lifecycle as the production update path;
+- active documentation is consolidated into a small CURRENT set; technical detail and historical evidence are separated into `reference/` and `archive/`;
+- only `scripts/deploy-pi.sh` remains an active production deploy entrypoint.
 
 ### Fixed
-- Transactional rollback now reads protected systemd unit backups with the required privilege and propagates remote rollback failures instead of emitting a false `ROLLBACK_VERIFIED`.
 
-### Verified
-- Full development gate covers Python, Go, ARMv6, JavaScript, Tailwind, documentation and diff hygiene.
-- Production acceptance requires exact SHA/provenance, services, endpoints, Doctor, Target, audit and rollback evidence.
+- transactional maintainer rollback reads protected systemd unit backups with required privilege and propagates remote rollback failures instead of emitting false success;
+- stale documentation assumptions about old IPs, tool counts, release baselines and setup behavior are removed from CURRENT guidance;
+- installer no longer assumes application files are already copied into `/home/mcp-gateway/mcp-gateway`.
 
-### Added
-- Full 21-tool MCP catalog including `run_command` and structured filesystem operations.
-- GitHub-ready configuration, deployment, troubleshooting, roadmap, contribution, and Mermaid architecture documentation.
-- Responsive/accessibility improvements and JavaScript regression coverage for the Admin Console.
+### Verification
 
-### Changed
-- Admin Console production access now uses `http://192.168.68.55` on TCP/80, bound to `0.0.0.0` for IPv4 LAN access.
-- `mcp-gateway-admin.service` continues to run as `mcp-gateway` and receives only `CAP_NET_BIND_SERVICE` to bind TCP/80.
-- Admin security keeps authentication, CSRF, strict CSP/security headers, SameSite cookies, and explicit Host allowlisting.
-- Deployment now builds and validates the ARMv6 MCP adapter from current source instead of trusting a stale prebuilt artifact, and avoids unnecessary MCP/tunnel restarts.
-- Operational documentation uses the current reserved LAN IP `192.168.68.55` and canonical administrative account `yorologo`.
-
-### Fixed
-- Removed stale operational references to Admin port 8080, old LAN addresses, outdated tool counts, and localhost-only Admin assumptions.
-- Restored and validated the SSH forced-command wrapper used by Doctor.
-- Hardened Admin CSP by removing inline event handlers.
-
-### Verified
-- Full local Python suite passes.
-- Tailwind and Admin JavaScript checks pass.
-- Gateway Doctor reports 19/19 HEALTHY after a full appliance reboot.
-- Admin Console survives reboot and is reachable from localhost and trusted LAN on TCP/80.
+1.3.0 promotion requires Python, Go, ARMv6 build, JavaScript, Tailwind, documentation, release-package, installer preflight, CI, exact-commit production deployment and live acceptance gates to pass on the same final commit.

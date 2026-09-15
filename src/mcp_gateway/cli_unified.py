@@ -3,13 +3,15 @@
 import argparse
 import json
 import os
+import socket
 import sys
 from typing import List, Optional
 
 from . import compatibility
 from .doctor import run_doctor, run_repair
-from .lifecycle import backup_database, restore_database, rollback_release, update_release, check_candidate, uninstall, get_paths
-from .registry import get_registry
+from .lifecycle import backup_database, restore_database, check_candidate, uninstall
+from .registry import get_registry, get_default_db_path
+from .admin_cli import set_password_cmd
 from .tools import GatewayTools
 
 
@@ -113,56 +115,75 @@ def cmd_restore(backup_path: str) -> int:
 
 
 def cmd_rollback() -> int:
-    ok, msg = rollback_release()
-    if ok:
-        print(f"[OK] {msg}")
-        return cmd_doctor(verbose=False)
-    else:
-        print(f"[ERROR] Rollback failed: {msg}", file=sys.stderr)
-        return 1
+    print("Rollback is an administrative filesystem operation and must run as root.")
+    print("Run: sudo /home/mcp-gateway/mcp-gateway/install.sh --rollback")
+    return 2
 
 
 def cmd_update(candidate_path: Optional[str] = None, check_only: bool = False) -> int:
     print("==================================================")
     print("=== MCP Gateway Release Update                 ===")
     print("==================================================")
-    paths = get_paths()
-    if not candidate_path:
-        candidate_path = paths.get("root", ".")
-
     if check_only:
+        if not candidate_path:
+            print("[ERROR] --check requires a candidate release directory or tarball", file=sys.stderr)
+            return 2
         print(f"Checking candidate release at: {candidate_path}")
         ok, errs, meta = check_candidate(candidate_path)
         if ok:
             print(f"[PASS] Candidate manifest valid: v{meta.get('version', 'unknown')}")
-            archs = meta.get("compatibility", {}).get("architectures", [])
+            archs = meta.get("architectures", meta.get("compatibility", {}).get("architectures", []))
             print(f"[PASS] Architecture compatibility: {archs}")
-            print(f"[PASS] Checksums verified: SHA256SUMS intact")
-            print(f"[OK] Candidate release passed pre-update validation.")
+            print("[PASS] Checksums verified when SHA256SUMS is present")
             return 0
-        else:
-            print(f"[FAIL] Candidate release check failed:")
-            for e in errs:
-                print(f"  - {e}")
-            return 1
-
-    ok, msg = update_release(candidate_path)
-    if ok:
-        print(f"[OK] {msg}")
-        return cmd_doctor(verbose=False)
-    else:
-        print(f"[ERROR] Update failed: {msg}", file=sys.stderr)
+        print("[FAIL] Candidate release validation failed:")
+        for error in errs:
+            print(f"  - {error}")
         return 1
 
+    print("Application updates are root-level operations in the current appliance layout.")
+    print("Extract the new official release bundle and run: sudo ./install.sh")
+    print("Maintainers promoting an exact Git commit use: scripts/deploy-pi.sh <exact-sha>")
+    return 2
 
-def cmd_setup() -> int:
+
+def _setup_admin_url() -> str:
+    host = socket.gethostname().strip() or "localhost"
+    return f"http://{host}/"
+
+
+def cmd_setup(admin_user: str = "admin", skip_password: bool = False, password_stdin: bool = False) -> int:
     print("==================================================")
-    print("=== MCP Gateway Quick Setup                    ===")
+    print("=== MCP Gateway Initial Setup                  ===")
     print("==================================================")
     print(f"Contract: Gateway v{compatibility.get_gateway_version()}, MCP Protocol 2026-07-28")
-    print("Running initial doctor diagnostics...")
-    cmd_doctor(verbose=False)
-    print("\nSetup completed. Use 'mcp-gateway --help' for available management commands.")
+
+    registry = get_registry()
+    existing = registry.get_admin_user(admin_user)
+    if not skip_password:
+        should_set = password_stdin or existing is None
+        if should_set:
+            if password_stdin or sys.stdin.isatty():
+                rc = set_password_cmd(admin_user, get_default_db_path())
+                if rc != 0:
+                    return rc
+            else:
+                print("[ACTION REQUIRED] No Admin password is configured and stdin is not interactive.", file=sys.stderr)
+                print(f"Run interactively: mcp-gateway setup --admin-user {admin_user}", file=sys.stderr)
+                print("Or pipe a password once with: mcp-gateway setup --password-stdin", file=sys.stderr)
+                return 2
+        else:
+            print(f"[OK] Admin user '{admin_user}' is already configured; password left unchanged.")
+
+    print("Running Doctor...")
+    rc = cmd_doctor(verbose=False)
+    if rc != 0:
+        return rc
+
+    print("\nSetup baseline complete.")
+    print(f"Admin Console: {_setup_admin_url()}")
+    print("Next: sign in to Admin Console and add the first Target, Project, client and grant.")
+    print("Security defaults on a fresh Registry keep structured writes and trusted Target shell disabled until explicitly enabled.")
     return 0
 
 
@@ -185,7 +206,10 @@ def main(args_list: Optional[List[str]] = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("status", help="Show gateway status summary")
-    subparsers.add_parser("setup", help="Run initial gateway setup wizard")
+    setup_p = subparsers.add_parser("setup", help="Configure initial Admin access and run Doctor")
+    setup_p.add_argument("--admin-user", default="admin", help="Admin username to configure (default: admin)")
+    setup_p.add_argument("--skip-password", action="store_true", help="Skip Admin password bootstrap")
+    setup_p.add_argument("--password-stdin", action="store_true", help="Read the Admin password once from stdin")
 
     doc_p = subparsers.add_parser("doctor", help="Run comprehensive system diagnostics")
     doc_p.add_argument("--verbose", action="store_true", help="Include verbose diagnostic details")
@@ -199,11 +223,11 @@ def main(args_list: Optional[List[str]] = None) -> int:
     res_p = subparsers.add_parser("restore", help="Restore database from an existing backup file")
     res_p.add_argument("backup_file", help="Path to database backup file")
 
-    up_p = subparsers.add_parser("update", help="Update MCP Gateway release from candidate directory or package")
+    up_p = subparsers.add_parser("update", help="Validate a release candidate or show the supported root-level update path")
     up_p.add_argument("candidate_path", nargs="?", default=None, help="Path to candidate release directory or tarball")
     up_p.add_argument("--check", action="store_true", help="Validate candidate release without applying")
 
-    subparsers.add_parser("rollback", help="Roll back current release to previous version")
+    subparsers.add_parser("rollback", help="Show the supported root-level installer rollback command")
 
     subparsers.add_parser("maintenance", help="Run safe automated maintenance (backup, rotation, integrity, doctor)")
 
@@ -216,7 +240,7 @@ def main(args_list: Optional[List[str]] = None) -> int:
     if parsed.command == "status":
         return cmd_status()
     elif parsed.command == "setup":
-        return cmd_setup()
+        return cmd_setup(parsed.admin_user, parsed.skip_password, parsed.password_stdin)
     elif parsed.command == "doctor":
         return cmd_doctor(verbose=parsed.verbose, check_targets=parsed.check_targets)
     elif parsed.command == "repair":

@@ -13,6 +13,7 @@ class TestOperationalScripts(unittest.TestCase):
             (["sh", "-n", str(ROOT / "install.sh")], ROOT),
             (["bash", "-n", str(ROOT / "scripts" / "deploy-pi.sh")], ROOT),
             (["bash", "-n", str(ROOT / "scripts" / "backup-appliance.sh")], ROOT),
+            (["bash", "-n", str(ROOT / "scripts" / "build-release-package.sh")], ROOT),
         ]
         for argv, cwd in checks:
             with self.subTest(argv=argv):
@@ -21,10 +22,38 @@ class TestOperationalScripts(unittest.TestCase):
 
     def test_installer_fail_fast_contract(self):
         text = (ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertNotIn("|| true", text)
-        self.assertIn('install.sh must run as root', text)
-        self.assertIn('did not become ready within 45 seconds', text)
-        self.assertIn('"${INSTALL_DIR}/bin/mcp-gateway" doctor', text)
+        for required in (
+            "install.sh must run as root",
+            "INSTALLATION_VERIFIED",
+            "ROLLBACK_VERIFIED",
+            "--check",
+            "--rollback",
+            "MCP_GATEWAY_ADAPTER_BINARY",
+            "mcp-gateway.previous-install",
+            "admin.env",
+            "gateway-pre-install-",
+            "mcp-gateway-cli.absent",
+            "mcp-gateway-tunnel-check.absent",
+            'restore_system_files',
+            'as_service "$INSTALL_DIR/bin/mcp-gateway" doctor',
+        ):
+            self.assertIn(required, text)
+        self.assertNotIn("trap rollback_on_error ERR", text)
+        self.assertNotIn('doctor || true', text)
+        self.assertNotIn('systemctl restart mcp-gateway-mcp || true', text)
+
+    def test_release_package_is_exact_commit_and_contains_prebuilt_adapter(self):
+        text = (ROOT / "scripts" / "build-release-package.sh").read_text(encoding="utf-8")
+        for required in (
+            "release packaging requires a clean worktree",
+            'git -C "$ROOT" archive "$SHA"',
+            "GOARCH=arm GOARM=6",
+            'bin/mcp-gateway-adapter',
+            'sha256sum',
+            'SOURCE_DATE_EPOCH=',
+            'gzip -n -9',
+        ):
+            self.assertIn(required, text)
 
     def test_deploy_is_exact_commit_and_has_rollback(self):
         text = (ROOT / "scripts" / "deploy-pi.sh").read_text(encoding="utf-8")
@@ -37,6 +66,9 @@ class TestOperationalScripts(unittest.TestCase):
             'sudo tar -xzf "$archive"',
             'sudo chown -R mcp-gateway:mcp-gateway "$candidate"',
             'sudo test -f "$unit_backup/$unit"',
+            'admin_env="$config_dir/admin.env"',
+            'if ! sudo test -s "$admin_env"; then',
+            'MCP_ADMIN_ALLOWED_HOSTS=${allowed}',
             'ROLLBACK_REMOTE_FAILED',
             'ROLLBACK_VERIFIED',
             '.deployment.json',

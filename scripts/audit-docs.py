@@ -1,65 +1,80 @@
 #!/usr/bin/env python3
-"""KISS documentation consistency audit for CURRENT Local-miniMCP docs."""
+"""KISS semantic documentation contract for the CURRENT Local-miniMCP surface."""
 from __future__ import annotations
 
 import json
+import os
 import re
+import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
+
 CURRENT_FILES = [
     ROOT / "README.md",
     ROOT / "AGENTS.md",
-    ROOT / "CHANGELOG.md",
+    ROOT / "CONTRIBUTING.md",
     DOCS / "README.md",
-    DOCS / "admin-console.md",
-    DOCS / "ai-clients.md",
-    DOCS / "architecture.md",
-    DOCS / "chatgpt-gate.md",
-    DOCS / "client-grants.md",
-    DOCS / "compatibility.md",
+    DOCS / "getting-started.md",
+    DOCS / "installation.md",
     DOCS / "configuration.md",
-    DOCS / "controlled-write.md",
-    DOCS / "deployment.md",
-    DOCS / "diagrams.md",
-    DOCS / "lifecycle.md",
-    DOCS / "mcp-adapter.md",
-    DOCS / "mission.md",
-    DOCS / "project-state.md",
-    DOCS / "roadmap.md",
+    DOCS / "operations.md",
+    DOCS / "update-rollback.md",
+    DOCS / "recovery.md",
     DOCS / "troubleshooting.md",
-    DOCS / "tunnel-client-provenance.md",
-] + sorted((DOCS / "runbooks").glob("*.md"))
+    DOCS / "architecture.md",
+    DOCS / "security.md",
+    DOCS / "admin-console.md",
+    DOCS / "project-state.md",
+]
 
+CONTEXT_FILES = [
+    ROOT / "CHANGELOG.md",
+    DOCS / "releases" / "v1.3.0.md",
+    DOCS / "reference" / "compatibility.md",
+    DOCS / "reference" / "roadmap.md",
+]
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
 
-def fail(errors: list[str], message: str) -> None:
+def add(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
-def operational_text(text: str) -> str:
-    """Remove explicitly historical Markdown sections/lines before stale-state checks."""
-    out: list[str] = []
-    historical_level: int | None = None
-    for line in text.splitlines():
-        heading = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if heading:
-            level = len(heading.group(1))
-            title = heading.group(2).lower()
-            if historical_level is not None and level <= historical_level:
-                historical_level = None
-            if any(word in title for word in ("histórico", "historical", "legacy snapshot")):
-                historical_level = level
-        if historical_level is not None:
+def markdown_links(errors: list[str], path: Path) -> None:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for match in LINK_RE.finditer(text):
+        target = match.group(1).strip()
+        if not target or target.startswith(("http://", "https://", "mailto:", "#")):
             continue
-        lower = line.lower()
-        if "histórico:" in lower or "historical:" in lower:
+        target = target.split("#", 1)[0]
+        if not target:
             continue
-        out.append(line)
-    return "\n".join(out)
+        resolved = (path.parent / target).resolve()
+        try:
+            resolved.relative_to(ROOT.resolve())
+        except ValueError:
+            add(errors, f"link escapes repository in {path.relative_to(ROOT)}: {target}")
+            continue
+        if not resolved.exists():
+            add(errors, f"broken local link in {path.relative_to(ROOT)}: {target}")
+
+
+def fresh_registry_defaults() -> dict[str, str]:
+    sys.path.insert(0, str(ROOT / "src"))
+    from mcp_gateway.schema import init_db  # noqa: E402
+
+    with tempfile.TemporaryDirectory() as td:
+        db = Path(td) / "gateway.db"
+        init_db(str(db))
+        con = sqlite3.connect(db)
+        try:
+            return dict(con.execute("SELECT key, value FROM settings"))
+        finally:
+            con.close()
 
 
 def main() -> int:
@@ -70,63 +85,78 @@ def main() -> int:
     catalog_version = int(compat["tool_catalog_version"])
 
     if manifest.get("version") != version:
-        fail(errors, f"manifest version {manifest.get('version')} != compatibility {version}")
+        add(errors, f"manifest version {manifest.get('version')} != compatibility {version}")
     if int(manifest.get("tool_catalog", -1)) != catalog_version:
-        fail(errors, "manifest tool catalog version differs from compatibility.json")
+        add(errors, "manifest tool catalog differs from compatibility.json")
 
     sys.path.insert(0, str(ROOT / "src"))
     from mcp_gateway.bridge import ALLOWED_TOOLS, get_catalog_metadata  # noqa: E402
 
     metadata = get_catalog_metadata(sorted(ALLOWED_TOOLS))
     if metadata["tool_count"] != 21:
-        fail(errors, f"expected 21 tools, found {metadata['tool_count']}")
+        add(errors, f"expected 21 tools, found {metadata['tool_count']}")
     if metadata["tool_catalog_version"] != catalog_version:
-        fail(errors, "runtime tool catalog version differs from compatibility.json")
-    for required in ("run_command", "run_task", "write_file", "gateway_doctor"):
+        add(errors, "runtime catalog version differs from compatibility.json")
+    for required in ("read_file", "write_file", "run_task", "run_command", "gateway_doctor"):
         if required not in ALLOWED_TOOLS:
-            fail(errors, f"required tool missing: {required}")
+            add(errors, f"required tool missing: {required}")
+
+    defaults = fresh_registry_defaults()
+    expected_defaults = {
+        "gateway_enabled": "true",
+        "writes_enabled": "false",
+        "shell_enabled": "false",
+    }
+    for key, expected in expected_defaults.items():
+        if defaults.get(key) != expected:
+            add(errors, f"fresh Registry default {key}={defaults.get(key)!r}, expected {expected!r}")
+
+    if len(CURRENT_FILES) > 15:
+        add(errors, f"CURRENT documentation surface grew to {len(CURRENT_FILES)} files (limit 15)")
 
     stale_patterns = {
-        "admin port 8080": re.compile(r"192\.168\.68\.55:8080|127\.0\.0\.1:8080"),
-        "old gateway address": re.compile(r"192\.168\.68\.85"),
-        "old admin account": re.compile(r"(?:Yorologo@|MCP_PI_USER[^\n]*Yorologo|Usuario[^\n]*Yorologo)"),
-        "old tool count": re.compile(r"\b(?:9|14)\s+(?:active\s+)?deterministic\s+tools\b|Catalog contains (?:9|14) tools", re.I),
-        "localhost-only admin": re.compile(r"localhost-only\s+Admin", re.I),
+        "old appliance IP": re.compile(r"192\.168\.68\.(?:72|85)"),
+        "old admin account casing": re.compile(r"\bYorologo\b"),
+        "old Admin port": re.compile(r"(?:127\.0\.0\.1|192\.168\.68\.\d+):8080"),
+        "old active tool count": re.compile(r"\b(?:8|9|14)\s+(?:active\s+)?(?:tools|herramientas)\b", re.I),
+        "legacy active deploy script": re.compile(r"deploy_(?:scp|to_pi|v101|appliance_update)\.py"),
+        "old runbooks as current": re.compile(r"docs/runbooks/|\]\(runbooks/"),
     }
 
-    for path in CURRENT_FILES:
+    for path in CURRENT_FILES + CONTEXT_FILES:
         if not path.exists():
-            fail(errors, f"CURRENT document missing: {path.relative_to(ROOT)}")
+            add(errors, f"documentation file missing: {path.relative_to(ROOT)}")
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if "file://" in text:
-            fail(errors, f"local file:// link in {path.relative_to(ROOT)}")
-        if path.name != "CHANGELOG.md":
-            current = operational_text(text)
+            add(errors, f"local file:// URL in {path.relative_to(ROOT)}")
+        if path not in (ROOT / "CHANGELOG.md", DOCS / "project-state.md"):
             for label, pattern in stale_patterns.items():
-                if pattern.search(current):
-                    fail(errors, f"{label} in CURRENT doc {path.relative_to(ROOT)}")
-        for match in LINK_RE.finditer(text):
-            target = match.group(1).strip()
-            if not target or target.startswith(("http://", "https://", "mailto:", "#")):
-                continue
-            target = target.split("#", 1)[0]
-            if not target:
-                continue
-            resolved = (path.parent / target).resolve()
-            try:
-                resolved.relative_to(ROOT.resolve())
-            except ValueError:
-                fail(errors, f"link escapes repository in {path.relative_to(ROOT)}: {target}")
-                continue
-            if not resolved.exists():
-                fail(errors, f"broken local link in {path.relative_to(ROOT)}: {target}")
+                if pattern.search(text):
+                    add(errors, f"{label} in {path.relative_to(ROOT)}")
+        markdown_links(errors, path)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if version not in readme:
-        fail(errors, f"README does not declare current version {version}")
-    if "http://192.168.68.55" not in readme:
-        fail(errors, "README missing current Admin LAN endpoint")
+        add(errors, f"README does not declare current version {version}")
+    if len(readme.encode("utf-8")) > 12_000:
+        add(errors, "README exceeds 12 KiB; move deep detail into docs/")
+    for required in ("docs/getting-started.md", "docs/installation.md", "docs/update-rollback.md"):
+        if required not in readme:
+            add(errors, f"README missing beginner path link: {required}")
+
+    docs_index = (DOCS / "README.md").read_text(encoding="utf-8")
+    if "archive/" not in docs_index or "reference/" not in docs_index:
+        add(errors, "docs/README.md must classify reference and archive material")
+
+    active_deployers = sorted(p.name for p in (ROOT / "scripts").glob("deploy*"))
+    if active_deployers != ["deploy-pi.sh"]:
+        add(errors, f"active deployment entrypoints are ambiguous: {active_deployers}")
+
+    installer = (ROOT / "install.sh").read_text(encoding="utf-8")
+    for required in ("--check", "--rollback", "INSTALLATION_VERIFIED", "mcp-gateway.previous-install"):
+        if required not in installer:
+            add(errors, f"installer contract missing {required}")
 
     if errors:
         print("DOCS_AUDIT=FAIL")
@@ -140,6 +170,8 @@ def main() -> int:
     print(f"tool_count={metadata['tool_count']}")
     print(f"catalog_hash={metadata['catalog_hash']}")
     print(f"current_docs={len(CURRENT_FILES)}")
+    print("fresh_defaults=gateway:true,writes:false,shell:false")
+    print("active_deployer=scripts/deploy-pi.sh")
     return 0
 
 

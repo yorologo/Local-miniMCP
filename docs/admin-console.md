@@ -1,65 +1,70 @@
-# MCP Gateway — Consola de Administración
+# Admin Console
 
-La consola web administra Targets, Projects, clientes/grants, actividad, diagnóstico y kill switches usando el mismo Gateway Core que MCP. La implementación prioriza KISS: Flask/Jinja, SQLite y Tailwind precompilado, sin framework SPA ni CDN.
+The Admin Console is the human configuration surface for Targets, Projects, AI clients, grants, activity, health and kill switches. It uses the same Gateway Core/Registry as MCP.
 
-## Acceso actual
+## Access
 
-Producción:
+After installation, use the appliance address permitted by its private `admin.env`, for example:
 
-- URL LAN: `http://192.168.68.55`
-- Servicio: `mcp-gateway-admin.service`
-- Usuario de servicio: `mcp-gateway`
-- Bind configurable con `MCP_ADMIN_HOST` / `MCP_ADMIN_PORT`
-- Allowlist: `MCP_ADMIN_ALLOWED_HOSTS`
+```text
+http://<gateway-ip>/
+```
 
-La unidad de producción escucha en `0.0.0.0:80` y permite `127.0.0.1`, `localhost`, `192.168.68.55` y `mcp-pi`. El MCP adapter **no** se expone por LAN: permanece en `127.0.0.1:8090/mcp`. En redes no confiables se recomienda un túnel SSH en lugar de HTTP LAN directo.
+The versioned unit itself defaults to loopback. LAN exposure is a machine-local choice written outside Git.
 
 ```mermaid
 flowchart LR
-    B[Browser on trusted LAN] -->|HTTP :80| A[Admin Console]
-    A --> H[Host allowlist]
-    H --> AUTH[Auth + CSRF + rate limit]
-    AUTH --> R[(SQLite Registry)]
-    AUTH --> C[Gateway Core]
-    C --> T[Authorized Targets]
+    B[Browser] --> H[Host allowlist]
+    H --> A[Auth + CSRF + rate limit]
+    A --> W[Admin Console]
+    W --> G[Gateway Core]
+    G --> R[(Registry)]
+    G --> T[Authorized Target]
 ```
 
-## Seguridad
+## First login
 
-- Login local con hash de contraseña y rate limiting.
-- Cookies `HttpOnly` + `SameSite=Strict`; sesiones con expiración por inactividad.
-- CSRF obligatorio en mutaciones.
-- `Host` allowlist para evitar host-header abuse/DNS rebinding.
-- CSP: scripts solo `self`, sin JavaScript inline; estilos locales con Tailwind precompilado.
-- `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` y `Cache-Control: no-store`.
-- SQL parametrizado; secretos fuera del repositorio.
-- `gateway_enabled` funciona como kill switch global.
-- `writes_enabled` controla structured filesystem mutations.
-- `shell_enabled` controla de forma independiente el trusted Target shell.
-- `run_command` requiere grant `target_shell` (o alias compatible), Target/Project habilitados y auditoría; no se presenta como Project sandbox.
-- `/clients` muestra capabilities efectivas legibles para distinguir read/write/tasks/Target shell/gateway admin.
-
-## UX actual
-
-La UI incluye navegación responsive accesible, estado de sección con `aria-current`, skip link, targets táctiles de al menos 44 px, tablas desplazables con región enfocables, labels programáticos, mensajes `aria-live`, estados vacíos y confirmación consistente para acciones sensibles.
-
-## Secciones
-
-- `/dashboard`: estado operativo y actividad reciente.
-- `/targets`: configuración y prueba de conectividad.
-- `/projects`: roots autorizados y permisos.
-- `/clients`: identidades de clientes IA.
-- `/activity`: auditoría.
-- `/system`: runtime/hardware.
-- `/settings`: límites, kill switch global, structured writes y Target shell.
-- `/maintenance`: Doctor, backups, repair y rollback.
-
-## Desarrollo del frontend
+Bootstrap an Admin account with:
 
 ```bash
-python -m unittest tests.test_web_security tests.test_web_views -v
+sudo -u mcp-gateway mcp-gateway setup
+```
+
+`setup` intentionally does not duplicate all Admin forms in the CLI. After Admin authentication, create Targets, Projects, clients and grants in the web UI.
+
+## Sections
+
+- **Dashboard** — operational summary and recent activity.
+- **Targets** — endpoint/platform/identity-related configuration and connectivity test.
+- **Projects** — authorized roots and read/write policy.
+- **Clients** — AI client identities and effective capabilities.
+- **Activity** — audit records.
+- **System** — runtime/hardware information.
+- **Settings** — limits and kill switches.
+- **Maintenance** — Doctor, backup and safe maintenance actions.
+
+## Security
+
+- local password hashes;
+- login rate limiting;
+- CSRF on state changes;
+- explicit Host allowlist;
+- strict security headers/CSP;
+- local vendored frontend assets;
+- `HttpOnly` and `SameSite=Strict` session cookies;
+- SQL parameterization;
+- `mcp-gateway` service user;
+- only `CAP_NET_BIND_SERVICE` for TCP/80 when needed.
+
+`gateway_enabled`, `writes_enabled` and `shell_enabled` are independent operational switches. See [security.md](security.md).
+
+## Frontend development
+
+Node.js is needed only to rebuild/test frontend assets on a development host:
+
+```bash
 node tests/test_app_js.mjs
 cd tailwind && npm run build
 ```
 
-Node.js solo es necesario para compilar Tailwind en desarrollo; la Pi recibe `app.css` precompilado.
+Production receives compiled assets and does not need Node.js.

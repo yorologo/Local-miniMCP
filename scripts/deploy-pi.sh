@@ -295,6 +295,23 @@ echo "[6/10] Installing candidate units and restarting in control-plane-safe ord
 ssh_pi bash -s -- "${REMOTE_TARGET_DIR}" <<'REMOTE'
 set -euo pipefail
 current="$1"
+config_dir=/home/mcp-gateway/.config/mcp-gateway
+admin_env="$config_dir/admin.env"
+if ! sudo test -s "$admin_env"; then
+    host="$(hostname -s 2>/dev/null || printf 'mcp-pi')"
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    allowed="127.0.0.1,localhost,${host}"
+    [ -n "$ip" ] && allowed="${allowed},${ip}"
+    tmp="$(mktemp)"
+    chmod 0600 "$tmp"
+    {
+        echo "MCP_ADMIN_HOST=0.0.0.0"
+        echo "MCP_ADMIN_PORT=80"
+        echo "MCP_ADMIN_ALLOWED_HOSTS=${allowed}"
+    } > "$tmp"
+    sudo install -o mcp-gateway -g mcp-gateway -m 0600 "$tmp" "$admin_env"
+    rm -f "$tmp"
+fi
 for unit in mcp-gateway-admin.service mcp-gateway-mcp.service mcp-gateway-tunnel.service; do
     sudo install -m 0644 "$current/config/systemd/$unit" "/etc/systemd/system/$unit"
 done

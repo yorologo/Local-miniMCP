@@ -1,44 +1,83 @@
-# Contributing to Local-miniMCP / MCP-Pi
+# Contributing to Local-miniMCP
 
-Local-miniMCP is intentionally small, security-sensitive, and optimized for low-resource ARMv6 hardware. Contributions should preserve that character.
+Local-miniMCP is security-sensitive and intentionally small. Contributions should preserve its KISS, fail-closed and low-resource character.
 
-## Principles
+## Branches
 
-- Prefer KISS over abstraction for its own sake.
-- Reuse the Python standard library, system tools, and the official MCP SDK before adding dependencies.
-- Keep the Gateway Core as the single policy authority.
-- Preserve deny-by-default behavior and explicit client grants.
-- Do not weaken path confinement, SSH host-key pinning, CSRF, Host/Origin checks, or kill switches.
-- Do not mix MCP-Pi with the separate Pi-hole appliance.
+```text
+main      known-good release line
+develop   integrated validated development
+feature/* or fix/*  isolated work when useful
+```
+
+Do not force-push release history or move existing tags.
 
 ## Development flow
 
-1. Work from a feature branch based on `develop`.
+1. Start from `develop`.
 2. Make the smallest coherent change.
-3. Run the full Python suite:
-   ```bash
-   python -m unittest discover -s tests -p 'test_*.py' -v
-   ```
-4. If frontend files changed, also run:
-   ```bash
-   node tests/test_app_js.mjs
-   cd tailwind && npm run build
-   ```
-5. Run `git diff --check` and review the complete diff.
-6. Update documentation in the same change whenever behavior, commands, ports, schemas, tools, or deployment change.
+3. Add/update regression tests.
+4. Run applicable gates.
+5. Update CURRENT docs when behavior/contracts changed.
+6. Run the documentation audit and `git diff --check`.
+7. Commit/push and require CI before hardware promotion.
 
-## Documentation requirements
+Full release gate:
 
-Keep `README.md`, `AGENTS.md`, `docs/`, examples, troubleshooting, Mermaid diagrams, and deployment instructions aligned with the implementation. Historical evidence under `docs/releases/`, `docs/inventory/`, `docs/migration/`, and `docs/superpowers/` should remain historically accurate rather than being rewritten as current state.
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+cd mcp-adapter && go test ./...
+cd ..
+node tests/test_app_js.mjs
+cd tailwind && npm run build
+cd ..
+python scripts/audit-docs.py
+git diff --check
+```
+
+Build the ARMv6 adapter when Go code changes.
+
+## Installation and release UX
+
+User entrypoint:
+
+```text
+install.sh
+```
+
+Maintainer exact-commit deployment:
+
+```bash
+scripts/deploy-pi.sh "$(git rev-parse HEAD)"
+```
+
+Beginner-facing release bundle:
+
+```bash
+scripts/build-release-package.sh "$(git rev-parse HEAD)"
+```
+
+Do not add another active deploy script. Historical deployment helpers are retained under `scripts/archive/` only as evidence.
+
+## Documentation
+
+CURRENT docs are listed in `docs/README.md`. Keep that set small and authoritative. Specialized internals belong in `docs/reference/`; completed plans/migrations/old runbooks belong in `docs/archive/`; version history belongs in `docs/releases/`.
+
+Historical content may contain old IPs, versions and procedures. Do not rewrite it to look current.
 
 ## Dependencies
 
-New runtime dependencies require a concrete reason. On Raspberry Pi Model A+, memory, startup cost, architecture availability, maintenance burden, and rollback impact all matter.
+Prefer standard library, OS facilities and the official MCP SDK. A new runtime dependency needs a concrete reason plus resource/architecture/rollback analysis.
 
 ## Security-sensitive changes
 
-Changes involving `run_command`, filesystem mutation tools, grants, authentication, tunnel configuration, SSH, or systemd must include negative-path tests where practical. Never commit credentials, private keys, tokens, cookies, production databases, or `.mcp-pi.local.env`.
+Changes to filesystem mutation, trusted shell, grants, auth, SSH, systemd, audit, update or rollback require negative-path regression coverage where practical. Never commit:
 
-## Deployment acceptance
+- private keys;
+- tokens/passwords/cookies;
+- production SQLite databases;
+- `.mcp-pi.local.env` or private runtime config.
 
-A change is not complete just because tests pass locally. For release/deployment work, validate the live services on MCP-Pi, confirm the Admin Console responds, and run `mcp-gateway doctor` or the equivalent gateway health check.
+## Hardware acceptance
+
+Local tests are necessary but not sufficient for a release/deployment change. On the real appliance verify the affected services/endpoints, Doctor and Target path. Keep heavy test/build work off constrained ARMv6 hardware.

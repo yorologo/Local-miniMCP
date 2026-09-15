@@ -127,7 +127,7 @@ def migrate_db(conn: sqlite3.Connection):
     defaults = [
         ("gateway_enabled", "true"),
         ("writes_enabled", "false"),
-        ("shell_enabled", "true"),
+        ("shell_enabled", "false"),
         ("default_timeout", "30"),
         ("max_output_bytes", "262144"),
         ("max_file_read_bytes", "1048576"),

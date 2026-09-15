@@ -1,73 +1,98 @@
-# Configuration Reference
+# Configuration
 
-Esta referencia describe únicamente configuración vigente y operativa. Los secretos locales nunca deben entrar en Git.
+Runtime configuration is split between versioned defaults and private persistent state. Secrets and machine-specific values do not belong in Git.
 
-## Gateway Core y Registry
+## Paths
 
-| Variable | Uso | Producción |
-|---|---|---|
-| `MCP_GATEWAY_REGISTRY` | Backend de registry (`sqlite`/`json`) | `sqlite` |
-| `MCP_GATEWAY_DB` | Ruta de SQLite | `/home/mcp-gateway/.local/share/mcp-gateway/gateway.db` |
-| `MCP_ADMIN_SECRET_FILE` | Secret de sesión Flask | `/home/mcp-gateway/.config/mcp-gateway/admin-secret` |
+```text
+Application: /home/mcp-gateway/mcp-gateway
+Registry:    /home/mcp-gateway/.local/share/mcp-gateway/gateway.db
+Backups:     /home/mcp-gateway/.local/share/mcp-gateway/backups/
+Private cfg: /home/mcp-gateway/.config/mcp-gateway/
+```
 
-Los Targets/Projects reales viven en SQLite. `config/targets.example.json` sirve como ejemplo; `config/targets.local.json` es local y está ignorado por Git.
+## Gateway / Registry environment
+
+| Variable | Purpose | Normal appliance value |
+| --- | --- | --- |
+| `MCP_GATEWAY_REGISTRY` | Registry backend | `sqlite` |
+| `MCP_GATEWAY_DB` | SQLite path | persistent path above |
+| `MCP_ADMIN_SECRET_FILE` | Flask session secret path | private config directory |
 
 ## Admin Console
 
-| Variable | Uso | Producción |
-|---|---|---|
-| `MCP_ADMIN_HOST` | Dirección de bind IPv4 | `0.0.0.0` |
-| `MCP_ADMIN_PORT` | Puerto HTTP | `80` |
-| `MCP_ADMIN_ALLOWED_HOSTS` | Hosts HTTP aceptados, separados por coma | `127.0.0.1,localhost,192.168.68.55,mcp-pi` |
+The versioned systemd unit has safe loopback defaults:
 
-El código conserva `127.0.0.1` como valor por defecto para ejecuciones manuales/desarrollo seguro. La unidad systemd de producción define `MCP_ADMIN_HOST=0.0.0.0` y `MCP_ADMIN_PORT=80`, por lo que la misma consola escucha en todas las interfaces IPv4 del MCP-Pi y queda accesible tanto por `http://127.0.0.1` como por `http://192.168.68.55`.
+```text
+MCP_ADMIN_HOST=127.0.0.1
+MCP_ADMIN_PORT=80
+MCP_ADMIN_ALLOWED_HOSTS=127.0.0.1,localhost,mcp-pi
+```
 
-`0.0.0.0` es únicamente la dirección de escucha; no es una URL de acceso. Los navegadores deben usar la IP real del MCP-Pi. La validación de `Host`, autenticación, CSRF y cabeceras de seguridad siguen activas. No se añade proxy, túnel ni dependencia adicional. IPv6 no se publica de forma explícita; la ruta LAN soportada y verificada es IPv4.
+`install.sh` may create the private file:
+
+```text
+/home/mcp-gateway/.config/mcp-gateway/admin.env
+```
+
+with the detected hostname/LAN IP and `MCP_ADMIN_HOST=0.0.0.0` for trusted-LAN access. Because the file is persistent and outside Git, updates do not hardcode one developer's network into the product.
+
+On an untrusted network, keep Admin loopback-only and use an SSH tunnel rather than exposing it broadly.
+
+## Persistent Registry settings
+
+Fresh defaults:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `gateway_enabled` | `true` | master operational switch |
+| `writes_enabled` | `false` | structured filesystem mutations |
+| `shell_enabled` | `false` | trusted Target shell (`run_command`) |
+| `default_timeout` | `30` | default execution timeout seconds |
+| `max_output_bytes` | `262144` | bounded command/tool output |
+| `max_file_read_bytes` | `1048576` | bounded file reads |
+| `max_write_bytes` | `262144` | bounded structured writes |
+| `max_diff_bytes` | `65536` | bounded returned diff |
+| `activity_retention` | `5000` | audit activity retention |
+
+Existing installations preserve these persisted values when application code is reinstalled.
+
+## Targets and Projects
+
+Targets, Projects, AI clients and grants live in the Registry and should normally be managed through Admin Console. `config/targets.local.json` is a local compatibility/bootstrap file, not the production source of truth once SQLite is active.
+
+A Target includes endpoint/user/platform information; identity must still be verified by the pinned SSH host key.
+
+A Project defines an authorized root plus read/write/task policy. A Project root confines structured filesystem tools but does not turn trusted shell into a filesystem sandbox.
+
+## MCP adapter token
+
+The MCP HTTP service reads:
+
+```text
+/home/mcp-gateway/.config/mcp-gateway/tunnel-mcp.token
+```
+
+The installer generates it when missing, mode `0600`. Never commit or print the token.
 
 ## Secure MCP Tunnel
 
-El servicio `mcp-gateway-tunnel.service` lee `/home/mcp-gateway/.config/mcp-gateway/tunnel.env`.
+Optional cloud tunnel configuration lives in:
 
-| Variable | Uso |
-|---|---|
-| `CONTROL_PLANE_API_KEY` | Credencial del control plane de OpenAI |
-| `CONTROL_PLANE_TUNNEL_ID` | Identidad del túnel |
-| `MCP_SERVER_URL` | Backend MCP, normalmente `http://127.0.0.1:8090/mcp` |
-| `MCP_EXTRA_HEADERS` | Headers de autenticación hacia el backend |
-| `MCP_DISCOVERY_EXTRA_HEADERS` | Headers para discovery |
-| `HEALTH_LISTEN_ADDR` | Health/metrics del tunnel client |
-| `LOG_FILE` | Log del tunnel client |
-| `LOG_LEVEL` | Nivel de logging |
-
-Nunca documentar valores reales de API keys o tokens.
-
-## Despliegue desde Termux
-
-`.mcp-pi.local.env` es local/ignorado por Git:
-
-```bash
-MCP_PI_HOST=192.168.68.55
-MCP_PI_USER=<usuario-administrativo>
-MCP_PI_IDENTITY_FILE=~/.ssh/id_rsa
+```text
+/home/mcp-gateway/.config/mcp-gateway/tunnel.env
 ```
 
-`scripts/deploy-pi.sh <exact-sha>` usa estas variables para autenticación SSH, exige árbol Git limpio y `HEAD == origin/<branch> == <exact-sha>`, construye un candidate y conserva rollback hasta la aceptación externa final.
+It may include control-plane credentials, tunnel identity, backend URL and extra auth headers. The base installer does not invent cloud credentials. If tunnel configuration/client is absent, the local Gateway remains usable.
 
-## Settings persistidos
+## Maintainer deployment config
 
-La consola `/settings` administra valores persistidos como:
+Exact-commit deployment from a development host can use a local ignored `.mcp-pi.local.env`:
 
-- `gateway_enabled`: kill switch global.
-- `writes_enabled`: kill switch para structured filesystem mutations.
-- `shell_enabled`: kill switch independiente para trusted Target shell (`run_command`).
-- `default_timeout`.
-- `max_output_bytes`.
-- `max_file_read_bytes`.
-- `max_write_bytes`.
-- `activity_retention`.
+```bash
+MCP_PI_HOST=<gateway-address>
+MCP_PI_USER=<admin-user>
+MCP_PI_IDENTITY_FILE=~/.ssh/<key>
+```
 
-`run_command` no depende de `writes_enabled`; se gobierna por `gateway_enabled`, `shell_enabled`, Target/Project habilitados y grants (`target_shell` o aliases compatibles). El Project define scope de autorización y cwd inicial, no un sandbox del shell.
-
-### Puerto 80 y privilegios
-
-Producción mantiene `User=mcp-gateway` y concede únicamente `CAP_NET_BIND_SERVICE` mediante systemd para enlazar TCP/80. No se ejecuta la consola como root y no se instala ningún proxy.
+Never commit this file.

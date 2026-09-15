@@ -363,17 +363,18 @@ class TestWebViews(unittest.TestCase):
 
     def test_target_shell_kill_switch(self):
         self._login()
-        self.assertEqual(self.registry.get_setting("shell_enabled", "true"), "true")
+        self.assertEqual(self.registry.get_setting("shell_enabled", "false"), "false")
+        res = self.client.get("/settings")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"TARGET_SHELL_DISABLED", res.data)
+
         res = self.client.post(
             "/settings/toggle-shell",
             data={"csrf_token": "valid-token"},
             follow_redirects=False,
         )
         self.assertEqual(res.status_code, 302)
-        self.assertEqual(self.registry.get_setting("shell_enabled"), "false")
-        res = self.client.get("/settings")
-        self.assertEqual(res.status_code, 200)
-        self.assertIn(b"TARGET_SHELL_DISABLED", res.data)
+        self.assertEqual(self.registry.get_setting("shell_enabled"), "true")
 
 
     def test_maintenance_views(self):

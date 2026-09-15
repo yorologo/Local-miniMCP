@@ -31,7 +31,7 @@ La arquitectura de ciclo de vida de **MCP Gateway** proporciona operaciones dete
 
 ## 3. CLI Unificado (`bin/mcp-gateway`)
 
-El wrapper [`bin/mcp-gateway`](../bin/mcp-gateway) es compatible con POSIX shell y no requiere dependencias externas:
+El wrapper [`bin/mcp-gateway`](../../bin/mcp-gateway) es compatible con POSIX shell y no requiere dependencias externas:
 
 | Comando | Descripción |
 | :--- | :--- |
@@ -47,7 +47,7 @@ El wrapper [`bin/mcp-gateway`](../bin/mcp-gateway) es compatible con POSIX shell
 
 ## 4. Diagnóstico y Auto-Reparación Segura (`Doctor` & `Repair`)
 
-El módulo [`doctor.py`](../src/mcp_gateway/doctor.py) verifica:
+El módulo [`doctor.py`](../../src/mcp_gateway/doctor.py) verifica:
 1. **Runtime de Python**: Versión compatible (>= 3.9).
 2. **Arquitectura de CPU**: Coincidencia con arquitecturas soportadas (`armv6l`, `aarch64`, `x86_64`).
 3. **Contrato de Compatibilidad**: Validación íntegra contra `compatibility.json`.
@@ -63,13 +63,13 @@ El comando `repair` restringe permisos vulnerables y recarga los daemons sin alt
 
 ## 5. Manifiesto de Release y Verificación de Integridad
 
-Cada versión cuenta con un archivo [`manifest.json`](../manifest.json) que certifica compatibilidad:
+Cada versión cuenta con un archivo [`manifest.json`](../../manifest.json) que certifica compatibilidad:
 - Arquitectura objetivo
 - Versión de API del Core y del Bridge
 - Versión del catálogo de herramientas
 - Protocolo MCP implementado
 
-El archivo [`SHA256SUMS`](../SHA256SUMS) garantiza que ningún archivo del paquete ha sido alterado de forma accidental o maliciosa.
+El archivo [`SHA256SUMS`](../../SHA256SUMS) garantiza que ningún archivo del paquete ha sido alterado de forma accidental o maliciosa.
 
 ---
 
