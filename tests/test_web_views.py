@@ -361,6 +361,21 @@ class TestWebViews(unittest.TestCase):
         self.assertEqual(self.registry.get_setting("writes_enabled"), "false")
         self.assertIn(b"Structured filesystem writes are DISABLED", res_panic.data)
 
+    def test_target_shell_kill_switch(self):
+        self._login()
+        self.assertEqual(self.registry.get_setting("shell_enabled", "true"), "true")
+        res = self.client.post(
+            "/settings/toggle-shell",
+            data={"csrf_token": "valid-token"},
+            follow_redirects=False,
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(self.registry.get_setting("shell_enabled"), "false")
+        res = self.client.get("/settings")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"TARGET_SHELL_DISABLED", res.data)
+
+
     def test_maintenance_views(self):
         self._login()
         # 1. Maintenance dashboard GET

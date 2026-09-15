@@ -3,6 +3,7 @@
 import difflib
 import hashlib
 import json
+import logging
 import os
 import platform
 import shlex
@@ -18,7 +19,7 @@ from . import __version__
 from .config import ConfigError, GatewayConfig
 from .policy import (
     PolicyError,
-    can_client_use_tool,
+    authorize_client,
     check_capability,
     validate_canonical_path,
     validate_content_utf8,
@@ -27,8 +28,32 @@ from .policy import (
     validate_write_relative_path,
     validate_write_size,
 )
-from .ssh_transport import SSHError, SSHTransport
+from .ssh_transport import RemoteTransport, SSHError, SSHTransport
 from .discovery import TargetDiscovery
+
+
+logger = logging.getLogger(__name__)
+
+
+def _load_deployment_provenance() -> Dict[str, Any]:
+    """Load deploy-generated provenance without creating a second source of truth."""
+    default_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".deployment.json")
+    path = os.environ.get("MCP_DEPLOYMENT_FILE", default_path)
+    if not os.path.isfile(path):
+        return {"available": False}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("deployment provenance must be a JSON object")
+        result = {"available": True}
+        for key in ("commit", "branch", "deployed_at", "adapter_sha256", "verified"):
+            if key in data:
+                result[key] = data[key]
+        return result
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Deployment provenance unavailable: %s", exc)
+        return {"available": False, "error": "invalid_metadata"}
 
 
 class GatewayTools:
@@ -37,7 +62,7 @@ class GatewayTools:
     def __init__(
         self,
         config: Optional[GatewayConfig] = None,
-        transport: Optional[SSHTransport] = None,
+        transport: Optional[RemoteTransport] = None,
         registry: Optional[Any] = None,
         request_id: Optional[str] = None,
         client_id: Optional[str] = None,
@@ -127,6 +152,17 @@ class GatewayTools:
                 return bool(val)
         return False
 
+    def _is_shell_enabled(self) -> bool:
+        if hasattr(self.config, "get_setting"):
+            val = self.config.get_setting("shell_enabled", "true")
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                return val.lower() in ("true", "1", "yes", "on")
+            if val is not None:
+                return bool(val)
+        return True
+
     def _get_setting(self, key: str, default: Any = None) -> Any:
         if hasattr(self.config, "get_setting"):
             return self.config.get_setting(key, default)
@@ -142,31 +178,41 @@ class GatewayTools:
         error_code: Optional[str] = None,
         bytes_transferred: Optional[int] = None,
         detail: Optional[Any] = None,
-    ) -> None:
-        if hasattr(self.config, "record_activity"):
-            duration_ms = int((time.monotonic() - (start_time or time.monotonic())) * 1000)
-            detail_dict = {}
-            if isinstance(detail, dict):
-                detail_dict = dict(detail)
-            elif detail:
-                detail_dict["detail"] = str(detail)
-            if self.request_id:
-                detail_dict["request_id"] = self.request_id
-            detail_str = json.dumps(detail_dict) if detail_dict else ""
-            try:
-                self.config.record_activity({
-                    "actor": self.client_id or "mcp-local",
-                    "action": action,
-                    "target_id": target_id,
-                    "project_id": project_id,
-                    "duration_ms": duration_ms,
-                    "success": success,
-                    "error_code": error_code,
-                    "bytes_transferred": bytes_transferred,
-                    "detail": detail_str,
-                })
-            except Exception:
-                pass
+        required: bool = False,
+    ) -> bool:
+        """Record audit activity; never fail silently. Critical callers may require a durable sink."""
+        duration_ms = int((time.monotonic() - (start_time or time.monotonic())) * 1000)
+        detail_dict: Dict[str, Any] = {}
+        if isinstance(detail, dict):
+            detail_dict = dict(detail)
+        elif detail:
+            detail_dict["detail"] = str(detail)
+        if self.request_id:
+            detail_dict["request_id"] = self.request_id
+        event = {
+            "actor": self.client_id or "mcp-local",
+            "action": action,
+            "target_id": target_id,
+            "project_id": project_id,
+            "duration_ms": duration_ms,
+            "success": success,
+            "error_code": error_code,
+            "bytes_transferred": bytes_transferred,
+            "detail": json.dumps(detail_dict) if detail_dict else "",
+        }
+        if not hasattr(self.config, "record_activity"):
+            logger.error("Audit sink unavailable for action=%s target=%s project=%s", action, target_id, project_id)
+            if required:
+                raise PolicyError("Audit sink is unavailable for a critical operation", code="AUDIT_UNAVAILABLE")
+            return False
+        try:
+            self.config.record_activity(event)
+            return True
+        except Exception as exc:
+            logger.exception("Audit write failed for action=%s target=%s project=%s: %s", action, target_id, project_id, exc)
+            if required:
+                raise PolicyError("Audit sink is unavailable for a critical operation", code="AUDIT_UNAVAILABLE") from exc
+            return False
 
     def _check_gateway_enabled(
         self, tool: str, target: Optional[str] = None, project: Optional[str] = None, start_time: Optional[float] = None
@@ -180,11 +226,23 @@ class GatewayTools:
                 project=project,
                 start_time=start_time,
             )
-        can_use, deny_reason = can_client_use_tool(self.client_id, tool, self.config)
+        can_use, deny_reason = authorize_client(
+            self.client_id, target, project, tool, registry=self.config
+        )
         if not can_use:
+            code = "CLIENT_UNAUTHORIZED"
+            if deny_reason:
+                prefix = deny_reason.split(":", 1)[0].strip()
+                if prefix in {
+                    "ANONYMOUS_CLIENT_DENIED", "CLIENT_NOT_FOUND", "CLIENT_DISABLED",
+                    "TOOL_NOT_ALLOWED", "GATEWAY_DISABLED", "TARGET_SHELL_DISABLED",
+                    "TARGET_DISABLED", "TARGET_NOT_FOUND", "PROJECT_DISABLED",
+                    "PROJECT_NOT_FOUND", "WRITES_DISABLED", "WRITE_NOT_ALLOWED",
+                }:
+                    code = prefix
             return self._error_response(
                 tool=tool,
-                code="CLIENT_UNAUTHORIZED",
+                code=code,
                 message=deny_reason or "Client is not authorized to use this tool",
                 target=target,
                 project=project,
@@ -198,10 +256,12 @@ class GatewayTools:
         try:
             is_enabled = self._is_gateway_enabled()
             writes_enabled = self._is_writes_enabled()
+            shell_enabled = self._is_shell_enabled()
             res = {
                 "gateway_status": "ok" if is_enabled else "disabled",
                 "gateway_enabled": is_enabled,
                 "writes_enabled": writes_enabled,
+                "shell_enabled": shell_enabled,
                 "hostname": socket.gethostname(),
                 "gateway_version": __version__,
                 "architecture": platform.machine(),
@@ -221,6 +281,52 @@ class GatewayTools:
             return self._success_response("list_targets", {"targets": targets}, start_time=start_time)
         except Exception as e:
             return self._error_response("list_targets", "INTERNAL_ERROR", str(e), start_time=start_time)
+
+    def _probe_target_facts(self, target_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        """Collect lightweight target facts without assuming a specific OS or service manager."""
+        py_code = (
+            "import json, os, platform, shutil\n"
+            "facts = {'probe_status': 'ok'}\n"
+            "facts['os'] = platform.system().lower() or os.name\n"
+            "facts['arch'] = platform.machine()\n"
+            "facts['shell'] = os.environ.get('SHELL') or None\n"
+            "prefix = os.environ.get('PREFIX', '')\n"
+            "termux = bool(os.environ.get('TERMUX_VERSION')) or 'com.termux' in prefix\n"
+            "facts['environment'] = 'termux' if termux else ('wsl' if 'microsoft' in platform.release().lower() else 'native')\n"
+            "facts['package_managers'] = [x for x in ('pkg','apt','apt-get','dnf','yum','pacman','apk','brew','winget','choco') if shutil.which(x)]\n"
+            "facts['runtimes'] = {x: shutil.which(x) for x in ('python3','python','node','go','git') if shutil.which(x)}\n"
+            "sm = None\n"
+            "for name in ('systemctl','rc-service','launchctl'):\n"
+            "    if shutil.which(name): sm = {'systemctl':'systemd','rc-service':'openrc','launchctl':'launchd'}[name]; break\n"
+            "facts['service_manager'] = sm\n"
+            "ram = 0\n"
+            "try:\n"
+            "    with open('/proc/meminfo', 'r', encoding='utf-8', errors='replace') as fh:\n"
+            "        for line in fh:\n"
+            "            if line.startswith('MemTotal:'): ram = int(line.split()[1]) // 1024; break\n"
+            "except Exception:\n"
+            "    pass\n"
+            "facts['ram_mb'] = ram\n"
+            "facts['features'] = {'sudo': bool(shutil.which('sudo')), 'termux': termux, 'shizuku': bool(shutil.which('rish'))}\n"
+            "try:\n"
+            "    if os.path.isfile('/etc/os-release'):\n"
+            "        data = {}\n"
+            "        for line in open('/etc/os-release', encoding='utf-8', errors='replace'):\n"
+            "            if '=' in line:\n"
+            "                k,v=line.rstrip().split('=',1); data[k]=v.strip().strip(chr(34))\n"
+            "        facts['os_release'] = {'id': data.get('ID'), 'version_id': data.get('VERSION_ID')}\n"
+            "except Exception:\n"
+            "    pass\n"
+            "print(json.dumps(facts, separators=(',', ':')))\n"
+        )
+        cmd = f"python3 -c {shlex.quote(py_code)}"
+        try:
+            res = self.transport.run_command(target_cfg, cmd, timeout=10, request_id=self.request_id)
+            if res.ok and res.stdout.strip():
+                return json.loads(res.stdout.strip().splitlines()[-1])
+            return {"probe_status": "unavailable", "reason": res.stderr.strip() or "facts probe failed"}
+        except Exception as exc:
+            return {"probe_status": "unavailable", "reason": str(exc)}
 
     def target_status(self, target: str) -> Dict[str, Any]:
         """Verify reachability and latency of a target."""
@@ -244,6 +350,7 @@ class GatewayTools:
                 "remote_hostname": res.stdout.strip(),
                 "latency_ms": res.duration_ms,
                 "platform": target_cfg.get("platform"),
+                "facts": self._probe_target_facts(target_cfg),
             }
             return self._success_response("target_status", result, target=target, start_time=start_time)
         except (ConfigError, PolicyError) as e:
@@ -453,8 +560,17 @@ class GatewayTools:
 
             argv = task_def["argv"]
             quoted_cmd = " ".join(shlex.quote(arg) for arg in argv)
+            self._record_audit(
+                "RUN_TASK_ATTEMPT", target_id=target, project_id=project,
+                start_time=start_time, required=True, detail={"task": task}
+            )
             res = self.transport.run_command(
                 target_cfg, quoted_cmd, cwd=canonical, timeout=task_def["timeout"], request_id=self.request_id
+            )
+            self._record_audit(
+                "RUN_TASK", target_id=target, project_id=project, start_time=start_time,
+                success=1 if res.exit_code == 0 else 0,
+                detail={"task": task, "exit_code": res.exit_code}
             )
 
             result = {
@@ -538,23 +654,19 @@ class GatewayTools:
             root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(root_canonical, root)
 
-            # 10. Probe candidate path on remote target
-            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            # 10. Resolve destination parent REMOTELY so nested symlinks cannot escape the project.
+            lexical_candidate = os.path.join(root_canonical, norm_rel_path)
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, lexical_candidate, allow_missing_parents=False
+            )
+            candidate_full_path = safe_dest["destination_path"]
             probe = self.transport.probe_remote_path(target_cfg, candidate_full_path)
 
-            # Deny symlink target
             if probe.get("is_symlink"):
                 raise PolicyError(f"Target path is a symlink: {relative_path}", code="SYMLINK_WRITE_DENIED")
-
-            # Deny symlink parent
-            if probe.get("parent_is_symlink"):
-                raise PolicyError(f"Parent directory of '{relative_path}' is a symlink", code="SYMLINK_WRITE_DENIED")
-
-            # Validate parent directory existence and containment within root
             if not probe.get("parent_exists"):
                 raise PolicyError(f"Parent directory does not exist for path: {relative_path}", code="NOT_FOUND")
-
-            parent_canon = probe.get("parent_canonical_path", "")
+            parent_canon = probe.get("parent_canonical_path", safe_dest.get("parent_canonical", ""))
             validate_canonical_path(parent_canon, root_canonical)
 
             # Preconditions for create vs overwrite
@@ -650,7 +762,11 @@ class GatewayTools:
                 except Exception:
                     pass
 
-            # 13. Real Atomic Write on Target
+            # 13. Critical mutation requires a working audit sink before touching the target.
+            self._record_audit(
+                "WRITE_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"path": relative_path, "create": create}
+            )
             write_res = self.transport.write_remote_file_atomic(
                 target=target_cfg,
                 dest_path=candidate_full_path,
@@ -772,7 +888,7 @@ class GatewayTools:
 
             services = {}
             if shutil.which("systemctl"):
-                for svc in ("mcp-gateway-admin", "mcp-gateway-mcp"):
+                for svc in ("mcp-gateway-admin", "mcp-gateway-mcp", "mcp-gateway-tunnel"):
                     try:
                         cp = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True, timeout=3)
                         services[svc] = cp.stdout.strip()
@@ -798,6 +914,7 @@ class GatewayTools:
                 "temperature_c": temp_c,
                 "throttled": throttled,
                 "services": services,
+                "deployment": _load_deployment_provenance(),
                 "database": {
                     "path": db_path,
                     "size_bytes": db_size,
@@ -837,7 +954,41 @@ class GatewayTools:
                 else:
                     failed_cnt += 1
 
+            control_path = {
+                "client_entrypoint": {"status": "PASS" if getattr(self.config, "list_clients", lambda: [])() else "SKIP", "message": "Registered client entrypoint available" if getattr(self.config, "list_clients", lambda: [])() else "No registered clients to probe"},
+                "tunnel": {"status": "SKIP", "message": "systemd tunnel probe unavailable on this platform"},
+                "mcp_adapter": {"status": "PASS" if any(c.name == "MCP HTTP /ready" and c.passed for c in check_objs) else "FAIL", "message": "Derived from MCP /ready Doctor check"},
+                "gateway_core": {"status": "PASS" if any(c.name == "Gateway Core Health" and c.passed for c in check_objs) else "FAIL", "message": "Derived from Gateway Core Doctor check"},
+                "target_transport": {"status": "SKIP", "message": "No configured target probe attempted"},
+                "target": {"status": "SKIP", "message": "No configured target probe attempted"},
+            }
+            if shutil.which("systemctl"):
+                try:
+                    cp = subprocess.run(["systemctl", "is-active", "mcp-gateway-tunnel"], capture_output=True, text=True, timeout=3)
+                    active = cp.stdout.strip() == "active"
+                    control_path["tunnel"] = {"status": "PASS" if active else "WARN", "message": cp.stdout.strip() or cp.stderr.strip() or "tunnel service not active"}
+                except Exception as exc:
+                    control_path["tunnel"] = {"status": "WARN", "message": f"Tunnel probe failed: {exc}"}
+            try:
+                targets = self.config.list_targets() if hasattr(self.config, "list_targets") else []
+                if isinstance(targets, list) and targets:
+                    target_id = targets[0].get("id")
+                    if target_id:
+                        target_cfg = self.config.get_target(target_id)
+                        tr = self.transport.run_command(target_cfg, "hostname", timeout=8, request_id=self.request_id)
+                        if tr.ok:
+                            msg = tr.stdout.strip() or "SSH command succeeded"
+                            control_path["target_transport"] = {"status": "PASS", "message": "SSH target transport reachable"}
+                            control_path["target"] = {"status": "PASS", "message": f"Target responded: {msg}"}
+                        else:
+                            control_path["target_transport"] = {"status": "FAIL", "message": tr.stderr.strip() or "SSH target probe failed"}
+                            control_path["target"] = {"status": "FAIL", "message": "Target did not respond successfully"}
+            except Exception as exc:
+                control_path["target_transport"] = {"status": "WARN", "message": f"Target transport probe unavailable: {exc}"}
+                control_path["target"] = {"status": "WARN", "message": "Target identity could not be confirmed during Doctor"}
+
             res = {
+                "control_path": control_path,
                 "status": status,
                 "checks_count": len(check_objs),
                 "passed": passed_cnt,
@@ -858,6 +1009,7 @@ class GatewayTools:
             return gw_check
         try:
             from .lifecycle import backup_database
+            self._record_audit("REGISTRY_BACKUP_ATTEMPT", start_time=start_time, required=True)
             bak_path = backup_database()
             h = hashlib.sha256()
             with open(bak_path, "rb") as f:
@@ -887,6 +1039,7 @@ class GatewayTools:
             from .lifecycle import backup_database, get_paths
             from .doctor import run_doctor
 
+            self._record_audit("MAINTENANCE_ATTEMPT", start_time=start_time, required=True)
             bak_path = backup_database()
             b_size = os.path.getsize(bak_path)
 
@@ -903,8 +1056,8 @@ class GatewayTools:
                         try:
                             os.remove(old_b)
                             pruned_count += 1
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            logger.warning("Unable to prune old backup %s: %s", old_b, exc)
 
             db_path = paths["db"]
             integrity = "unknown"
@@ -976,7 +1129,7 @@ class GatewayTools:
             )
 
         try:
-            self._record_audit("REBOOT_REQUESTED", detail={"actor": self.client_id, "tool": "gateway_reboot"})
+            self._record_audit("REBOOT_REQUESTED", start_time=start_time, detail={"actor": self.client_id, "tool": "gateway_reboot"}, required=True)
 
             helper_path = "/usr/local/bin/mcp-gateway-reboot"
             if os.path.isfile(helper_path) and platform.system() == "Linux":
@@ -1016,59 +1169,53 @@ class GatewayTools:
         timeout: Optional[int] = None,
         stdin: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Execute a shell command in the target worker environment."""
+        """Execute an explicitly trusted target shell command. This is not a project filesystem sandbox."""
         start_time = time.monotonic()
-        if not project:
-            try:
-                t_cfg = self.config.get_target(target)
-                projs = t_cfg.get("projects", {})
-                if len(projs) == 1:
-                    project = list(projs.keys())[0]
-                elif "MCP_Local" in projs:
-                    project = "MCP_Local"
-                elif projs:
-                    project = list(projs.keys())[0]
-            except Exception:
-                pass
-
-        gw_check = self._check_gateway_enabled("run_command", target=target, project=project, start_time=start_time)
-        if gw_check:
-            return gw_check
-
         if not command or not isinstance(command, str) or not command.strip():
-            return self._error_response("run_command", "INVALID_ARGUMENTS", "Command must be a non-empty string", target, project, start_time)
+            return self._error_response(
+                "run_command", "INVALID_ARGUMENTS", "Command must be a non-empty string",
+                target, project, start_time
+            )
 
         try:
+            # Keep a deterministic project for grant/audit scope and a convenient default cwd.
             target_cfg = self.config.get_target(target)
+            if not project:
+                projects = target_cfg.get("projects", {})
+                if "MCP_Local" in projects:
+                    project = "MCP_Local"
+                elif len(projects) == 1:
+                    project = next(iter(projects))
+                elif projects:
+                    project = sorted(projects)[0]
+            if not project:
+                raise PolicyError("Trusted target shell requires a project scope for authorization and audit", code="PROJECT_NOT_FOUND")
+
+            gw_check = self._check_gateway_enabled("run_command", target=target, project=project, start_time=start_time)
+            if gw_check:
+                return gw_check
+
             project_cfg = self.config.get_project(target, project)
             root = project_cfg["root"]
             root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(root_canonical, root)
 
-            # Resolve effective_cwd
+            # cwd is an execution convenience, not a filesystem security boundary.
             if not cwd or str(cwd).strip() in (".", ""):
                 effective_cwd = root_canonical
-            elif os.path.isabs(cwd):
-                norm_cwd = os.path.normpath(cwd)
-                validate_canonical_path(norm_cwd, root_canonical)
-                effective_cwd = norm_cwd
+            elif os.path.isabs(str(cwd)):
+                effective_cwd = os.path.normpath(str(cwd))
             else:
-                norm_rel = validate_relative_path(cwd)
-                cand_cwd = os.path.normpath(os.path.join(root_canonical, norm_rel))
-                validate_canonical_path(cand_cwd, root_canonical)
-                effective_cwd = cand_cwd
-
-            # Scope principle: block obvious attempts to tamper with other private project directories outside MCP_Local
-            import re
-            m = re.search(r'(?:~/|/data/data/com\.termux/files/home/)[Pp]rojects/([^/\s\'";]+)', command)
-            if m:
-                proj_name = m.group(1)
-                expected_proj = os.path.basename(root.rstrip("/"))
-                if proj_name != expected_proj:
-                    raise PolicyError(f"Access to unauthorized project '{proj_name}' is blocked", code="PATH_OUTSIDE_ALLOWED_ROOT")
+                effective_cwd = os.path.normpath(os.path.join(root_canonical, str(cwd)))
 
             input_bytes = stdin.encode("utf-8") if stdin else None
             effective_timeout = int(timeout) if timeout else None
+
+            self._record_audit(
+                "RUN_COMMAND_ATTEMPT", target_id=target, project_id=project,
+                start_time=start_time, required=True,
+                detail={"command": command[:100], "cwd": effective_cwd}
+            )
 
             res = self.transport.run_command(
                 target=target_cfg,
@@ -1091,50 +1238,40 @@ class GatewayTools:
             }
 
             self._record_audit(
-                "RUN_COMMAND",
-                target_id=target,
-                project_id=project,
-                start_time=start_time,
+                "RUN_COMMAND", target_id=target, project_id=project, start_time=start_time,
                 success=1 if res.exit_code == 0 else 0,
                 detail={"command": command[:100], "exit_code": res.exit_code, "cwd": effective_cwd},
             )
-
             return self._success_response("run_command", result_data, target, project, start_time)
 
         except PolicyError as e:
             self._record_audit(
-                "DENY",
-                target_id=target,
-                project_id=project,
-                start_time=start_time,
-                success=0,
-                error_code=e.code,
-                detail={"error": str(e), "command": command[:100]},
+                "DENY", target_id=target, project_id=project, start_time=start_time,
+                success=0, error_code=e.code, detail={"error": str(e), "command": command[:100]},
             )
             return self._error_response("run_command", e.code, str(e), target, project, start_time)
         except SSHError as e:
             if e.code == "SSH_TIMEOUT":
                 duration_sec = round((time.monotonic() - start_time), 3)
                 result_data = {
-                    "stdout": "",
-                    "stderr": str(e),
-                    "exit_code": 124,
-                    "timed_out": True,
-                    "duration": duration_sec,
-                    "effective_cwd": effective_cwd if 'effective_cwd' in locals() else root,
+                    "stdout": "", "stderr": str(e), "exit_code": 124, "timed_out": True,
+                    "duration": duration_sec, "effective_cwd": effective_cwd if 'effective_cwd' in locals() else "",
                 }
+                self._record_audit(
+                    "RUN_COMMAND", target_id=target, project_id=project, start_time=start_time,
+                    success=0, error_code=e.code, detail={"command": command[:100], "timed_out": True}
+                )
                 return self._success_response("run_command", result_data, target, project, start_time)
             self._record_audit(
-                "ERROR",
-                target_id=target,
-                project_id=project,
-                start_time=start_time,
-                success=0,
-                error_code=e.code,
-                detail={"error": str(e)},
+                "ERROR", target_id=target, project_id=project, start_time=start_time,
+                success=0, error_code=e.code, detail={"error": str(e)},
             )
             return self._error_response("run_command", e.code, str(e), target, project, start_time)
         except Exception as e:
+            self._record_audit(
+                "ERROR", target_id=target, project_id=project, start_time=start_time,
+                success=0, error_code="INTERNAL_ERROR", detail={"error": str(e)}
+            )
             return self._error_response("run_command", "INTERNAL_ERROR", str(e), target, project, start_time)
 
     def append_file(self, target: str, project: str, path: str, content: str) -> Dict[str, Any]:
@@ -1162,7 +1299,11 @@ class GatewayTools:
             root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(root_canonical, root)
 
-            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            lexical_candidate = os.path.join(root_canonical, norm_rel_path)
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, lexical_candidate, allow_missing_parents=False
+            )
+            candidate_full_path = safe_dest["destination_path"]
             probe = self.transport.probe_remote_path(target_cfg, candidate_full_path)
             if not probe.get("exists"):
                 raise PolicyError(f"File not found: {path}", code="NOT_FOUND")
@@ -1177,6 +1318,10 @@ class GatewayTools:
                 f"data = sys.stdin.buffer.read(); "
                 f"open(p, 'ab').write(data); "
                 f"print(hashlib.sha256(open(p, 'rb').read()).hexdigest())"
+            )
+            self._record_audit(
+                "APPEND_FILE_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"path": norm_rel_path, "bytes": len(content_bytes)}
             )
             res = self.transport.run_command(
                 target=target_cfg,
@@ -1202,7 +1347,7 @@ class GatewayTools:
                 detail={"path": norm_rel_path, "bytes": len(content_bytes)},
             )
             return self._success_response("append_file", result_data, target, project, start_time)
-        except PolicyError as e:
+        except (PolicyError, SSHError) as e:
             return self._error_response("append_file", e.code, str(e), target, project, start_time)
         except Exception as e:
             return self._error_response("append_file", "INTERNAL_ERROR", str(e), target, project, start_time)
@@ -1228,11 +1373,17 @@ class GatewayTools:
             root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(root_canonical, root)
 
-            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            lexical_candidate = os.path.join(root_canonical, norm_rel_path)
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, lexical_candidate, allow_missing_parents=False
+            )
+            candidate_full_path = safe_dest["destination_path"]
             if candidate_full_path == root_canonical:
                 raise PolicyError("Deleting project root is forbidden", code="INVALID_PATH")
 
             probe = self.transport.probe_remote_path(target_cfg, candidate_full_path)
+            if probe.get("is_symlink"):
+                raise PolicyError(f"Deleting symlink paths is denied: {path}", code="SYMLINK_WRITE_DENIED")
             if not probe.get("exists"):
                 raise PolicyError(f"File not found: {path}", code="NOT_FOUND")
 
@@ -1242,6 +1393,10 @@ class GatewayTools:
             del_script = (
                 f"import os; p = {json.dumps(dest_canon)}; "
                 f"os.remove(p) if os.path.isfile(p) or os.path.islink(p) else os.rmdir(p)"
+            )
+            self._record_audit(
+                "DELETE_FILE_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"path": norm_rel_path}
             )
             res = self.transport.run_command(
                 target=target_cfg,
@@ -1261,7 +1416,7 @@ class GatewayTools:
                 detail={"path": norm_rel_path},
             )
             return self._success_response("delete_file", result_data, target, project, start_time)
-        except PolicyError as e:
+        except (PolicyError, SSHError) as e:
             return self._error_response("delete_file", e.code, str(e), target, project, start_time)
         except Exception as e:
             return self._error_response("delete_file", "INTERNAL_ERROR", str(e), target, project, start_time)
@@ -1298,10 +1453,18 @@ class GatewayTools:
             src_canon = probe_src.get("canonical_path", src_full)
             validate_canonical_path(src_canon, root_canonical)
 
-            dst_parent = os.path.dirname(dst_full)
-            validate_canonical_path(dst_parent, root_canonical)
+            if probe_src.get("is_symlink"):
+                raise PolicyError(f"Source symlink is not accepted for structured copy: {source_path}", code="SYMLINK_WRITE_DENIED")
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, dst_full, allow_missing_parents=False
+            )
+            dst_full = safe_dest["destination_path"]
 
             cp_script = f"import shutil; shutil.copy2({json.dumps(src_canon)}, {json.dumps(dst_full)})"
+            self._record_audit(
+                "COPY_FILE_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"source": norm_src, "dest": norm_dst}
+            )
             res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(cp_script)}", timeout=15)
             if res.exit_code != 0:
                 raise PolicyError(f"Copy failed: {res.stderr}", code="WRITE_FAILED")
@@ -1316,7 +1479,7 @@ class GatewayTools:
                 detail={"source": norm_src, "dest": norm_dst},
             )
             return self._success_response("copy_file", result_data, target, project, start_time)
-        except PolicyError as e:
+        except (PolicyError, SSHError) as e:
             return self._error_response("copy_file", e.code, str(e), target, project, start_time)
         except Exception as e:
             return self._error_response("copy_file", "INTERNAL_ERROR", str(e), target, project, start_time)
@@ -1353,10 +1516,18 @@ class GatewayTools:
             src_canon = probe_src.get("canonical_path", src_full)
             validate_canonical_path(src_canon, root_canonical)
 
-            dst_parent = os.path.dirname(dst_full)
-            validate_canonical_path(dst_parent, root_canonical)
+            if probe_src.get("is_symlink"):
+                raise PolicyError(f"Source symlink is not accepted for structured move: {source_path}", code="SYMLINK_WRITE_DENIED")
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, dst_full, allow_missing_parents=False
+            )
+            dst_full = safe_dest["destination_path"]
 
             mv_script = f"import shutil; shutil.move({json.dumps(src_canon)}, {json.dumps(dst_full)})"
+            self._record_audit(
+                "MOVE_FILE_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"source": norm_src, "dest": norm_dst}
+            )
             res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(mv_script)}", timeout=15)
             if res.exit_code != 0:
                 raise PolicyError(f"Move failed: {res.stderr}", code="WRITE_FAILED")
@@ -1371,7 +1542,7 @@ class GatewayTools:
                 detail={"source": norm_src, "dest": norm_dst},
             )
             return self._success_response("move_file", result_data, target, project, start_time)
-        except PolicyError as e:
+        except (PolicyError, SSHError) as e:
             return self._error_response("move_file", e.code, str(e), target, project, start_time)
         except Exception as e:
             return self._error_response("move_file", "INTERNAL_ERROR", str(e), target, project, start_time)
@@ -1397,10 +1568,18 @@ class GatewayTools:
             root_canonical = self.transport.resolve_canonical_path(target_cfg, root)
             validate_canonical_path(root_canonical, root)
 
-            candidate_full_path = os.path.join(root_canonical, norm_rel_path)
+            lexical_candidate = os.path.join(root_canonical, norm_rel_path)
+            safe_dest = self.transport.resolve_safe_destination(
+                target_cfg, root_canonical, lexical_candidate, allow_missing_parents=bool(parents)
+            )
+            candidate_full_path = safe_dest["destination_path"]
             validate_canonical_path(candidate_full_path, root_canonical)
 
             mkdir_script = f"import os; os.makedirs({json.dumps(candidate_full_path)}, exist_ok={bool(parents)})"
+            self._record_audit(
+                "MKDIR_ATTEMPT", target_id=target, project_id=project, start_time=start_time,
+                required=True, detail={"path": norm_rel_path, "parents": bool(parents)}
+            )
             res = self.transport.run_command(target=target_cfg, remote_cmd=f"python3 -c {shlex.quote(mkdir_script)}", timeout=15)
             if res.exit_code != 0:
                 raise PolicyError(f"mkdir failed: {res.stderr}", code="WRITE_FAILED")
@@ -1415,7 +1594,7 @@ class GatewayTools:
                 detail={"path": norm_rel_path},
             )
             return self._success_response("mkdir", result_data, target, project, start_time)
-        except PolicyError as e:
+        except (PolicyError, SSHError) as e:
             return self._error_response("mkdir", e.code, str(e), target, project, start_time)
         except Exception as e:
             return self._error_response("mkdir", "INTERNAL_ERROR", str(e), target, project, start_time)

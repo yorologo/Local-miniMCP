@@ -5,41 +5,44 @@ without reimplementing any policy, SSH transport, or registry logic.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 from typing import Any, Dict, List, Optional
 
 from . import compatibility
-from .policy import authorize_client
+from .policy import TOOL_CAPABILITIES, authorize_client
 from .registry import get_registry
 from .tools import GatewayTools
 
-ALLOWED_TOOLS = {
-    "health",
-    "list_targets",
-    "target_status",
-    "list_directory",
-    "file_stat",
-    "read_file",
-    "git_status",
-    "run_task",
-    "write_file",
-    "append_file",
-    "delete_file",
-    "copy_file",
-    "move_file",
-    "mkdir",
-    "search",
-    "run_command",
-    "gateway_status",
-    "gateway_doctor",
-    "gateway_backup",
-    "gateway_maintenance",
-    "gateway_reboot",
-}
+ALLOWED_TOOLS = set(TOOL_CAPABILITIES)
 
 
+
+
+def get_catalog_metadata(tools: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Return deterministic local catalog diagnostics without defining a parallel protocol."""
+    catalog = sorted(tools if tools is not None else ALLOWED_TOOLS)
+    payload = json.dumps(catalog, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return {
+        "tool_count": len(catalog),
+        "catalog_hash": hashlib.sha256(payload).hexdigest(),
+        "tool_catalog_version": compatibility.get_tool_catalog_version(),
+    }
+
+
+def _resolve_default_project(registry: Any, target_id: str) -> Optional[str]:
+    """Resolve the same deterministic project default used by trusted target-shell calls."""
+    target = registry.get_target(target_id)
+    projects = target.get("projects", {})
+    if "MCP_Local" in projects:
+        return "MCP_Local"
+    if len(projects) == 1:
+        return next(iter(projects))
+    if projects:
+        return sorted(projects)[0]
+    return None
 
 def get_tools_catalog(client_id: Optional[str] = None, registry: Optional[Any] = None) -> List[str]:
     """Return deterministic alphabetically-sorted catalog of allowlisted tools.
@@ -86,9 +89,20 @@ def invoke_tool(
         req_id = request_id or args.get("request_id") or args.get("_request_id")
         cli_id = client_id or args.get("client_id") or os.environ.get("MCP_CLIENT_ID", "local")
 
-        # Enforce client authorization
+        # Enforce client authorization. Trusted target shell keeps a project/grant scope
+        # for authorization and audit, but the shell itself is intentionally not a filesystem sandbox.
         target_id = args.get("target")
         project_id = args.get("project")
+        if (
+            tool_name == "run_command"
+            and target_id
+            and not project_id
+            and cli_id not in ("local", "admin", "system", "test")
+        ):
+            project_id = _resolve_default_project(reg, target_id)
+            if project_id:
+                args = dict(args)
+                args["project"] = project_id
         auth_ok, auth_err = authorize_client(cli_id, target_id, project_id, tool_name, registry=reg)
         if not auth_ok:
             return {
@@ -435,7 +449,9 @@ def main(args_list: Optional[List[str]] = None) -> int:
     if parsed.command == "tools":
         cli_id = getattr(parsed, "client_id", None) or os.environ.get("MCP_CLIENT_ID")
         tools = get_tools_catalog(client_id=cli_id)
-        print(json.dumps({"ok": True, "tools": tools}, indent=2))
+        payload = {"ok": True, "tools": tools}
+        payload.update(get_catalog_metadata(tools))
+        print(json.dumps(payload, indent=2))
         return 0
 
     if parsed.command == "invoke":

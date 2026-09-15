@@ -196,7 +196,7 @@ func TestHealthEndpoints(t *testing.T) {
 	state.SetReady(true, "ready", &BridgeVersionInfo{
 		BridgeAPIVersion: 1,
 		CoreAPIVersion:   1,
-		GatewayVersion:   "1.2.1",
+		GatewayVersion:   "1.3.0",
 		MCPProtocol:      "2026-07-28",
 	})
 	server := NewGatewayServer(bridge, state)
@@ -232,9 +232,8 @@ func TestHealthEndpoints(t *testing.T) {
 	mux.HandleFunc("/server/discover", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"1.2.1"},"protocol":"2026-07-28"}`)
+		fmt.Fprintf(w, `{"server":{"name":"mcp-gateway-adapter","version":"1.3.0"},"protocol":"2026-07-28"}`)
 	})
-
 
 	ts := httptest.NewServer(SecurityMiddleware(mux))
 	defer ts.Close()
@@ -718,5 +717,25 @@ func TestTokenAuthenticationAndAntiSpoofing(t *testing.T) {
 
 }
 
+func TestToolAnnotationsRiskHints(t *testing.T) {
+	read := toolAnnotations("read_file")
+	if read == nil || !read.ReadOnlyHint || read.DestructiveHint == nil || *read.DestructiveHint {
+		t.Fatalf("read_file annotations are not conservative read-only hints: %+v", read)
+	}
+	shell := toolAnnotations("run_command")
+	if shell == nil || shell.ReadOnlyHint || shell.DestructiveHint == nil || !*shell.DestructiveHint || shell.OpenWorldHint == nil || !*shell.OpenWorldHint {
+		t.Fatalf("run_command must be marked high-risk/open-world: %+v", shell)
+	}
+}
 
-
+func TestToolSetEquality(t *testing.T) {
+	a := map[string]bool{"health": true, "read_file": true}
+	b := map[string]bool{"read_file": true, "health": true}
+	if !toolSetsEqual(a, b) {
+		t.Fatal("equivalent tool sets should compare equal")
+	}
+	b["run_command"] = true
+	if toolSetsEqual(a, b) {
+		t.Fatal("changed tool set should compare different")
+	}
+}

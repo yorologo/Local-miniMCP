@@ -134,7 +134,7 @@ def validate_write_size(content_bytes: bytes, max_bytes: int) -> None:
 
 
 def validate_task(project: Dict[str, Any], task_name: str) -> Dict[str, Any]:
-    """Validate that the requested task is explicitly allowlisted and enabled."""
+    """Validate that the requested task is explicitly allowlisted, enabled, and bounded."""
     tasks = project.get("tasks", {})
     if task_name not in tasks:
         raise PolicyError(
@@ -146,9 +146,20 @@ def validate_task(project: Dict[str, Any], task_name: str) -> Dict[str, Any]:
     if not task_def.get("enabled", True):
         raise PolicyError(f"Task '{task_name}' is disabled", code="TASK_NOT_ALLOWED")
 
+    argv = task_def.get("argv", [])
+    if not isinstance(argv, list) or not argv or any(not isinstance(arg, str) or not arg for arg in argv):
+        raise PolicyError(f"Task '{task_name}' has invalid argv", code="TASK_INVALID")
+
+    try:
+        timeout = int(task_def.get("timeout", 30))
+    except (TypeError, ValueError):
+        raise PolicyError(f"Task '{task_name}' has invalid timeout", code="TASK_INVALID")
+    if timeout < 1 or timeout > 3600:
+        raise PolicyError(f"Task '{task_name}' timeout must be between 1 and 3600 seconds", code="TASK_INVALID")
+
     return {
-        "argv": list(task_def.get("argv", [])),
-        "timeout": int(task_def.get("timeout", 30)),
+        "argv": list(argv),
+        "timeout": timeout,
     }
 
 
@@ -168,7 +179,7 @@ TOOL_CAPABILITIES = {
     "move_file": {"write", "move_file", "*"},
     "mkdir": {"write", "mkdir", "*"},
     "search": {"read", "search", "*"},
-    "run_command": {"execute", "run_command", "environment_management", "system_package_management", "*"},
+    "run_command": {"target_shell", "execute", "run_command", "environment_management", "system_package_management", "*"},
     "gateway_status": {"admin", "status", "*"},
     "gateway_doctor": {"admin", "doctor", "*"},
     "gateway_backup": {"admin", "backup", "*"},
@@ -268,7 +279,13 @@ def authorize_client(
             if tool_name != "health":
                 return False, "GATEWAY_DISABLED: Global kill switch is active"
 
-    # 6. Check target enabled
+    # 6. Dedicated trusted target-shell kill switch. Grants are checked first to avoid state leaks.
+    if tool_name == "run_command" and hasattr(registry, "get_setting"):
+        shell_enabled = registry.get_setting("shell_enabled", "true")
+        if str(shell_enabled).lower() != "true":
+            return False, "TARGET_SHELL_DISABLED: Trusted target shell execution is disabled"
+
+    # 7. Check target enabled
     if target_id and hasattr(registry, "get_target"):
         try:
             target = registry.get_target(target_id)
@@ -280,7 +297,7 @@ def authorize_client(
                 return False, f"TARGET_DISABLED: Target '{target_id}' is disabled"
             return False, f"TARGET_NOT_FOUND: Target '{target_id}' is not configured"
 
-    # 7. Check project enabled
+    # 8. Check project enabled
     if target_id and project_id and hasattr(registry, "get_project"):
         try:
             project = registry.get_project(target_id, project_id)
@@ -292,7 +309,7 @@ def authorize_client(
                 return False, f"PROJECT_DISABLED: Project '{project_id}' is disabled"
             return False, f"PROJECT_NOT_FOUND: Project '{project_id}' not found in target '{target_id}'"
 
-    # 8. Check write policy if tool is mutating
+    # 9. Check write policy if tool is mutating
     if tool_name in ("write_file", "append_file", "delete_file", "copy_file", "move_file", "mkdir"):
         if hasattr(registry, "get_setting"):
             writes_enabled = registry.get_setting("writes_enabled", "true")
@@ -307,6 +324,26 @@ def authorize_client(
                 pass
 
     return True, None
+
+
+def summarize_grant_capabilities(grants: Any) -> Dict[str, bool]:
+    """Summarize effective grant categories for presentation without duplicating authorization logic."""
+    caps = set()
+    for grant in grants or []:
+        if not grant.get("enabled", True):
+            continue
+        caps.update(c.strip() for c in str(grant.get("capability", "")).split(",") if c.strip())
+    all_access = "*" in caps
+    def any_cap(*names: str) -> bool:
+        return all_access or bool(caps.intersection(names))
+    return {
+        "structured_read": any_cap("read", "read_file", "file_stat", "list_directory", "search"),
+        "structured_write": any_cap("write", "write_file", "append_file", "delete_file", "copy_file", "move_file", "mkdir"),
+        "tasks": any_cap("execute", "run_task", "tasks"),
+        "target_shell": any_cap("target_shell", "run_command", "environment_management", "system_package_management"),
+        "gateway_admin": any_cap("admin", "status", "doctor", "backup", "maintenance", "reboot"),
+        "all": all_access,
+    }
 
 
 def can_client_use_tool(

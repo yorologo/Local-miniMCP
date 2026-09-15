@@ -232,6 +232,38 @@ class TestPolicy(unittest.TestCase):
         self.assertIn("TOOL_NOT_ALLOWED", err)
 
 
+    def test_target_shell_capability_and_kill_switch(self):
+        from unittest.mock import MagicMock
+        from mcp_gateway.policy import authorize_client
+        reg = MagicMock()
+        reg.get_client.return_value = {"id": "c1", "enabled": True}
+        reg.get_target.return_value = {"id": "t1", "enabled": True}
+        reg.get_project.return_value = {"id": "p1", "enabled": True, "read": True, "write": True}
+        reg.get_client_grants.return_value = [
+            {"client_id": "c1", "target_id": "t1", "project_id": "p1", "capability": "target_shell", "enabled": True}
+        ]
+        reg.get_setting.side_effect = lambda key, default=None: {"gateway_enabled": "true", "shell_enabled": "true"}.get(key, default)
+        ok, err = authorize_client("c1", "t1", "p1", "run_command", registry=reg)
+        self.assertTrue(ok, err)
+        reg.get_setting.side_effect = lambda key, default=None: {"gateway_enabled": "true", "shell_enabled": "false"}.get(key, default)
+        ok, err = authorize_client("c1", "t1", "p1", "run_command", registry=reg)
+        self.assertFalse(ok)
+        self.assertIn("TARGET_SHELL_DISABLED", err)
+
+    def test_validate_task_rejects_invalid_argv_and_timeout(self):
+        from mcp_gateway.policy import validate_task
+        for task in [
+            {"enabled": True, "argv": [], "timeout": 30},
+            {"enabled": True, "argv": ["echo", ""], "timeout": 30},
+            {"enabled": True, "argv": ["echo"], "timeout": 0},
+            {"enabled": True, "argv": ["echo"], "timeout": 3601},
+        ]:
+            with self.assertRaises(PolicyError) as ctx:
+                validate_task({"tasks": {"bad": task}}, "bad")
+            self.assertEqual(ctx.exception.code, "TASK_INVALID")
+
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -21,6 +21,7 @@
           <th class="py-3 px-4">Provider</th>
           <th class="py-3 px-4">Protocol</th>
           <th class="py-3 px-4">Status</th>
+          <th class="py-3 px-4">Effective Capabilities</th>
           <th class="py-3 px-4 text-right">Actions</th>
         </tr>
       </thead>
@@ -37,6 +38,16 @@
             {% else %}
               <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-800">DISABLED</span>
             {% endif %}
+          </td>
+          <td class="py-3 px-4">
+            <div class="flex max-w-sm flex-wrap gap-1 text-[10px]">
+              {% if c.grant_summary.structured_read %}<span class="rounded border border-slate-700 px-1.5 py-0.5">Read</span>{% endif %}
+              {% if c.grant_summary.structured_write %}<span class="rounded border border-amber-800 px-1.5 py-0.5 text-amber-300">Write</span>{% endif %}
+              {% if c.grant_summary.tasks %}<span class="rounded border border-indigo-800 px-1.5 py-0.5 text-indigo-300">Tasks</span>{% endif %}
+              {% if c.grant_summary.target_shell %}<span class="rounded border border-rose-800 px-1.5 py-0.5 text-rose-300">Target shell</span>{% endif %}
+              {% if c.grant_summary.gateway_admin %}<span class="rounded border border-fuchsia-800 px-1.5 py-0.5 text-fuchsia-300">Gateway admin</span>{% endif %}
+              {% if c.grant_count == 0 %}<span class="text-slate-500">No active grants</span>{% endif %}
+            </div>
           </td>
           <td class="py-3 px-4 text-right space-x-2">
             <!-- Toggle enabled -->
@@ -60,7 +71,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="6" class="py-6 text-center text-slate-500">No AI clients registered yet.</td>
+          <td colspan="7" class="py-6 text-center text-slate-500">No AI clients registered yet.</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -22,9 +22,11 @@ class TestApplianceTools(unittest.TestCase):
         self.mock_registry = MagicMock()
         self.mock_registry.db_path = self.db_path
         self.mock_registry.target_count = 1
+        self.mock_registry.record_activity.side_effect = lambda event: None
         self.mock_registry.get_setting.side_effect = lambda k, d=None: {
             "gateway_enabled": "true",
             "writes_enabled": "false",
+            "shell_enabled": "true",
         }.get(k, d)
 
         # AI Clients
@@ -100,6 +102,26 @@ class TestApplianceTools(unittest.TestCase):
         self.assertIn("storage", result)
         self.assertIn("cpu_load", result)
 
+    def test_gateway_status_exposes_deployment_provenance(self):
+        deployment_path = os.path.join(self.temp_dir, ".deployment.json")
+        payload = {
+            "commit": "a" * 40,
+            "branch": "develop",
+            "deployed_at": "2026-09-14T12:00:00Z",
+            "adapter_sha256": "b" * 64,
+            "verified": True,
+        }
+        with open(deployment_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        with patch.dict(os.environ, {"MCP_DEPLOYMENT_FILE": deployment_path}, clear=False):
+            res = GatewayTools(registry=self.mock_registry).gateway_status()
+        self.assertTrue(res["ok"])
+        deployment = res["result"]["deployment"]
+        self.assertTrue(deployment["available"])
+        self.assertTrue(deployment["verified"])
+        self.assertEqual(deployment["commit"], payload["commit"])
+        self.assertEqual(deployment["adapter_sha256"], payload["adapter_sha256"])
+
     def test_gateway_doctor_success(self):
         tools = GatewayTools(registry=self.mock_registry)
         res = tools.gateway_doctor()
@@ -109,6 +131,8 @@ class TestApplianceTools(unittest.TestCase):
         self.assertIn("status", result)
         self.assertIn("checks", result)
         self.assertGreater(result["checks_count"], 0)
+        self.assertIn("control_path", result)
+        self.assertIn("gateway_core", result["control_path"])
 
     def test_gateway_reboot_confirmation_required(self):
         tools = GatewayTools(registry=self.mock_registry)

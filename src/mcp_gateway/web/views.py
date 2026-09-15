@@ -21,6 +21,7 @@ from flask import (
 )
 
 from .. import __version__
+from ..policy import summarize_grant_capabilities
 from .auth import (
     check_password_hash,
     is_rate_limited,
@@ -441,6 +442,10 @@ def project_toggle_write(target_id: str, project_id: str):
 def clients_list():
     registry = get_registry()
     clients = registry.list_clients()
+    for client in clients:
+        grants = registry.get_client_grants(client["id"])
+        client["grant_summary"] = summarize_grant_capabilities(grants)
+        client["grant_count"] = len([g for g in grants if g.get("enabled", True)])
     return render_template("clients.html", clients=clients)
 
 
@@ -635,6 +640,7 @@ def settings_view():
         settings = {
             "gateway_enabled": str(registry.get_setting("gateway_enabled", "true")).lower() in ("true", "1", "yes", "on"),
             "writes_enabled": str(registry.get_setting("writes_enabled", "false")).lower() in ("true", "1", "yes", "on"),
+            "shell_enabled": str(registry.get_setting("shell_enabled", "true")).lower() in ("true", "1", "yes", "on"),
             "default_timeout": int(registry.get_setting("default_timeout", 30)),
             "max_output_bytes": int(registry.get_setting("max_output_bytes", 262144)),
             "max_file_read_bytes": int(registry.get_setting("max_file_read_bytes", 1048576)),
@@ -715,6 +721,19 @@ def toggle_writes_switch():
     msg = "Structured filesystem writes ENABLED for authorized projects." if new_state else "Structured filesystem writes DISABLED globally."
     cat = "warning" if new_state else "info"
     flash(msg, cat)
+    return redirect(url_for("admin.settings_view"))
+
+
+@bp.route("/settings/toggle-shell", methods=["POST"])
+@login_required
+def toggle_shell_switch():
+    registry = get_registry()
+    curr = str(registry.get_setting("shell_enabled", "true")).lower() in ("true", "1", "yes", "on")
+    new_state = not curr
+    registry.set_setting("shell_enabled", "true" if new_state else "false")
+    record_audit("toggle_shell_switch", success=True, detail=f"Admin toggled shell_enabled to {new_state}")
+    msg = "Trusted target shell ENABLED for explicitly granted clients." if new_state else "Trusted target shell DISABLED globally."
+    flash(msg, "warning" if new_state else "info")
     return redirect(url_for("admin.settings_view"))
 
 

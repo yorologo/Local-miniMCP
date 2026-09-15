@@ -48,6 +48,7 @@ class TestSchema(unittest.TestCase):
         
         self.assertEqual(settings.get("gateway_enabled"), "true")
         self.assertEqual(settings.get("writes_enabled"), "false")
+        self.assertEqual(settings.get("shell_enabled"), "true")
         self.assertEqual(settings.get("default_timeout"), "30")
         self.assertEqual(settings.get("max_output_bytes"), "262144")
         self.assertEqual(settings.get("max_file_read_bytes"), "1048576")

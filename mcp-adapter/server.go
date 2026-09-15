@@ -307,7 +307,7 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "mcp-gateway-adapter",
 		Title:   "MCP Raspberry Pi Gateway Official Adapter",
-		Version: "1.2.1",
+		Version: "1.3.0",
 	}, opts)
 
 	var allowedTools map[string]bool
@@ -321,6 +321,8 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	}
 
 	syncServerTools(server, bridge, state, allowedTools)
+	currentAllowed := cloneToolSet(allowedTools)
+	var catalogMu sync.Mutex
 
 	if bridge != nil && bridge.ClientID != "" && bridge.ClientID != "local" && bridge.ClientID != "admin" {
 		server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
@@ -328,7 +330,12 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 				if method == "tools/list" {
 					allowed, err := bridge.GetAllowedTools(ctx)
 					if err == nil {
-						syncServerTools(server, bridge, state, allowed)
+						catalogMu.Lock()
+						if !toolSetsEqual(currentAllowed, allowed) {
+							syncServerTools(server, bridge, state, allowed)
+							currentAllowed = cloneToolSet(allowed)
+						}
+						catalogMu.Unlock()
 					}
 				}
 				return next(ctx, method, req)
@@ -337,6 +344,67 @@ func NewGatewayServer(bridge *BridgeConfig, state *AdapterState) *mcp.Server {
 	}
 
 	return server
+}
+
+func cloneToolSet(src map[string]bool) map[string]bool {
+	if src == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+func toolSetsEqual(a, b map[string]bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func toolAnnotations(name string) *mcp.ToolAnnotations {
+	readOnly := map[string]bool{
+		"health": true, "list_targets": true, "target_status": true,
+		"list_directory": true, "file_stat": true, "read_file": true,
+		"git_status": true, "search": true, "gateway_status": true,
+		"gateway_doctor": true,
+	}
+	if readOnly[name] {
+		return &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: boolPtr(false), IdempotentHint: true, OpenWorldHint: boolPtr(name == "target_status")}
+	}
+	destructive := map[string]bool{
+		"run_command": true, "run_task": true, "write_file": true,
+		"delete_file": true, "move_file": true, "copy_file": true,
+		"gateway_reboot": true, "gateway_maintenance": true,
+	}
+	idempotent := map[string]bool{
+		"write_file": true, "copy_file": true, "move_file": false,
+		"delete_file": true, "mkdir": true,
+	}
+	openWorld := name == "run_command" || name == "run_task"
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:    false,
+		DestructiveHint: boolPtr(destructive[name]),
+		IdempotentHint:  idempotent[name],
+		OpenWorldHint:   boolPtr(openWorld),
+	}
+}
+
+func addGatewayTool(server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandler) {
+	tool.Annotations = toolAnnotations(tool.Name)
+	server.AddTool(tool, handler)
 }
 
 var allKnownTools = []string{
@@ -434,7 +502,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 	handler := makeToolHandler(toolName, bridge, state)
 	switch toolName {
 	case "gateway_backup":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "gateway_backup",
 			Description: "Generate safe online SQLite backup of gateway registry database",
 			InputSchema: map[string]any{
@@ -442,7 +510,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "gateway_doctor":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "gateway_doctor",
 			Description: "Execute unified 19-point system health and integrity check",
 			InputSchema: map[string]any{
@@ -450,7 +518,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "gateway_maintenance":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "gateway_maintenance",
 			Description: "Perform safe automated maintenance (disk check, backup rotation, registry integrity, update preview)",
 			InputSchema: map[string]any{
@@ -458,7 +526,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "gateway_reboot":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "gateway_reboot",
 			Description: "Request controlled reboot of the MCP-Pi appliance",
 			InputSchema: map[string]any{
@@ -473,7 +541,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "gateway_status":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "gateway_status",
 			Description: "Check appliance health, system metrics (RAM, zram, CPU, temp, storage), and service status",
 			InputSchema: map[string]any{
@@ -481,7 +549,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "file_stat":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "file_stat",
 			Description: "Get metadata of a file or directory within a project",
 			InputSchema: map[string]any{
@@ -504,7 +572,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "git_status":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "git_status",
 			Description: "Run 'git status --short' on authorized project repository",
 			InputSchema: map[string]any{
@@ -523,7 +591,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "health":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "health",
 			Description: "Check gateway health, uptime, version, and target count",
 			InputSchema: map[string]any{
@@ -531,7 +599,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "list_directory":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "list_directory",
 			Description: "List directory contents under an authorized project",
 			InputSchema: map[string]any{
@@ -554,7 +622,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "list_targets":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "list_targets",
 			Description: "Return safe list of configured targets without secrets",
 			InputSchema: map[string]any{
@@ -562,7 +630,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "read_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "read_file",
 			Description: "Read text file content safely within project boundaries",
 			InputSchema: map[string]any{
@@ -585,7 +653,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "run_task":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "run_task",
 			Description: "Execute an allowlisted pre-configured task",
 			InputSchema: map[string]any{
@@ -608,7 +676,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "target_status":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "target_status",
 			Description: "Verify reachability and latency of a target machine",
 			InputSchema: map[string]any{
@@ -623,7 +691,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "write_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "write_file",
 			Description: "Safely write or mutate a text file in an authorized project with atomic replacement and hash verification",
 			InputSchema: map[string]any{
@@ -662,7 +730,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "append_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "append_file",
 			Description: "Append UTF-8 text content to an existing file in an authorized project",
 			InputSchema: map[string]any{
@@ -689,7 +757,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "delete_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "delete_file",
 			Description: "Delete a file or empty directory within an authorized project",
 			InputSchema: map[string]any{
@@ -712,7 +780,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "copy_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "copy_file",
 			Description: "Copy a file within an authorized project",
 			InputSchema: map[string]any{
@@ -739,7 +807,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "move_file":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "move_file",
 			Description: "Move or rename a file within an authorized project",
 			InputSchema: map[string]any{
@@ -766,7 +834,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "mkdir":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "mkdir",
 			Description: "Create a directory within an authorized project",
 			InputSchema: map[string]any{
@@ -793,7 +861,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "search":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "search",
 			Description: "Search text or regular expression patterns within files in an authorized project",
 			InputSchema: map[string]any{
@@ -824,7 +892,7 @@ func registerToolByName(server *mcp.Server, toolName string, bridge *BridgeConfi
 			},
 		}, handler)
 	case "run_command":
-		server.AddTool(&mcp.Tool{
+		addGatewayTool(server, &mcp.Tool{
 			Name:        "run_command",
 			Description: "Execute a command on the target system with full shell syntax, preserving environment while scoping file access",
 			InputSchema: map[string]any{
@@ -974,7 +1042,6 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcpAuthHandler)
 
-
 	// /live endpoint: only indicates process is alive, no DB, no SSH
 	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1063,7 +1130,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, bindAddr string, state *Ad
 		resp, _ := json.Marshal(map[string]any{
 			"server": map[string]any{
 				"name":    "mcp-gateway-adapter",
-				"version": "1.2.1",
+				"version": "1.3.0",
 			},
 			"protocol": "2026-07-28",
 			"capabilities": map[string]any{

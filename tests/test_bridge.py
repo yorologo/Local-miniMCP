@@ -76,7 +76,7 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(code, 0)
         output = json.loads(buf.getvalue())
         self.assertTrue(output["ok"])
-        self.assertEqual(output["gateway_version"], "1.2.1")
+        self.assertEqual(output["gateway_version"], "1.3.0")
         self.assertEqual(output["core_api_version"], 1)
 
         self.assertEqual(output["bridge_api_version"], 1)
@@ -91,7 +91,10 @@ class TestBridge(unittest.TestCase):
         self.assertTrue(output["ok"])
         tools = output["tools"]
         self.assertIsInstance(tools, list)
-        self.assertIn(len(tools), (9, 14, 21))
+        self.assertEqual(len(tools), 21)
+        self.assertEqual(output["tool_count"], 21)
+        self.assertEqual(output["tool_catalog_version"], 3)
+        self.assertEqual(len(output["catalog_hash"]), 64)
         # Check alphabetical order
         self.assertEqual(tools, sorted(tools))
 

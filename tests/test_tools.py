@@ -7,11 +7,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 try:
     from mcp_gateway.config import GatewayConfig
-    from mcp_gateway.ssh_transport import SSHTransportResult
+    from mcp_gateway.ssh_transport import SSHError, SSHTransportResult
     from mcp_gateway.tools import GatewayTools
 except ImportError:
     from src.mcp_gateway.config import GatewayConfig
-    from src.mcp_gateway.ssh_transport import SSHTransportResult
+    from src.mcp_gateway.ssh_transport import SSHError, SSHTransportResult
     from src.mcp_gateway.tools import GatewayTools
 
 
@@ -62,6 +62,20 @@ class DummyTransport:
             "parent_canonical_path": os.path.dirname(candidate_path), "sha256": "", "size": 0, "content": ""
         }
 
+    def resolve_safe_destination(self, target, project_root, candidate_path, allow_missing_parents=False, timeout=10):
+        if "nested_symlink" in candidate_path or "escape_parent" in candidate_path:
+            raise SSHError("Destination parent resolves outside project root", code="PATH_OUTSIDE_ALLOWED_ROOT")
+        if "dest_symlink" in candidate_path or "symlink_dest" in candidate_path:
+            raise SSHError("Destination is a symlink", code="SYMLINK_WRITE_DENIED")
+        return {
+            "ok": True,
+            "root_canonical": project_root,
+            "parent_canonical": os.path.dirname(candidate_path),
+            "destination_path": candidate_path,
+            "exists": False,
+            "canonical_path": "",
+        }
+
     def write_remote_file_atomic(self, target, dest_path, content_bytes, create, expected_sha256=None, backup_dir=None, max_write_bytes=262144, timeout=20):
         import hashlib
         sha = hashlib.sha256(content_bytes).hexdigest()
@@ -106,6 +120,7 @@ class TestGatewayTools(unittest.TestCase):
             }
         }
         self.config = GatewayConfig(raw_data=self.test_data)
+        self.config.record_activity = lambda event: None
         self.transport = DummyTransport()
         self.tools = GatewayTools(config=self.config, transport=self.transport)
 
@@ -295,6 +310,36 @@ class TestGatewayTools(unittest.TestCase):
         res = self.tools.search("mock-target", "mock-proj", "hello")
         self.assertTrue(res["ok"], f"search failed: {res}")
         self.assertIn("matches", res["result"])
+
+
+    def test_structured_mutations_fail_closed_on_destination_symlink_escapes(self):
+        self.tools._is_writes_enabled = lambda: True
+        self.config._data["targets"]["mock-target"]["projects"]["mock-proj"]["write"] = True
+
+        cases = [
+            ("write", lambda: self.tools.write_file("mock-target", "mock-proj", "nested_symlink/new.txt", "x", create=True)),
+            ("append", lambda: self.tools.append_file("mock-target", "mock-proj", "dest_symlink.txt", "x")),
+            ("delete", lambda: self.tools.delete_file("mock-target", "mock-proj", "dest_symlink.txt")),
+            ("copy", lambda: self.tools.copy_file("mock-target", "mock-proj", "existing.txt", "nested_symlink/copied.txt")),
+            ("move", lambda: self.tools.move_file("mock-target", "mock-proj", "existing.txt", "nested_symlink/moved.txt")),
+            ("mkdir", lambda: self.tools.mkdir("mock-target", "mock-proj", "nested_symlink/new_dir", parents=True)),
+        ]
+        for name, call in cases:
+            with self.subTest(name=name):
+                res = call()
+                self.assertFalse(res["ok"])
+                self.assertIn(res["error"]["code"], {"PATH_OUTSIDE_ALLOWED_ROOT", "SYMLINK_WRITE_DENIED"})
+
+    def test_critical_mutation_fails_closed_when_audit_unavailable(self):
+        self.tools._is_writes_enabled = lambda: True
+        self.config._data["targets"]["mock-target"]["projects"]["mock-proj"]["write"] = True
+        def broken_audit(event):
+            raise OSError("audit disk unavailable")
+        self.config.record_activity = broken_audit
+        res = self.tools.write_file("mock-target", "mock-proj", "new.txt", "hello", create=True)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"]["code"], "AUDIT_UNAVAILABLE")
+
 
 
 if __name__ == "__main__":

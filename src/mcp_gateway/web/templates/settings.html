@@ -85,6 +85,25 @@
     </div>
   </div>
 
+  <!-- Trusted Target Shell Card -->
+  <div class="bg-slate-950 border {% if settings.shell_enabled %}border-rose-900/60 bg-rose-950/10{% else %}border-slate-800 bg-slate-900/20{% endif %} rounded-xl p-6 shadow-sm space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2"><span class="text-lg">⌨️</span><h2 class="text-base font-bold text-white">Trusted Target Shell</h2></div>
+        <p class="text-xs text-slate-400 mt-1 max-w-lg">Controls <code class="text-indigo-400">run_command</code> globally. This is an explicitly trusted target shell, not a project filesystem sandbox. Target/project grants still scope authorization and audit.</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin.toggle_shell_switch') }}" class="shrink-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if settings.shell_enabled %}
+          <button type="submit" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg text-xs transition border border-slate-700" data-confirm="Disable trusted target shell execution globally?">Disable Target Shell</button>
+        {% else %}
+          <button type="submit" class="px-4 py-2 bg-rose-700 hover:bg-rose-600 text-white font-bold rounded-lg text-xs transition" data-confirm="Enable high-risk trusted target shell execution for explicitly granted clients?">Enable Target Shell</button>
+        {% endif %}
+      </form>
+    </div>
+    <div class="text-[11px] font-mono {% if settings.shell_enabled %}text-rose-300{% else %}text-slate-400{% endif %} pt-2 border-t border-slate-800/60">Status: {% if settings.shell_enabled %}ENABLED &bull; requires target_shell/run_command grant{% else %}DISABLED &bull; blocked with TARGET_SHELL_DISABLED{% endif %}</div>
+  </div>
+
   <!-- Configuration Limits Form -->
   <form method="POST" action="{{ url_for('admin.settings_view') }}" class="card space-y-5 p-4 sm:p-6">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 
 class SSHError(Exception):
@@ -91,6 +91,22 @@ def is_network_connectivity_error(exit_code: int, stderr: Optional[str], timed_o
     """Helper returning True if discovery should be triggered (network error or endpoint mismatch)."""
     should_discover, _ = classify_ssh_transport_failure(exit_code, stderr, timed_out=timed_out)
     return should_discover
+
+
+class RemoteTransport(Protocol):
+    """Minimal target transport contract consumed by Gateway Core."""
+
+    registry: Any
+
+    def run_command(self, target: Dict[str, Any], remote_cmd: str, **kwargs: Any) -> SSHTransportResult: ...
+    def resolve_canonical_path(self, target: Dict[str, Any], candidate_path: str, timeout: int = 10) -> str: ...
+    def resolve_safe_destination(
+        self, target: Dict[str, Any], project_root: str, candidate_path: str,
+        allow_missing_parents: bool = False, timeout: int = 10
+    ) -> Dict[str, Any]: ...
+    def read_remote_file_content(self, target: Dict[str, Any], canonical_path: str, max_bytes: Optional[int] = None) -> str: ...
+    def probe_remote_path(self, target: Dict[str, Any], candidate_path: str, timeout: int = 10) -> Dict[str, Any]: ...
+    def write_remote_file_atomic(self, target: Dict[str, Any], dest_path: str, content_bytes: bytes, create: bool, **kwargs: Any) -> Dict[str, Any]: ...
 
 
 class SSHTransport:
@@ -414,6 +430,79 @@ class SSHTransport:
             return json.loads(res.stdout.strip().splitlines()[-1])
         except Exception as e:
             raise SSHError(f"Invalid probe JSON response: {e}", code="SSH_FAILED")
+
+    def resolve_safe_destination(
+        self,
+        target: Dict[str, Any],
+        project_root: str,
+        candidate_path: str,
+        allow_missing_parents: bool = False,
+        timeout: int = 10,
+    ) -> Dict[str, Any]:
+        """Resolve a structured-mutation destination remotely and fail closed on escapes/symlinks."""
+        py_code = (
+            "import os, sys, json\n"
+            "root = sys.argv[1]\n"
+            "candidate = sys.argv[2]\n"
+            "allow_missing = sys.argv[3] == '1'\n"
+            "root_real = os.path.realpath(root)\n"
+            "def emit(ok, code='', message='', **extra):\n"
+            "    d = {'ok': ok, 'code': code, 'message': message}; d.update(extra); print(json.dumps(d))\n"
+            "if not os.path.isdir(root_real):\n"
+            "    emit(False, 'PROJECT_ROOT_INVALID', f'Project root is not a directory: {root}'); sys.exit(10)\n"
+            "if os.path.lexists(candidate) and os.path.islink(candidate):\n"
+            "    emit(False, 'SYMLINK_WRITE_DENIED', f'Destination is a symlink: {candidate}'); sys.exit(11)\n"
+            "parent = os.path.dirname(candidate) or '.'\n"
+            "cursor = parent\n"
+            "missing = []\n"
+            "while not os.path.exists(cursor):\n"
+            "    if not allow_missing:\n"
+            "        emit(False, 'NOT_FOUND', f'Parent directory does not exist: {parent}'); sys.exit(12)\n"
+            "    base = os.path.basename(cursor)\n"
+            "    if not base or base in ('.', '..'):\n"
+            "        emit(False, 'INVALID_PATH', f'Invalid destination parent: {parent}'); sys.exit(13)\n"
+            "    missing.append(base)\n"
+            "    nxt = os.path.dirname(cursor)\n"
+            "    if nxt == cursor:\n"
+            "        emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Unable to anchor destination beneath project root: {candidate}'); sys.exit(14)\n"
+            "    cursor = nxt\n"
+            "anchor_real = os.path.realpath(cursor)\n"
+            "try:\n"
+            "    if os.path.commonpath([root_real, anchor_real]) != root_real:\n"
+            "        emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination parent resolves outside project root: {parent}'); sys.exit(15)\n"
+            "except ValueError:\n"
+            "    emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination parent is on a different path domain: {parent}'); sys.exit(16)\n"
+            "parent_real = os.path.normpath(os.path.join(anchor_real, *reversed(missing)))\n"
+            "try:\n"
+            "    if os.path.commonpath([root_real, parent_real]) != root_real:\n"
+            "        emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination parent escapes project root: {parent}'); sys.exit(17)\n"
+            "except ValueError:\n"
+            "    emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination parent is on a different path domain: {parent}'); sys.exit(18)\n"
+            "dest = os.path.join(parent_real, os.path.basename(candidate))\n"
+            "dest_exists = os.path.lexists(candidate)\n"
+            "dest_real = os.path.realpath(candidate) if dest_exists else ''\n"
+            "if dest_exists:\n"
+            "    try:\n"
+            "        if os.path.commonpath([root_real, dest_real]) != root_real:\n"
+            "            emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination resolves outside project root: {candidate}'); sys.exit(19)\n"
+            "    except ValueError:\n"
+            "        emit(False, 'PATH_OUTSIDE_ALLOWED_ROOT', f'Destination is on a different path domain: {candidate}'); sys.exit(20)\n"
+            "emit(True, root_canonical=root_real, parent_canonical=parent_real, destination_path=dest, exists=dest_exists, canonical_path=dest_real)\n"
+        )
+        cmd = f"python3 -c {shlex.quote(py_code)} {shlex.quote(project_root)} {shlex.quote(candidate_path)} {'1' if allow_missing_parents else '0'}"
+        res = self.run_command(target, cmd, timeout=timeout)
+        line = res.stdout.strip().splitlines()[-1] if res.stdout.strip() else ""
+        try:
+            data = json.loads(line) if line else {}
+        except json.JSONDecodeError:
+            data = {}
+        if not data.get("ok"):
+            raise SSHError(
+                data.get("message") or res.stderr.strip() or "Unable to resolve safe structured destination",
+                code=data.get("code") or "SSH_FAILED",
+                exit_code=res.exit_code,
+            )
+        return data
 
     def write_remote_file_atomic(
         self,
