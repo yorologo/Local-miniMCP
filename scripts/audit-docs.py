@@ -33,7 +33,7 @@ CURRENT_FILES = [
 
 CONTEXT_FILES = [
     ROOT / "CHANGELOG.md",
-    DOCS / "releases" / "v1.3.0.md",
+    DOCS / "releases" / "v1.3.1.md",
     DOCS / "reference" / "compatibility.md",
     DOCS / "reference" / "roadmap.md",
 ]

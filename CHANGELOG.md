@@ -2,6 +2,16 @@
 
 All notable user-visible changes are documented here. Historical release details remain under `docs/releases/`.
 
+## 1.3.1 — 2026-09-15
+
+### Changed
+- Standardized project and repository branding as `MCP-Pi`, including canonical GitHub URLs and release bundle filename prefix.
+- Release metadata now reports Gateway version 1.3.1 while preserving the 1.3.0 historical release unchanged.
+
+### Compatibility
+- No Core API, Bridge API, Tool Catalog, Registry schema, MCP protocol, security-policy, or data-format break.
+- Existing `LOCAL_MINIMCP_STATE_DIR` / `~/.local/state/local-minimcp/` identifiers remain supported for compatibility and are intentionally not renamed.
+
 ## 1.3.0 — 2026-09-15
 
 ### Added
