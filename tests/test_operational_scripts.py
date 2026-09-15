@@ -33,6 +33,8 @@ class TestOperationalScripts(unittest.TestCase):
             'deployment requires a completely clean Git working tree',
             'origin/${DEPLOY_BRANCH}',
             'MCP_DEPLOY_INJECT_FAILURE',
+            '/tmp/mcp-gateway-deploy-',
+            'sudo chown -R mcp-gateway:mcp-gateway',
             'ROLLBACK_VERIFIED',
             '.deployment.json',
             "'verified': True",

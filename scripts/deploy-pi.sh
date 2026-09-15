@@ -71,7 +71,6 @@ STRINGS_STAGE="${STAGE_DIR}/adapter.strings"
 DEPLOYMENT_STAGE="${STAGE_DIR}/.deployment.json"
 mkdir -p "${SOURCE_DIR}"
 
-REMOTE_ADMIN_HOME=""
 REMOTE_UPLOAD_DIR=""
 REMOTE_CANDIDATE="${REMOTE_TARGET_DIR}.candidate-${SHORT_SHA}-${STAMP}"
 REMOTE_PREVIOUS="${REMOTE_TARGET_DIR}.previous-${STAMP}"
@@ -164,7 +163,7 @@ REMOTE
 
 cleanup_remote_transfer() {
     if [ -n "${REMOTE_UPLOAD_DIR}" ]; then
-        ssh_pi "rm -rf '${REMOTE_UPLOAD_DIR}'" >/dev/null 2>&1 || true
+        ssh_pi "sudo rm -rf '${REMOTE_UPLOAD_DIR}'" >/dev/null 2>&1 || true
     fi
     if [ "${ACTIVATED}" -eq 0 ]; then
         ssh_pi "sudo rm -rf '${REMOTE_CANDIDATE}'" >/dev/null 2>&1 || true
@@ -212,10 +211,10 @@ echo "adapter_sha256=${LOCAL_ADAPTER_SHA}"
 
 echo "[3/10] Remote preflight and transfer..."
 ssh_pi "test -d '${REMOTE_TARGET_DIR}'; command -v sudo >/dev/null; command -v systemctl >/dev/null; command -v curl >/dev/null; command -v python3 >/dev/null; command -v tar >/dev/null; command -v sha256sum >/dev/null"
-REMOTE_ADMIN_HOME="$(ssh_pi 'printf %s "$HOME"')"
-REMOTE_UPLOAD_DIR="${REMOTE_ADMIN_HOME}/.cache/mcp-gateway-deploy/${SHORT_SHA}-${STAMP}"
+REMOTE_UPLOAD_DIR="/tmp/mcp-gateway-deploy-${SHORT_SHA}-${STAMP}"
 ssh_pi "mkdir -p '${REMOTE_UPLOAD_DIR}' && chmod 700 '${REMOTE_UPLOAD_DIR}'"
 scp_pi "${SOURCE_ARCHIVE}" "${ADAPTER_STAGE}" "${PI_USER}@${PI_HOST}:${REMOTE_UPLOAD_DIR}/"
+ssh_pi "sudo chown -R mcp-gateway:mcp-gateway '${REMOTE_UPLOAD_DIR}' && sudo chmod 700 '${REMOTE_UPLOAD_DIR}'"
 OLD_DEPLOY_SHA="$(ssh_pi "cat '${REMOTE_TARGET_DIR}/.deployed-git-sha' 2>/dev/null || true")"
 
 echo "[4/10] Preparing and validating candidate on the real ARMv6 appliance..."
@@ -384,7 +383,7 @@ PY
 REMOTE
 
 echo "[10/10] Cleaning transfer artifacts; preserving one rollback set until final external acceptance..."
-ssh_pi "rm -rf '${REMOTE_UPLOAD_DIR}'"
+ssh_pi "sudo rm -rf '${REMOTE_UPLOAD_DIR}'"
 REMOTE_UPLOAD_DIR=""
 ACTIVATED=0
 trap - ERR
