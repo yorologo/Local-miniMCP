@@ -48,7 +48,7 @@ Fresh defaults:
 | `gateway_enabled` | `true` | master operational switch |
 | `writes_enabled` | `false` | structured filesystem mutations |
 | `shell_enabled` | `false` | trusted Target shell (`run_command`) |
-| `default_timeout` | `30` | default execution timeout seconds |
+| `default_timeout` | `30` | default interactive execution timeout seconds; long/self-restarting work belongs in `run-resumable.sh` |
 | `max_output_bytes` | `262144` | bounded command/tool output |
 | `max_file_read_bytes` | `1048576` | bounded file reads |
 | `max_write_bytes` | `262144` | bounded structured writes |

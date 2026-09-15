@@ -73,6 +73,10 @@ class TestOperationalScripts(unittest.TestCase):
             'ALREADY_DEPLOYED commit=${DEPLOY_SHA}',
             'DEPLOYMENT_VERIFIED already_deployed=true',
             'MCP_DEPLOY_FORCE',
+            'MCP_PI_RESUMABLE_JOB_ID',
+            'MCP_DEPLOY_ALLOW_DIRECT',
+            'CONTROL_PLANE_RESTART=EXPECTED',
+            'CONTROL_PLANE_RESTORED',
             'ROLLBACK_REMOTE_FAILED',
             'ROLLBACK_VERIFIED',
             '.deployment.json',
@@ -82,6 +86,20 @@ class TestOperationalScripts(unittest.TestCase):
         verified_index = text.index("'verified': True")
         acceptance_index = text.index('[7/10] Running lightweight production acceptance')
         self.assertGreater(verified_index, acceptance_index)
+
+    def test_deploy_refuses_direct_execution_without_break_glass(self):
+        env = os.environ.copy()
+        env.pop("MCP_PI_RESUMABLE_JOB_ID", None)
+        env.pop("MCP_DEPLOY_ALLOW_DIRECT", None)
+        cp = subprocess.run(
+            ["bash", str(ROOT / "scripts" / "deploy-pi.sh"), "HEAD"],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("must run via scripts/run-resumable.sh", cp.stderr)
 
     def test_backup_age_is_optional_and_fail_closed(self):
         text = (ROOT / "scripts" / "backup-appliance.sh").read_text(encoding="utf-8")

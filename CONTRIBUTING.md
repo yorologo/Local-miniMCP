@@ -48,7 +48,9 @@ install.sh
 Maintainer exact-commit deployment:
 
 ```bash
-scripts/deploy-pi.sh "$(git rev-parse HEAD)"
+SHA="$(git rev-parse HEAD)"
+JOB="deploy-${SHA:0:12}"
+scripts/run-resumable.sh start --expect-marker DEPLOYMENT_VERIFIED "$JOB" -- scripts/deploy-pi.sh "$SHA"
 ```
 
 Beginner-facing release bundle:

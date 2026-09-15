@@ -35,10 +35,11 @@ git diff --check
 
 ```bash
 SHA="$(git rev-parse HEAD)"
-./scripts/deploy-pi.sh "$SHA"
+JOB="deploy-${SHA:0:12}"
+scripts/run-resumable.sh start --expect-marker DEPLOYMENT_VERIFIED "$JOB" -- scripts/deploy-pi.sh "$SHA"
 ```
 
-The deploy script refuses dirty trees and requires the requested SHA to equal both local `HEAD` and `origin/<branch>`. It packages that exact commit with `git archive`, builds/validates an ARMv6 candidate from the archive, creates a rollback copy of the active runtime and systemd units, activates the candidate, restarts Admin → MCP → Tunnel in control-plane-safe order, runs lightweight production acceptance and Doctor, then writes `.deployment.json` with commit/branch/timestamp/package+adapter hashes. `verified=true` is written only after acceptance. `MCP_DEPLOY_INJECT_FAILURE=after-activation` is reserved for a controlled rollback test and must restore the previous known-good runtime.
+The deploy script refuses direct execution outside the resumable runner (except explicit `MCP_DEPLOY_ALLOW_DIRECT=1` break-glass recovery), refuses dirty trees and requires the requested SHA to equal both local `HEAD` and `origin/<branch>`. It packages that exact commit with `git archive`, builds/validates an ARMv6 candidate from the archive, creates a rollback copy of the active runtime and systemd units, activates the candidate, restarts Admin → MCP → Tunnel in control-plane-safe order, runs lightweight production acceptance and Doctor, then writes `.deployment.json` with commit/branch/timestamp/package+adapter hashes. `verified=true` is written only after acceptance. `MCP_DEPLOY_INJECT_FAILURE=after-activation` is reserved for a controlled rollback test and must restore the previous known-good runtime.
 
 ## Post-deployment checks
 

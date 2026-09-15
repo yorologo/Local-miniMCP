@@ -139,7 +139,7 @@ scripts/run-resumable.sh status "$JOB"
 scripts/run-resumable.sh log "$JOB" 120
 ```
 
-Possible states are `RUNNING`, `VERIFIED`, `FINISHED`, `FAILED` and `INTERRUPTED`. `INTERRUPTED` means the lock is gone and no exit code was recorded; it is deliberately **not** auto-retried. First inspect the log and real production state.
+Possible states are `RUNNING`, `VERIFIED`, `FINISHED`, `FAILED` and `INTERRUPTED`. `INTERRUPTED` means the lock is gone and no exit code was recorded; it is deliberately **not** auto-retried. First inspect the log and real production state. For jobs that restart MCP/Tunnel, `CONTROL_PLANE_RESTART=EXPECTED` without a later `CONTROL_PLANE_RESTORED` means the control plane may still be unavailable or rollback may be in progress; wait for reconnection and inspect state instead of relaunching the job.
 
 After evidence is collected and the job is no longer running:
 

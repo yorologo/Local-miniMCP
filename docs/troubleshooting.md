@@ -78,7 +78,7 @@ Structured filesystem mutations are intentionally disabled when `writes_enabled=
 
 ## Fewer tools than expected
 
-The Core catalog for 1.3.1 contains 21 tools. A client may see fewer because `tools/list` is filtered by its grants. Compare:
+The Core catalog for 1.3.2 contains 21 tools. A client may see fewer because `tools/list` is filtered by its grants. Compare:
 
 - Core catalog metadata;
 - registered client identity;
@@ -90,6 +90,6 @@ Do not broaden grants just to make the number equal 21.
 
 ## Update fails
 
-For user updates, use the extracted release bundle and `sudo ./install.sh`. For maintainer exact-commit deployment, use only `scripts/deploy-pi.sh <sha>`.
+For user updates, use the extracted release bundle and `sudo ./install.sh`. For maintainer exact-commit deployment, launch `scripts/deploy-pi.sh <sha>` only through `scripts/run-resumable.sh`; direct execution is break-glass only.
 
 If activation fails, preserve the previous runtime and evidence before retrying. See [update-rollback.md](update-rollback.md).

@@ -67,7 +67,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    DEV[Termux development checkout] -->|deploy-pi.sh / SSH| PI[MCP-Pi\n192.168.68.55]
+    DEV[Termux development checkout] -->|run-resumable.sh + deploy-pi.sh / SSH| PI[MCP-Pi\n192.168.68.55]
     PI --> ADMIN[Admin Console\n:80 LAN]
     PI --> MCP[MCP Adapter\n:8090 loopback]
     MCP --> TUN[OpenAI Secure MCP Tunnel]

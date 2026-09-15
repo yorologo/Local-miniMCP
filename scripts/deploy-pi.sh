@@ -17,6 +17,9 @@ fail() {
 }
 
 [ "$#" -eq 1 ] || fail "usage: $0 <exact-git-sha>"
+if [ -z "${MCP_PI_RESUMABLE_JOB_ID:-}" ] && [ "${MCP_DEPLOY_ALLOW_DIRECT:-0}" != "1" ]; then
+    fail "deploy-pi.sh must run via scripts/run-resumable.sh; set MCP_DEPLOY_ALLOW_DIRECT=1 only for explicit break-glass recovery"
+fi
 command -v git >/dev/null 2>&1 || fail "git is required"
 
 DEPLOY_SHA="$(git -C "${PROJECT_ROOT}" rev-parse "$1^{commit}")"
@@ -135,6 +138,7 @@ REMOTE
 
 rollback() {
     echo "ROLLBACK: restoring previous runtime and systemd units..." >&2
+    echo "CONTROL_PLANE_RESTART=EXPECTED reason=rollback" >&2
     local rollback_rc=0
     ssh_pi bash -s -- \
         "${REMOTE_TARGET_DIR}" "${REMOTE_PREVIOUS}" "${REMOTE_FAILED}" \
@@ -190,6 +194,7 @@ REMOTE
         echo "ROLLBACK_REMOTE_FAILED rc=${rollback_rc}" >&2
         return "${rollback_rc}"
     fi
+    echo "CONTROL_PLANE_RESTORED reason=rollback"
     ACTIVATED=0
     ROLLBACK_VERIFIED=1
     echo "ROLLBACK_VERIFIED old_sha=${OLD_DEPLOY_SHA:-unknown}"
@@ -321,6 +326,7 @@ REMOTE
 ACTIVATED=1
 
 echo "[6/10] Installing candidate units and restarting in control-plane-safe order..."
+echo "CONTROL_PLANE_RESTART=EXPECTED reason=deploy"
 ssh_pi bash -s -- "${REMOTE_TARGET_DIR}" <<'REMOTE'
 set -euo pipefail
 current="$1"
@@ -367,6 +373,7 @@ for i in $(seq 1 60); do
     sleep 1
 done
 REMOTE
+echo "CONTROL_PLANE_RESTORED reason=deploy"
 
 if [ "${MCP_DEPLOY_INJECT_FAILURE:-}" = "after-activation" ]; then
     echo "CONTROLLED_FAILURE_INJECTED after-activation" >&2

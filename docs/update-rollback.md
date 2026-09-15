@@ -53,14 +53,14 @@ scripts/run-resumable.sh start \
   "$JOB" -- scripts/deploy-pi.sh "$SHA"
 ```
 
-If the tool window disconnects, do not rerun the deploy. Reconstruct state first:
+If the tool window disconnects, do not rerun the deploy. A normal self-restarting deployment logs `CONTROL_PLANE_RESTART=EXPECTED` before the outage and `CONTROL_PLANE_RESTORED` after MCP readiness and Tunnel recovery. Reconstruct state first:
 
 ```bash
 scripts/run-resumable.sh status "$JOB"
 scripts/run-resumable.sh log "$JOB" 120
 ```
 
-Direct execution of `scripts/deploy-pi.sh "$SHA"` remains supported for an attached maintainer shell.
+Direct execution is intentionally rejected because this deploy restarts the same MCP/Tunnel control plane used by automation. Use the resumable runner even from an attached maintainer shell. `MCP_DEPLOY_ALLOW_DIRECT=1` is break-glass recovery only and must never be the normal release path.
 
 This path requires:
 
@@ -93,7 +93,9 @@ The produced ARMv6 release bundle includes a prebuilt adapter plus `SHA256SUMS`,
 For maintainers only, `deploy-pi.sh` supports a deliberate failure injection to prove rollback. Do not use it as routine user rollback.
 
 ```bash
-MCP_DEPLOY_INJECT_FAILURE=after-activation scripts/deploy-pi.sh "$SHA"
+JOB="rollback-test-${SHA:0:12}"
+scripts/run-resumable.sh start "$JOB" -- \
+  env MCP_DEPLOY_INJECT_FAILURE=after-activation scripts/deploy-pi.sh "$SHA"
 ```
 
 The test is successful only when the command fails by design **and** the previous runtime is independently verified healthy afterward.

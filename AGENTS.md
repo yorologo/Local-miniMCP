@@ -9,7 +9,7 @@ MCP-Pi is a small security gateway between authorized AI/MCP clients and private
 Current software contract:
 
 ```text
-Gateway: 1.3.1
+Gateway: 1.3.2
 Core API: 1
 Bridge API: 1
 Tool catalog: v3 / 21 tools
@@ -17,7 +17,7 @@ Registry schema: 1
 MCP: 2026-07-28
 ```
 
-The current immutable release tag is `v1.3.1`. `main` is the stable release branch and `develop` remains the integration branch.
+The current immutable release tag is `v1.3.2`. `main` is the stable release branch and `develop` remains the integration branch.
 
 ## Non-negotiable principles
 
@@ -129,7 +129,7 @@ User install/reinstall/update:
   install.sh
 
 Maintainer exact-commit promotion:
-  scripts/deploy-pi.sh <exact-sha>
+  scripts/run-resumable.sh start --expect-marker DEPLOYMENT_VERIFIED <job> -- scripts/deploy-pi.sh <exact-sha>
 ```
 
 Release bundles are built with:
@@ -159,7 +159,7 @@ clean worktree
 
 The constrained appliance must not run heavy development suites. Build/test on a development host; run lightweight Doctor/endpoints/production smoke on the appliance.
 
-Long maintainer jobs that could outlive an MCP/ChatGPT tool window should use `scripts/run-resumable.sh`. On reconnect, inspect `status` + `log` + real runtime state before taking any action. Never infer failure from a lost tool response and never auto-retry a deployment. Job state is durable under `~/.local/state/local-minimcp/jobs/`; command arguments/secrets must not be persisted there.
+Long maintainer jobs that could outlive an MCP/ChatGPT tool window should use `scripts/run-resumable.sh`. Any operation that may restart `mcp-gateway-mcp` or `mcp-gateway-tunnel` **must** use it; `deploy-pi.sh` fails closed outside the runner unless `MCP_DEPLOY_ALLOW_DIRECT=1` is explicitly set for break-glass recovery. On reconnect, inspect `status` + `log` + real runtime state before taking any action. `CONTROL_PLANE_RESTART=EXPECTED` / `CONTROL_PLANE_RESTORED` delimit the intentional outage. Never infer failure from a lost tool response and never auto-retry a deployment. Job state is durable under `~/.local/state/local-minimcp/jobs/`; command arguments/secrets must not be persisted there.
 
 Never move/retag/force-push historical release tags.
 

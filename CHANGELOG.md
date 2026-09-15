@@ -2,6 +2,16 @@
 
 All notable user-visible changes are documented here. Historical release details remain under `docs/releases/`.
 
+## 1.3.2 — 2026-09-15
+
+### Changed
+- Self-restarting maintainer deployments must run through the resumable runner; direct `deploy-pi.sh` execution fails closed unless the explicit break-glass override is set.
+- Deployment/rollback logs now mark expected control-plane interruption and confirmed restoration.
+- Reconnect guidance and documentation audit now enforce evidence-first recovery and the 30-second interactive timeout contract.
+
+### Verification
+- 1.3.2 promotion requires the full local gate, CI on `develop` and `main`, deterministic ARMv6 packaging from the immutable tag, and post-release production deployment/Doctor acceptance on the same SHA.
+
 ## 1.3.1 — 2026-09-15
 
 ### Changed

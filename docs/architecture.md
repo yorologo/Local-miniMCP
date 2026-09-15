@@ -100,7 +100,7 @@ Application updates must not overwrite persistent Registry/config/secrets.
 flowchart TD
     U[User release bundle] --> I[install.sh]
     I --> R[Installed runtime]
-    M[Maintainer exact Git SHA] --> D[scripts/deploy-pi.sh]
+    M[Maintainer exact Git SHA] --> R[scripts/run-resumable.sh] --> D[scripts/deploy-pi.sh]
     D --> C[Validated candidate]
     C --> R
     R --> P[Persistent data/config]

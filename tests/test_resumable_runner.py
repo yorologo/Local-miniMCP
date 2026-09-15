@@ -70,6 +70,22 @@ class TestResumableRunner(unittest.TestCase):
         log = self.run_runner("log", "verify-job").stdout
         self.assertIn("DEPLOYMENT_VERIFIED", log)
 
+    def test_worker_exports_resumable_job_context(self):
+        cp = self.run_runner(
+            "start",
+            "context-job",
+            "--",
+            "sh",
+            "-c",
+            'printf "JOB_ID=%s\nSTATE_DIR=%s\n" "$MCP_PI_RESUMABLE_JOB_ID" "$MCP_PI_RESUMABLE_STATE_DIR"',
+        )
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        status = self.wait_terminal("context-job")
+        self.assertIn("STATE=FINISHED", status)
+        log = self.run_runner("log", "context-job").stdout
+        self.assertIn("JOB_ID=context-job", log)
+        self.assertIn(str(self.state / "context-job"), log)
+
     def test_duplicate_job_id_is_denied_while_running(self):
         first = self.run_runner("start", "same-job", "--", "sh", "-c", "sleep 0.8")
         self.assertEqual(first.returncode, 0, first.stderr)

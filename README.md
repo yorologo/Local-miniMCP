@@ -16,7 +16,7 @@ flowchart LR
 
 | Contract | Value |
 | --- | --- |
-| Gateway | **1.3.1** |
+| Gateway | **1.3.2** |
 | Core API | 1 |
 | Bridge API | 1 |
 | Tool catalog | v3 / 21 tools |
@@ -24,7 +24,7 @@ flowchart LR
 | MCP protocol | `2026-07-28` |
 | Python | 3.9+ |
 
-`main` is the stable release branch and `develop` remains the integration branch. The current published release is `v1.3.1`.
+`main` is the stable release branch and `develop` remains the integration branch. The current published release is `v1.3.2`.
 
 ## Why this exists
 
@@ -92,7 +92,7 @@ User-facing update and maintainer deployment are intentionally different:
 ```text
 User install/update  -> official release bundle -> sudo ./install.sh
 User rollback        -> sudo /home/mcp-gateway/mcp-gateway/install.sh --rollback
-Maintainer deploy    -> scripts/deploy-pi.sh <exact-sha>
+Maintainer deploy    -> run-resumable.sh -> scripts/deploy-pi.sh <exact-sha>
 ```
 
 See **[docs/update-rollback.md](docs/update-rollback.md)**.

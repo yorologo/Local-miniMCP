@@ -143,7 +143,7 @@ def cmd_update(candidate_path: Optional[str] = None, check_only: bool = False) -
 
     print("Application updates are root-level operations in the current appliance layout.")
     print("Extract the new official release bundle and run: sudo ./install.sh")
-    print("Maintainers promoting an exact Git commit use: scripts/deploy-pi.sh <exact-sha>")
+    print("Maintainers promoting an exact Git commit use the resumable runner: scripts/run-resumable.sh start --expect-marker DEPLOYMENT_VERIFIED <job> -- scripts/deploy-pi.sh <exact-sha>")
     return 2
 
 

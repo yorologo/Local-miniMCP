@@ -58,6 +58,8 @@ class TestCliReleaseUX(unittest.TestCase):
         text = out.getvalue()
         self.assertIn("sudo ./install.sh", text)
         self.assertIn("install.sh --rollback", text)
+        self.assertIn("run-resumable.sh", text)
+        self.assertIn("DEPLOYMENT_VERIFIED", text)
         self.assertIn("scripts/deploy-pi.sh <exact-sha>", text)
 
 

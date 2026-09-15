@@ -33,7 +33,7 @@ CURRENT_FILES = [
 
 CONTEXT_FILES = [
     ROOT / "CHANGELOG.md",
-    DOCS / "releases" / "v1.3.1.md",
+    DOCS / "releases" / "v1.3.2.md",
     DOCS / "reference" / "compatibility.md",
     DOCS / "reference" / "roadmap.md",
 ]
@@ -163,15 +163,23 @@ def main() -> int:
         add(errors, "resumable runner is missing: scripts/run-resumable.sh")
     else:
         runner = runner_path.read_text(encoding="utf-8")
-        for required in ("nohup setsid flock", ".local/state", "STATE=", "INTERRUPTED", "--expect-marker"):
+        for required in ("nohup setsid flock", ".local/state", "STATE=", "INTERRUPTED", "--expect-marker", "MCP_PI_RESUMABLE_JOB_ID"):
             if required not in runner:
                 add(errors, f"resumable runner contract missing {required}")
 
+    deployer = (ROOT / "scripts" / "deploy-pi.sh").read_text(encoding="utf-8")
+    for required in ("MCP_PI_RESUMABLE_JOB_ID", "MCP_DEPLOY_ALLOW_DIRECT", "CONTROL_PLANE_RESTART=EXPECTED", "CONTROL_PLANE_RESTORED"):
+        if required not in deployer:
+            add(errors, f"self-restarting deploy contract missing {required}")
+
     for doc in (DOCS / "operations.md", DOCS / "update-rollback.md"):
         text = doc.read_text(encoding="utf-8")
-        for required in ("run-resumable.sh", "status", "log"):
+        for required in ("run-resumable.sh", "status", "log", "CONTROL_PLANE_RESTART=EXPECTED", "CONTROL_PLANE_RESTORED"):
             if required not in text:
                 add(errors, f"resumable operations guidance missing {required} in {doc.relative_to(ROOT)}")
+
+    if defaults.get("default_timeout") != "30":
+        add(errors, f"fresh Registry default default_timeout={defaults.get('default_timeout')!r}, expected '30'")
 
     if errors:
         print("DOCS_AUDIT=FAIL")
