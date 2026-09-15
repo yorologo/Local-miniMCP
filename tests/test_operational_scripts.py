@@ -14,6 +14,7 @@ class TestOperationalScripts(unittest.TestCase):
             (["bash", "-n", str(ROOT / "scripts" / "deploy-pi.sh")], ROOT),
             (["bash", "-n", str(ROOT / "scripts" / "backup-appliance.sh")], ROOT),
             (["bash", "-n", str(ROOT / "scripts" / "build-release-package.sh")], ROOT),
+            (["bash", "-n", str(ROOT / "scripts" / "run-resumable.sh")], ROOT),
         ]
         for argv, cwd in checks:
             with self.subTest(argv=argv):
@@ -69,6 +70,9 @@ class TestOperationalScripts(unittest.TestCase):
             'admin_env="$config_dir/admin.env"',
             'if ! sudo test -s "$admin_env"; then',
             'MCP_ADMIN_ALLOWED_HOSTS=${allowed}',
+            'ALREADY_DEPLOYED commit=${DEPLOY_SHA}',
+            'DEPLOYMENT_VERIFIED already_deployed=true',
+            'MCP_DEPLOY_FORCE',
             'ROLLBACK_REMOTE_FAILED',
             'ROLLBACK_VERIFIED',
             '.deployment.json',

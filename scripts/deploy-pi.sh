@@ -61,6 +61,35 @@ scp_pi() {
     scp -O "${SSH_OPTS[@]}" "$@"
 }
 
+already_deployed() {
+    ssh_pi bash -s -- "${REMOTE_TARGET_DIR}" "${DEPLOY_SHA}" <<'REMOTE'
+set -euo pipefail
+current="$1"
+expected="$2"
+test "$(cat "$current/.deployed-git-sha" 2>/dev/null || true)" = "$expected"
+python3 - "$current/.deployment.json" "$expected" <<'PY'
+import json, sys
+p, expected = sys.argv[1:]
+d = json.load(open(p, encoding='utf-8'))
+assert d.get('verified') is True
+assert d.get('commit') == expected
+PY
+systemctl is-active --quiet mcp-gateway-admin
+systemctl is-active --quiet mcp-gateway-mcp
+systemctl is-active --quiet mcp-gateway-tunnel
+curl -fsS http://127.0.0.1/login >/dev/null
+curl -fsS http://127.0.0.1:8090/ready >/dev/null
+REMOTE
+}
+
+if [ "${MCP_DEPLOY_FORCE:-0}" != "1" ] && [ -z "${MCP_DEPLOY_INJECT_FAILURE:-}" ]; then
+    if already_deployed >/dev/null 2>&1; then
+        echo "ALREADY_DEPLOYED commit=${DEPLOY_SHA}"
+        echo "DEPLOYMENT_VERIFIED already_deployed=true"
+        exit 0
+    fi
+fi
+
 SHORT_SHA="${DEPLOY_SHA:0:12}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 STAGE_DIR="$(mktemp -d "${TMP_BASE}/mcp-pi-deploy.XXXXXX")"

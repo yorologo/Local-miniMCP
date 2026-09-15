@@ -158,6 +158,21 @@ def main() -> int:
         if required not in installer:
             add(errors, f"installer contract missing {required}")
 
+    runner_path = ROOT / "scripts" / "run-resumable.sh"
+    if not runner_path.exists():
+        add(errors, "resumable runner is missing: scripts/run-resumable.sh")
+    else:
+        runner = runner_path.read_text(encoding="utf-8")
+        for required in ("nohup setsid flock", ".local/state", "STATE=", "INTERRUPTED", "--expect-marker"):
+            if required not in runner:
+                add(errors, f"resumable runner contract missing {required}")
+
+    for doc in (DOCS / "operations.md", DOCS / "update-rollback.md"):
+        text = doc.read_text(encoding="utf-8")
+        for required in ("run-resumable.sh", "status", "log"):
+            if required not in text:
+                add(errors, f"resumable operations guidance missing {required} in {doc.relative_to(ROOT)}")
+
     if errors:
         print("DOCS_AUDIT=FAIL")
         for error in errors:
@@ -172,6 +187,7 @@ def main() -> int:
     print(f"current_docs={len(CURRENT_FILES)}")
     print("fresh_defaults=gateway:true,writes:false,shell:false")
     print("active_deployer=scripts/deploy-pi.sh")
+    print("resumable_runner=scripts/run-resumable.sh")
     return 0
 
 

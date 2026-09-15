@@ -159,6 +159,8 @@ clean worktree
 
 The constrained appliance must not run heavy development suites. Build/test on a development host; run lightweight Doctor/endpoints/production smoke on the appliance.
 
+Long maintainer jobs that could outlive an MCP/ChatGPT tool window should use `scripts/run-resumable.sh`. On reconnect, inspect `status` + `log` + real runtime state before taking any action. Never infer failure from a lost tool response and never auto-retry a deployment. Job state is durable under `~/.local/state/local-minimcp/jobs/`; command arguments/secrets must not be persisted there.
+
 Never move/retag/force-push historical release tags.
 
 ## Documentation contract

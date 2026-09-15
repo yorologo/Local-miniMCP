@@ -115,3 +115,36 @@ Do not update application code by copying arbitrary files into the live runtime.
 ## Recovery
 
 For Registry restore, lost runtime or disaster recovery use [recovery.md](recovery.md). For diagnosis use [troubleshooting.md](troubleshooting.md).
+## Long maintainer jobs and tool-window disconnects
+
+Long jobs must not depend on an interactive ChatGPT/MCP tool window staying alive. Use the resumable runner on the development Target:
+
+```bash
+JOB="deploy-${SHA:0:12}"
+scripts/run-resumable.sh start \
+  --expect-marker DEPLOYMENT_VERIFIED \
+  "$JOB" -- scripts/deploy-pi.sh "$SHA"
+```
+
+The runner uses the tools already present on Termux (`nohup`, `setsid`, `flock`) and stores only operational state under:
+
+```text
+~/.local/state/local-minimcp/jobs/<job>/
+```
+
+It does **not** persist the command arguments in metadata. The private job log still contains the command's stdout/stderr, so commands themselves must continue to avoid printing secrets. Inspect a disconnected job before deciding what to do:
+
+```bash
+scripts/run-resumable.sh status "$JOB"
+scripts/run-resumable.sh log "$JOB" 120
+```
+
+Possible states are `RUNNING`, `VERIFIED`, `FINISHED`, `FAILED` and `INTERRUPTED`. `INTERRUPTED` means the lock is gone and no exit code was recorded; it is deliberately **not** auto-retried. First inspect the log and real production state.
+
+After evidence is collected and the job is no longer running:
+
+```bash
+scripts/run-resumable.sh cleanup "$JOB"
+```
+
+For a short critical operation on Android, `start --wake-lock ...` is available when Termux:API provides `termux-wake-lock`/`termux-wake-unlock`. Do not leave a wake lock permanently enabled. Device battery settings are an operator choice; if Android is killing Termux background jobs, excluding Termux from battery optimization is preferable to adding another daemon to this project.

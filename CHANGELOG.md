@@ -5,6 +5,7 @@ All notable user-visible changes are documented here. Historical release details
 ## Unreleased — 1.3.0
 
 ### Added
+- Resumable long-job runner using `nohup` + `setsid` + `flock`, durable non-secret state, explicit status/log/cleanup, optional short-lived Termux wake lock, and no automatic retries after interrupted control sessions.
 
 - trusted Target-shell capability with independent `shell_enabled` kill switch and readable effective-capability UI;
 - Target Environment Facts, deterministic MCP catalog diagnostics and standard Tool Annotations;
@@ -16,6 +17,7 @@ All notable user-visible changes are documented here. Historical release details
 - minimal real Admin bootstrap through `mcp-gateway setup`.
 
 ### Changed
+- Exact-commit deployment now exits safely as `ALREADY_DEPLOYED` when the same verified SHA is already healthy; `MCP_DEPLOY_FORCE=1` is the explicit repair override.
 
 - structured filesystem mutations share remote canonical destination resolution and reject symlink-parent escapes;
 - critical mutations require audit availability before execution;

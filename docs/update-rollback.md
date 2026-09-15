@@ -43,12 +43,24 @@ Actual application replacement is a root-level operation handled by `install.sh`
 
 ## Maintainer exact-commit deployment
 
-Maintainers promoting a tested Git commit to a known appliance use:
+Maintainers promoting a tested Git commit to a known appliance should launch the long operation through the resumable runner:
 
 ```bash
 SHA="$(git rev-parse HEAD)"
-scripts/deploy-pi.sh "$SHA"
+JOB="deploy-${SHA:0:12}"
+scripts/run-resumable.sh start \
+  --expect-marker DEPLOYMENT_VERIFIED \
+  "$JOB" -- scripts/deploy-pi.sh "$SHA"
 ```
+
+If the tool window disconnects, do not rerun the deploy. Reconstruct state first:
+
+```bash
+scripts/run-resumable.sh status "$JOB"
+scripts/run-resumable.sh log "$JOB" 120
+```
+
+Direct execution of `scripts/deploy-pi.sh "$SHA"` remains supported for an attached maintainer shell.
 
 This path requires:
 
@@ -63,6 +75,8 @@ This path requires:
 - `.deployment.json` provenance with `verified=true` only after acceptance.
 
 This is a development/release engineering mechanism, **not** the first-install guide.
+
+If the same SHA is already recorded as verified and Admin/MCP/Tunnel are healthy, `deploy-pi.sh` returns `ALREADY_DEPLOYED` plus `DEPLOYMENT_VERIFIED` without mutating production. `MCP_DEPLOY_FORCE=1` bypasses that protection only for an intentional repair/redeployment; controlled failure injection also bypasses it so rollback tests remain meaningful.
 
 ## Maintainer release bundle
 
