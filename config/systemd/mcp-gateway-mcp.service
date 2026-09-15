@@ -1,6 +1,8 @@
 [Unit]
 Description=MCP Gateway Official MCP Adapter (Streamable HTTP)
 After=network.target mcp-gateway-admin.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -13,6 +15,13 @@ RestartSec=5
 TimeoutStopSec=10
 NoNewPrivileges=true
 PrivateTmp=true
+RestrictRealtime=true
+LockPersonality=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target

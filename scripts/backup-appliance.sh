@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/backup-appliance.sh
-# Reproducible Disaster Recovery backup for MCP-Pi Gateway (v1.2.1)
+# Reproducible Disaster Recovery backup for the currently deployed MCP-Pi Gateway
 # Creates a consistent, isolated, private snapshot of all stateful data & identities.
 #
 # Usage:
@@ -16,12 +16,22 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_DIR="${1:-/home/yorologo/backups}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-RELEASE_TAG="v1.2.1"
+RELEASE_VERSION="$(python3 -c "import json; print(json.load(open('${PROJECT_ROOT}/compatibility.json', encoding='utf-8'))['gateway_version'])")"
+RELEASE_TAG="v${RELEASE_VERSION}"
 ARCHIVE_NAME="mcp-pi-${RELEASE_TAG}-${TIMESTAMP}.tar.gz"
 ARCHIVE_PATH="${DEST_DIR}/${ARCHIVE_NAME}"
-SHA_PATH="${ARCHIVE_PATH}.sha256"
+BACKUP_AGE_RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"
+
+# age is optional. If encryption is explicitly requested, fail closed rather than
+# silently creating a plaintext export.
+if [ -n "${BACKUP_AGE_RECIPIENT}" ] && ! command -v age >/dev/null 2>&1; then
+    echo "ERROR: BACKUP_AGE_RECIPIENT is set but the optional 'age' binary is not installed; refusing plaintext fallback." >&2
+    exit 1
+fi
 
 echo "=== MCP-Pi Appliance Backup ==="
 echo "Timestamp:    ${TIMESTAMP} (UTC)"
@@ -225,25 +235,42 @@ print('Manifest created successfully.')
 echo "Packaging private backup archive..."
 tar -czf "${ARCHIVE_PATH}" -C "${STAGING_DIR}" .
 
-# 12. Strict permissions on archive (mode 0600)
+# 12. Strict permissions on the private plaintext archive while it exists.
 chmod 0600 "${ARCHIVE_PATH}"
 chown yorologo:yorologo "${ARCHIVE_PATH}" 2>/dev/null || true
 
-# 13. SHA256 checksum
-(cd "${DEST_DIR}" && sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256")
+# Extract a non-secret manifest before optional encryption/removal of plaintext.
+MANIFEST_PATH="${DEST_DIR}/manifest-${RELEASE_TAG}-${TIMESTAMP}.json"
+tar -xzf "${ARCHIVE_PATH}" ./manifest.json -O > "${MANIFEST_PATH}"
+chmod 0644 "${MANIFEST_PATH}"
+chown yorologo:yorologo "${MANIFEST_PATH}" 2>/dev/null || true
+
+# 13. Optional off-device/export encryption. Internal backups remain plaintext
+# mode 0600 when no recipient is configured.
+OUTPUT_PATH="${ARCHIVE_PATH}"
+if [ -n "${BACKUP_AGE_RECIPIENT}" ]; then
+    ENCRYPTED_PATH="${ARCHIVE_PATH}.age"
+    echo "Encrypting backup with age for configured recipient..."
+    age -r "${BACKUP_AGE_RECIPIENT}" -o "${ENCRYPTED_PATH}" "${ARCHIVE_PATH}"
+    chmod 0600 "${ENCRYPTED_PATH}"
+    chown yorologo:yorologo "${ENCRYPTED_PATH}" 2>/dev/null || true
+    rm -f "${ARCHIVE_PATH}"
+    OUTPUT_PATH="${ENCRYPTED_PATH}"
+fi
+
+# 14. SHA256 checksum covers the actual output artifact (plaintext or .age).
+OUTPUT_NAME="$(basename "${OUTPUT_PATH}")"
+SHA_PATH="${OUTPUT_PATH}.sha256"
+(cd "${DEST_DIR}" && sha256sum "${OUTPUT_NAME}" > "${OUTPUT_NAME}.sha256")
 chmod 0644 "${SHA_PATH}"
 chown yorologo:yorologo "${SHA_PATH}" 2>/dev/null || true
 
-# Extract manifest copy for non-secret verification
-tar -xzf "${ARCHIVE_PATH}" ./manifest.json -O > "${DEST_DIR}/manifest-${RELEASE_TAG}-${TIMESTAMP}.json"
-chmod 0644 "${DEST_DIR}/manifest-${RELEASE_TAG}-${TIMESTAMP}.json"
-chown yorologo:yorologo "${DEST_DIR}/manifest-${RELEASE_TAG}-${TIMESTAMP}.json" 2>/dev/null || true
-
-ARCHIVE_SIZE=$(stat -c%s "${ARCHIVE_PATH}")
+ARCHIVE_SIZE=$(stat -c%s "${OUTPUT_PATH}")
 ARCHIVE_SHA256=$(cut -d' ' -f1 "${SHA_PATH}")
 
 echo "=== Backup Complete ==="
-echo "Archive:  ${ARCHIVE_PATH}"
+echo "Archive:  ${OUTPUT_PATH}"
+echo "Encrypted: $([ -n "${BACKUP_AGE_RECIPIENT}" ] && echo yes || echo no)"
 echo "Size:     ${ARCHIVE_SIZE} bytes"
 echo "SHA256:   ${ARCHIVE_SHA256}"
-echo "Manifest: ${DEST_DIR}/manifest-${RELEASE_TAG}-${TIMESTAMP}.json"
+echo "Manifest: ${MANIFEST_PATH}"

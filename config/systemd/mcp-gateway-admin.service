@@ -2,6 +2,8 @@
 Description=MCP Gateway Admin Console
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -22,6 +24,13 @@ ExecStart=/usr/bin/python3 -m mcp_gateway.web
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
+RestrictRealtime=true
+LockPersonality=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target

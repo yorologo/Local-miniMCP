@@ -4,6 +4,8 @@ Documentation=https://github.com/openai/tunnel-client
 After=network-online.target mcp-gateway-mcp.service
 Wants=network-online.target
 Requires=mcp-gateway-mcp.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -18,6 +20,15 @@ RestartSec=15s
 RestartPreventExitStatus=2
 TimeoutStartSec=180s
 LimitNOFILE=4096
+RestrictRealtime=true
+LockPersonality=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+PrivateTmp=true
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
