@@ -1,10 +1,10 @@
 # AGENTS.md — operational contract for AI/automation
 
-Read this file before changing Local-miniMCP runtime, security, deployment, persistent state or CURRENT documentation.
+Read this file before changing MCP-Pi runtime, security, deployment, persistent state or CURRENT documentation.
 
 ## Purpose
 
-Local-miniMCP / MCP-Pi is a small security gateway between authorized AI/MCP clients and private Targets. The Gateway authenticates, authorizes, limits, delegates and audits; Targets perform the heavy work.
+MCP-Pi is a small security gateway between authorized AI/MCP clients and private Targets. The Gateway authenticates, authorizes, limits, delegates and audits; Targets perform the heavy work.
 
 Current software contract:
 
@@ -118,7 +118,7 @@ Application updates must preserve persistent data/config/secrets.
 
 The service user `mcp-gateway` must not gain general sudo. Binding TCP/80 may use only `CAP_NET_BIND_SERVICE` in the Admin unit.
 
-A separate Pi-hole/DNS appliance is outside project scope. Never modify it as part of Local-miniMCP work.
+A separate Pi-hole/DNS appliance is outside project scope. Never modify it as part of MCP-Pi work.
 
 ## Installation versus deployment
 

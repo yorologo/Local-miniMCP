@@ -71,7 +71,7 @@ Escenario base: **Fresh Debian 13 Trixie ARMv6 + commit exacto de `.deployment.j
 ### Paso 2: Instalar Release de Software
 1. Clonar el repositorio oficial y checkout del commit exacto registrado en `.deployment.json` (usar `v1.2.1` sólo como último rollback/tag inmutable si ese es el baseline que se pretende restaurar):
    ```bash
-   sudo -u mcp-gateway git clone https://github.com/yorologo/Local-miniMCP.git /home/mcp-gateway/mcp-gateway
+   sudo -u mcp-gateway git clone https://github.com/yorologo/MCP-Pi.git /home/mcp-gateway/mcp-gateway
    cd /home/mcp-gateway/mcp-gateway
    sudo -u mcp-gateway git checkout <deployment-commit-sha>
    ```

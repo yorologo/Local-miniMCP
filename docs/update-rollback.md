@@ -1,6 +1,6 @@
 # Update and rollback
 
-Local-miniMCP deliberately separates **user release updates** from **maintainer exact-commit deployments**.
+MCP-Pi deliberately separates **user release updates** from **maintainer exact-commit deployments**.
 
 ## User update
 

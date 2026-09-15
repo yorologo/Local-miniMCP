@@ -17,6 +17,8 @@ All notable user-visible changes are documented here. Historical release details
 - minimal real Admin bootstrap through `mcp-gateway setup`.
 
 ### Changed
+- Project/repository branding, canonical GitHub URL and release-package filename prefix are standardized as `MCP-Pi`.
+
 - Exact-commit deployment now exits safely as `ALREADY_DEPLOYED` when the same verified SHA is already healthy; `MCP_DEPLOY_FORCE=1` is the explicit repair override.
 
 - structured filesystem mutations share remote canonical destination resolution and reject symlink-parent escapes;

@@ -1,4 +1,4 @@
-"""Dynamic IP Target Resolution & Cryptographic Discovery for Local-miniMCP Gateway.
+"""Dynamic IP Target Resolution & Cryptographic Discovery for MCP-Pi Gateway.
 
 Principles:
 - TARGET_ID + SSH HOST KEY = IDENTITY

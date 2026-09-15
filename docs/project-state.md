@@ -2,7 +2,7 @@
 
 This document is intentionally short and dynamic. Detailed historical evidence belongs in `docs/releases/`, `docs/archive/` and Git history.
 
-**Software baseline:** Local-miniMCP / MCP-Pi Gateway 1.3.0
+**Software baseline:** MCP-Pi Gateway 1.3.0
 **Development branch:** `develop`
 **Latest immutable tag:** `v1.3.0`
 **Current work:** post-1.3.0 maintenance; release state is represented by the immutable tag and runtime provenance

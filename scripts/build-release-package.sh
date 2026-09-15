@@ -36,7 +36,7 @@ fi
 mkdir -p "$TMP_BASE"
 TMP="$(mktemp -d "$TMP_BASE/mcp-release.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
-PKG_ROOT="$TMP/Local-miniMCP-${VERSION}"
+PKG_ROOT="$TMP/MCP-Pi-${VERSION}"
 mkdir -p "$PKG_ROOT" "$OUTPUT_DIR"
 
 git -C "$ROOT" archive "$SHA" | tar -xf - -C "$PKG_ROOT"
@@ -60,7 +60,7 @@ chmod 0755 "$PKG_ROOT/bin/mcp-gateway-adapter" "$PKG_ROOT/install.sh" \
         bin/mcp-gateway-adapter > SHA256SUMS
 )
 
-OUT="$OUTPUT_DIR/Local-miniMCP-${VERSION}-linux-armv6-${SHORT}.tar.gz"
+OUT="$OUTPUT_DIR/MCP-Pi-${VERSION}-linux-armv6-${SHORT}.tar.gz"
 SOURCE_DATE_EPOCH="$(git -C "$ROOT" show -s --format=%ct "$SHA")"
 tar -C "$TMP" --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
     -cf - "$(basename "$PKG_ROOT")" | gzip -n -9 > "$OUT"

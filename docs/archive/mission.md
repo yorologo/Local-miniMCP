@@ -1,4 +1,4 @@
-# Misión Canónica — Local-miniMCP / MCP-Pi Gateway
+# Misión Canónica — MCP-Pi Gateway
 
 **Estado:** CANÓNICO  
 **Fecha:** 2026-09-12  

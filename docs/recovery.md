@@ -60,7 +60,7 @@ A restore is not successful merely because the file copied.
 A full appliance rebuild requires:
 
 1. supported Linux/systemd OS;
-2. official Local-miniMCP release bundle;
+2. official MCP-Pi release bundle;
 3. persistent Registry backup;
 4. private Admin/tunnel configuration if used;
 5. SSH identities/known-host material if those identities must be preserved;

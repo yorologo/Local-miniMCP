@@ -1,4 +1,4 @@
-From: Local-miniMCP Engineering <engineering@local-minimcp.internal>
+From: MCP-Pi Engineering <engineering@mcp-pi.internal>
 Date: Thu, 10 Sep 2026 14:30:00 -0700
 Subject: [PATCH] Fix 32-bit integer overflow in nanosecond duration assertions
 

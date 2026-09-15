@@ -1,6 +1,6 @@
 # Getting started
 
-This is the shortest supported path from a release bundle to a working Local-miniMCP appliance.
+This is the shortest supported path from a release bundle to a working MCP-Pi appliance.
 
 ## 1. Requirements
 

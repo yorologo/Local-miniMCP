@@ -1,6 +1,6 @@
-# Local-miniMCP / MCP-Pi Gateway
+# MCP-Pi Gateway
 
-Local-miniMCP turns a small Linux appliance such as a Raspberry Pi into a **private MCP security gateway** between AI clients and machines on your own network.
+MCP-Pi turns a small Linux appliance such as a Raspberry Pi into a **private MCP security gateway** between AI clients and machines on your own network.
 
 The Gateway does not run an LLM and does not perform heavy work. It authenticates, authorizes, limits, delegates and audits operations on configured Targets.
 
@@ -28,7 +28,7 @@ flowchart LR
 
 ## Why this exists
 
-Local-miniMCP provides a small, auditable boundary instead of giving every AI client direct shell or filesystem access.
+MCP-Pi provides a small, auditable boundary instead of giving every AI client direct shell or filesystem access.
 
 Core rules:
 
@@ -169,4 +169,4 @@ Maintainer exact-commit deployment is documented in `CONTRIBUTING.md`; it is not
 
 The current operational state lives in [docs/project-state.md](docs/project-state.md). Historical release notes remain immutable under [docs/releases/](docs/releases/).
 
-Local-miniMCP is intentionally small: new dependencies or abstractions need a concrete operational reason and must preserve least privilege, rollback and auditability.
+MCP-Pi is intentionally small: new dependencies or abstractions need a concrete operational reason and must preserve least privilege, rollback and auditability.

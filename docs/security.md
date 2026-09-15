@@ -1,6 +1,6 @@
 # Security model
 
-Local-miniMCP uses explicit authorization and fail-closed behavior instead of trusting a client, IP address or shell by default.
+MCP-Pi uses explicit authorization and fail-closed behavior instead of trusting a client, IP address or shell by default.
 
 ## Core invariants
 

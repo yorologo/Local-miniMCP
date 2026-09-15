@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KISS semantic documentation contract for the CURRENT Local-miniMCP surface."""
+"""KISS semantic documentation contract for the CURRENT MCP-Pi surface."""
 from __future__ import annotations
 
 import json

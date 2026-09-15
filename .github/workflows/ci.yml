@@ -58,7 +58,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/release"
           scripts/build-release-package.sh "$GITHUB_SHA" "$RUNNER_TEMP/release"
-          pkg="$(find "$RUNNER_TEMP/release" -maxdepth 1 -name 'Local-miniMCP-*-linux-armv6-*.tar.gz' -print -quit)"
+          pkg="$(find "$RUNNER_TEMP/release" -maxdepth 1 -name 'MCP-Pi-*-linux-armv6-*.tar.gz' -print -quit)"
           test -n "$pkg"
           tar -tzf "$pkg" | grep -q '/bin/mcp-gateway-adapter$'
           tar -tzf "$pkg" | grep -q '/install.sh$'

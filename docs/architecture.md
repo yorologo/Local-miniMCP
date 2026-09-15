@@ -1,6 +1,6 @@
 # Architecture
 
-Local-miniMCP is a small security gateway, not a compute platform. The appliance centralizes identity, policy, audit and protocol adaptation; Targets perform the actual work.
+MCP-Pi is a small security gateway, not a compute platform. The appliance centralizes identity, policy, audit and protocol adaptation; Targets perform the actual work.
 
 ## Components
 

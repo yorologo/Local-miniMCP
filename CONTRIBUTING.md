@@ -1,6 +1,6 @@
-# Contributing to Local-miniMCP
+# Contributing to MCP-Pi
 
-Local-miniMCP is security-sensitive and intentionally small. Contributions should preserve its KISS, fail-closed and low-resource character.
+MCP-Pi is security-sensitive and intentionally small. Contributions should preserve its KISS, fail-closed and low-resource character.
 
 ## Branches
 

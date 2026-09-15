@@ -1,6 +1,6 @@
 # Operations
 
-This guide covers normal operation of an installed Local-miniMCP appliance. Installation/update procedures live in separate guides so routine administration stays short.
+This guide covers normal operation of an installed MCP-Pi appliance. Installation/update procedures live in separate guides so routine administration stays short.
 
 ## Quick health
 
